@@ -99,6 +99,12 @@ class DtboPatchEngine(
             )
 
             if (result.isSuccess && dts.isFile) {
+                val rawText = dts.readText()
+                val sanitized = DtsSanitizer.sanitize(rawText)
+                if (sanitized != rawText) {
+                    dts.writeText(sanitized)
+                    logSink("[INFO] DTB[$index] 已自动净化含 \\0 转义序列的属性，防止 DTC 八进制转义截断")
+                }
                 dtsFiles += dts
                 val backupDts = File(dtsOriginalDir, "entry_$index.dts")
                 dts.copyTo(backupDts, overwrite = true)
@@ -228,6 +234,12 @@ class DtboPatchEngine(
             if (index in modifiedEntryIndices) {
                 val dtsFile = File(dtsDir, "entry_$index.dts")
                 require(dtsFile.isFile) { "条目 $index 对应的 DTS 文件不存在" }
+                val currentText = dtsFile.readText()
+                val sanitized = DtsSanitizer.sanitize(currentText)
+                if (sanitized != currentText) {
+                    dtsFile.writeText(sanitized)
+                }
+
                 val targetDtb = File(rebuiltDir, "entry_$index.dtb")
                 val compile = executor.runDtc(
                     args = listOf(
@@ -241,7 +253,16 @@ class DtboPatchEngine(
                 require(compile.isSuccess && targetDtb.isFile) {
                     "DTS[$index] 重编译失败：${compile.stderr.ifBlank { compile.stdout }.takeLast(2000)}"
                 }
-                replacementEntries[index] = targetDtb.readBytes()
+
+                val originalDecoded = workspace.binaryImage.entries[index].decodedBytes
+                val rebuiltDecoded = targetDtb.readBytes()
+                val modifiedPaths = stagedChanges
+                    .filter { it.entryIndex == index }
+                    .map { it.nodePath }
+                    .toSet()
+                verifyDtbIntegrity(index, originalDecoded, rebuiltDecoded, modifiedPaths)
+
+                replacementEntries[index] = rebuiltDecoded
             }
         }
 
@@ -332,5 +353,35 @@ class DtboPatchEngine(
             require(verifiedCandidates.isNotEmpty()) { "DTB[$index] 校验失败：反编译后无有效时序档位" }
             logSink("[OK] DTB[$index] 二次反编译校验通过：包含 ${verifiedCandidates.size} 个档位 (${verifiedCandidates.joinToString { "${it.currentHz}Hz" }})")
         }
+    }
+
+    private fun verifyDtbIntegrity(
+        entryIndex: Int,
+        originalDtbBytes: ByteArray,
+        rebuiltDtbBytes: ByteArray,
+        modifiedTimingNodePaths: Set<String>
+    ) {
+        val origProps = FdtReader.readAllProperties(originalDtbBytes)
+        val rebuiltProps = FdtReader.readAllProperties(rebuiltDtbBytes)
+
+        val corrupted = mutableListOf<String>()
+        origProps.forEach { (path, origVal) ->
+            val nodePath = path.substringBeforeLast('/')
+            val isModifiedTimingNode = modifiedTimingNodePaths.any { modifiedPath ->
+                nodePath == modifiedPath || nodePath.startsWith("$modifiedPath/")
+            }
+            if (!isModifiedTimingNode) {
+                val rebuiltVal = rebuiltProps[path]
+                if (rebuiltVal == null || !rebuiltVal.contentEquals(origVal)) {
+                    corrupted += "$path (原长度=${origVal.size}, 重建长度=${rebuiltVal?.size ?: 0})"
+                }
+            }
+        }
+
+        require(corrupted.isEmpty()) {
+            val sample = corrupted.take(5).joinToString("; ")
+            "DTB[$entryIndex] 完整性校验失败：检测到 ${corrupted.size} 个非时序属性被异常修改（例如：$sample）。已阻断打包。"
+        }
+        logSink("[OK] DTB[$entryIndex] 属性完整性校验通过：非修改节点的属性 100% 保持一致")
     }
 }

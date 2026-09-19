@@ -211,7 +211,7 @@ class SafetyGuardManager(
             zip.closeEntry()
         }
 
-        require(output.length() > patchedImage.length()) { "Recovery 刷机 Zip 生成失败" }
+        require(output.isFile && output.length() > 0L) { "Recovery 刷机 Zip 生成失败" }
         logSink("[OK] 已生成单槽位 Recovery 刷机 Zip：${output.absolutePath}")
         output
     }
@@ -265,7 +265,7 @@ class SafetyGuardManager(
             zip.closeEntry()
         }
 
-        require(output.length() > originalImage.length()) { "Recovery Zip 生成失败" }
+        require(output.isFile && output.length() > 0L) { "Recovery Zip 生成失败" }
         logSink("[OK] 已生成 Recovery Rescue Zip：${output.absolutePath}")
         output
     }
