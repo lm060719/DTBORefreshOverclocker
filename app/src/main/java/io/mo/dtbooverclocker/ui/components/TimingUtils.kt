@@ -27,11 +27,11 @@ data class PanelGroupKey(
  */
 enum class OverclockRisk(
     val label: String,
-    val description: String
+    val description: String = ""
 ) {
     SAFE("稳妥区间", "超频增幅 ≤ 15%，通常各厂商面板均有充足裕量"),
-    MODERATE("进阶区间", "超频增幅 15% ~ 35%，需密切观察是否出现水波纹、偏色或发热"),
-    EXTREME("极限区间", "超频增幅 > 35%，极易触发 MIPI DSI 链路失锁或黑屏，建议先备好救砖")
+    MODERATE("进阶区间", ""),
+    EXTREME("极限区间", "")
 }
 
 /**

@@ -239,24 +239,30 @@ fun OverclockPreviewCard(
             }
 
             // 说明与风险提示
-            Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        sim.risk.description,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = riskColor,
-                        fontWeight = FontWeight.Medium
-                    )
-                    if (sim.calculationNote.isNotBlank()) {
-                        Text(
-                            sim.calculationNote,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            val showRiskDescription = sim.risk.description.isNotBlank()
+            val showCalculationNote = sim.calculationNote.isNotBlank()
+            if (showRiskDescription || showCalculationNote) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        if (showRiskDescription) {
+                            Text(
+                                sim.risk.description,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = riskColor,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        if (showCalculationNote) {
+                            Text(
+                                sim.calculationNote,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

@@ -308,7 +308,7 @@ fun SettingsScreen(
                         }
 
                         Text(
-                            text = "包含导入的 DTBO 镜像缓存、反编译 DTS 临时工作区及刷写校验临时文件。清理后不会影响物理设备分区，也不会影响已导出的文件。",
+                            text = "包含导入的 DTBO 镜像缓存、反编译 DTS 临时工作区及刷写校验临时文件。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -384,12 +384,6 @@ fun SettingsScreen(
                                 )
                             }
                         }
-
-                        Text(
-                            text = "记录设备基线快照、DTS 时序几何公式推导、DTBO 编解码结构以及物理分区刷写与自校验黑匣子数据。日志持久化存储于内部目录，不受缓存清理影响。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),

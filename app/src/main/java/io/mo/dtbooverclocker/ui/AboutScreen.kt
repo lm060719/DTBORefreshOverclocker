@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.mo.dtbooverclocker.BuildConfig
 
-private const val GITHUB_REPO_URL = "https://github.com/mo-io/DTBORefreshOverclocker"
+private const val GITHUB_REPO_URL = "https://github.com/lm060719/DTBORefreshOverclocker"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

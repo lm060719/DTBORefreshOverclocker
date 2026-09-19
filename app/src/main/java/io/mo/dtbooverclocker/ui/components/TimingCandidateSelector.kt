@@ -191,7 +191,7 @@ fun TimingCandidateSelector(
                         )
                         if (activePanelSource != null) {
                             Text(
-                                "检测来源：$activePanelSource · 已为您自动锁定并推荐",
+                                "检测来源：$activePanelSource · ",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -245,21 +245,13 @@ fun TimingCandidateSelector(
                         label = { Text("公版/仿真 (${groups.size - deviceSpecificCount})") }
                     )
                 }
-
-                if (filterScope == PanelFilterScope.DEVICE_ONLY) {
-                    Text(
-                        "已优先聚焦当前机型专属面板（$deviceSpecificCount 个）；其余 ${groups.size - deviceSpecificCount} 个高通公版与虚拟仿真节点已折叠。",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
             }
 
             // 搜索框（支持搜索 o1, 38, 42, 144 等）
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("搜索屏幕或时序 (如 38, 42, 144)", maxLines = 1) },
+                placeholder = { Text("搜索屏幕或时序", maxLines = 1) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 trailingIcon = {
                     if (searchQuery.isNotBlank()) {
