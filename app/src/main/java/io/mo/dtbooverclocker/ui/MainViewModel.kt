@@ -13,6 +13,10 @@ import io.mo.dtbooverclocker.core.NativeToolExecutor
 import io.mo.dtbooverclocker.core.RootDetector
 import io.mo.dtbooverclocker.core.SafetyGuardManager
 import io.mo.dtbooverclocker.core.SlotDetector
+import io.mo.dtbooverclocker.model.BackupRecord
+import io.mo.dtbooverclocker.model.BackupType
+import io.mo.dtbooverclocker.model.BackupVerificationState
+import io.mo.dtbooverclocker.model.BackupVerificationStatus
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.FlashResult
 import io.mo.dtbooverclocker.model.PatchMode
@@ -56,6 +60,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshEnvironment()
         refreshCacheSize()
         refreshLogStats()
+        loadBackups()
     }
 
     fun refreshEnvironment() {
@@ -228,6 +233,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 safetyGuard.flashPatchedImage(report, slot)
             }.onSuccess { result ->
+                loadBackups()
                 _state.update {
                     it.copy(
                         lastFlash = result,
@@ -376,6 +382,121 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun loadBackups() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = safetyGuard.backupManager.getBackups()
+            _state.update { it.copy(backups = list) }
+        }
+    }
+
+    fun createManualBackup(description: String = "", onComplete: ((Boolean, String) -> Unit)? = null) {
+        viewModelScope.launch {
+            val slot = _state.value.slotInfo
+            if (slot == null) {
+                val err = "无法获取当前分区槽位信息"
+                showError(IllegalStateException(err))
+                onComplete?.invoke(false, err)
+                return@launch
+            }
+
+            setBusy(true, "正在手动备份当前物理分区 ${slot.blockDevice}…")
+            runCatching {
+                safetyGuard.backupManager.createBackupFromPartition(
+                    slot = slot,
+                    type = BackupType.MANUAL,
+                    description = description.ifBlank { "手动备份当前 DTBO 分区" }
+                )
+            }.onSuccess { record ->
+                loadBackups()
+                _state.update { it.copy(status = "手动备份成功：${record.fileName}") }
+                onComplete?.invoke(true, "备份成功：${record.fileName}")
+            }.onFailure { err ->
+                showError(err)
+                onComplete?.invoke(false, err.message ?: "备份失败")
+            }
+            setBusy(false)
+        }
+    }
+
+    fun verifyBackupMd5(record: BackupRecord) {
+        viewModelScope.launch {
+            _state.update { current ->
+                current.copy(
+                    backupVerificationStates = current.backupVerificationStates + (record.id to BackupVerificationState(
+                        status = BackupVerificationStatus.VERIFYING
+                    ))
+                )
+            }
+            val result = safetyGuard.backupManager.verifyMd5(record)
+            _state.update { current ->
+                current.copy(
+                    backupVerificationStates = current.backupVerificationStates + (record.id to result)
+                )
+            }
+        }
+    }
+
+    fun exportBackup(
+        record: BackupRecord,
+        targetUri: Uri? = null,
+        onComplete: ((Boolean, String) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            setBusy(true, "正在导出 ${record.fileName}…")
+            runCatching {
+                safetyGuard.backupManager.exportBackup(record, targetUri)
+            }.onSuccess { path ->
+                _state.update { it.copy(status = "导出完成：$path") }
+                onComplete?.invoke(true, path)
+            }.onFailure { err ->
+                showError(err)
+                onComplete?.invoke(false, err.message ?: "导出失败")
+            }
+            setBusy(false)
+        }
+    }
+
+    fun flashBackup(
+        record: BackupRecord,
+        onComplete: ((Boolean, String) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            val slot = _state.value.slotInfo
+            if (slot == null) {
+                val err = "无法获取当前分区槽位信息"
+                showError(IllegalStateException(err))
+                onComplete?.invoke(false, err)
+                return@launch
+            }
+
+            setBusy(true, "正在回滚刷入备份 ${record.fileName}…")
+            runCatching {
+                safetyGuard.backupManager.flashBackup(record, slot)
+            }.onSuccess {
+                loadBackups()
+                _state.update { it.copy(status = "回滚刷入成功！已写入 ${slot.blockDevice}") }
+                onComplete?.invoke(true, "回滚刷入成功！已写回并完成回读校验")
+            }.onFailure { err ->
+                showError(err)
+                onComplete?.invoke(false, err.message ?: "回滚刷入失败")
+            }
+            setBusy(false)
+        }
+    }
+
+    fun deleteBackup(
+        record: BackupRecord,
+        onComplete: ((Boolean) -> Unit)? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = safetyGuard.backupManager.deleteBackup(record.id)
+            loadBackups()
+            withContext(Dispatchers.Main) {
+                onComplete?.invoke(success)
+            }
+        }
+    }
+
     private fun applyWorkspace(
         workspace: DtboWorkspace,
         sourceMode: SourceMode,
@@ -487,5 +608,7 @@ data class MainUiState(
     val activePanelSource: String? = null,
     val cacheSizeBytes: Long = 0L,
     val logFilesCount: Int = 0,
-    val logFilesSizeBytes: Long = 0L
+    val logFilesSizeBytes: Long = 0L,
+    val backups: List<BackupRecord> = emptyList(),
+    val backupVerificationStates: Map<String, BackupVerificationState> = emptyMap()
 )

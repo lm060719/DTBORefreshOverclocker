@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import io.mo.dtbooverclocker.model.BackupType
 import io.mo.dtbooverclocker.model.FlashResult
 import io.mo.dtbooverclocker.model.PatchReport
 import io.mo.dtbooverclocker.model.PatchStrategy
@@ -25,7 +26,8 @@ import kotlin.math.ceil
 class SafetyGuardManager(
     private val context: Context,
     private val rootDetector: RootDetector,
-    private val logSink: (String) -> Unit = {}
+    private val logSink: (String) -> Unit = {},
+    val backupManager: BackupManager = BackupManager(context, rootDetector, logSink)
 ) {
     suspend fun extractActiveImage(slot: SlotInfo): File = withContext(Dispatchers.IO) {
         validateBlockPath(slot.blockDevice)
@@ -58,7 +60,7 @@ class SafetyGuardManager(
 
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val slotName = slot.suffix.removePrefix("_").ifBlank { "single" }
-        val backupName = "dtbo_backup_${slotName}_${timestamp}.img"
+        val backupName = "dtbo_backup_auto_${slotName}_${timestamp}.img"
 
         val cacheBackup = File(context.cacheDir, "flash_guard/$backupName").apply {
             parentFile?.mkdirs()
@@ -74,23 +76,26 @@ class SafetyGuardManager(
             "修补镜像 (${report.outputImage.length()}) 大于目标分区备份 (${cacheBackup.length()})，已阻止刷写"
         }
 
-        val backupHash = HashUtils.sha256(cacheBackup)
-        val persistentBackup = persistInternalBackup(cacheBackup, backupName)
-        val persistentHash = HashUtils.sha256(persistentBackup)
-        require(persistentHash == backupHash) {
-            "持久化备份 SHA-256 校验失败，已阻止刷写"
-        }
+        val backupRecord = backupManager.createBackupFromFile(
+            source = cacheBackup,
+            slot = slot,
+            type = BackupType.AUTO,
+            description = "刷入目标 ${report.targetHz}Hz (${report.strategy.displayName}) 前自动备份"
+        )
+        val persistentBackup = File(backupRecord.filePath)
+        val backupHash = backupRecord.recordedSha256.ifBlank { HashUtils.sha256(persistentBackup) }
+        val backupMd5 = backupRecord.recordedMd5
 
         val externalBackup = persistExternalArtifact(
             source = persistentBackup,
-            displayName = backupName,
+            displayName = persistentBackup.name,
             mimeType = "application/octet-stream",
             subDirectory = "backups"
         )
         require(externalBackup.verifiedSha256 == backupHash) {
             "外部备份 SHA-256 校验失败，已阻止刷写"
         }
-        logSink("[SAFE] 原厂备份 SHA-256=$backupHash")
+        logSink("[SAFE] 原厂备份 SHA-256=$backupHash, MD5=$backupMd5")
 
         logSink("[SAFE] 第 2/3 层：预生成 Recovery 救砖包")
         val rescueZip = generateRecoveryZip(

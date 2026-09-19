@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,21 +44,26 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -109,6 +115,7 @@ import java.io.File
 
 enum class AppScreen {
     MAIN,
+    ROLLBACK,
     SETTINGS,
     ABOUT
 }
@@ -178,11 +185,42 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     var currentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
 
     when (currentScreen) {
+        AppScreen.ROLLBACK -> {
+            RollbackScreen(
+                state = state,
+                onNavigateBack = { currentScreen = AppScreen.MAIN },
+                onRefresh = viewModel::loadBackups,
+                onManualBackup = { desc ->
+                    viewModel.createManualBackup(desc) { ok, msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onVerifyMd5 = viewModel::verifyBackupMd5,
+                onExportBackup = { record ->
+                    viewModel.exportBackup(record) { ok, path ->
+                        val tip = if (ok) "已成功导出至 $path" else "导出失败：$path"
+                        Toast.makeText(context, tip, Toast.LENGTH_LONG).show()
+                    }
+                },
+                onFlashBackup = { record ->
+                    viewModel.flashBackup(record) { ok, msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    }
+                },
+                onDeleteBackup = { record ->
+                    viewModel.deleteBackup(record) { ok ->
+                        val tip = if (ok) "已删除备份：${record.fileName}" else "删除失败"
+                        Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        }
         AppScreen.SETTINGS -> {
             SettingsScreen(
                 state = state,
                 onNavigateBack = { currentScreen = AppScreen.MAIN },
                 onNavigateToAbout = { currentScreen = AppScreen.ABOUT },
+                onNavigateToRollback = { currentScreen = AppScreen.ROLLBACK },
                 onRequestRoot = viewModel::requestRoot,
                 onRefreshEnvironment = viewModel::refreshEnvironment,
                 onRefreshCacheSize = viewModel::refreshCacheSize,
@@ -214,6 +252,17 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                             }
                         },
                         actions = {
+                            IconButton(onClick = { currentScreen = AppScreen.ROLLBACK }) {
+                                BadgedBox(
+                                    badge = {
+                                        if (state.backups.isNotEmpty()) {
+                                            Badge { Text("${state.backups.size}") }
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Restore, contentDescription = "镜像回滚")
+                                }
+                            }
                             IconButton(onClick = viewModel::refreshEnvironment) {
                                 Icon(Icons.Default.Refresh, contentDescription = "刷新环境")
                             }
@@ -239,6 +288,18 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                             onMode = viewModel::setSourceMode,
                             onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },
                             onExtract = viewModel::extractActivePartition
+                        )
+                    }
+
+                    item {
+                        RollbackQuickCard(
+                            backupCount = state.backups.size,
+                            onNavigateToRollback = { currentScreen = AppScreen.ROLLBACK },
+                            onManualBackup = {
+                                viewModel.createManualBackup { ok, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         )
                     }
 
@@ -922,4 +983,84 @@ private fun captureWindowToPng(activity: Activity, uri: Uri) {
         },
         Handler(Looper.getMainLooper())
     )
+}
+
+@Composable
+private fun RollbackQuickCard(
+    backupCount: Int,
+    onNavigateToRollback: () -> Unit,
+    onManualBackup: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Restore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text("镜像备份与回滚", fontWeight = FontWeight.SemiBold)
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = "已备份 $backupCount 个",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            Text(
+                "物理刷写前自动备份当前 DTBO；也可随时手动备份并在时间轴中一键回滚或导出。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onManualBackup,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("手动备份当前", style = MaterialTheme.typography.labelSmall)
+                }
+
+                Button(
+                    onClick = onNavigateToRollback,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("查看回滚时间轴", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
 }
