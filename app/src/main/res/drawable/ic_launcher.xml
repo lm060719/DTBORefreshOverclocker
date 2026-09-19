@@ -1,0 +1,49 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background rounded circle / card -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M54,6 C27.49,6 6,27.49 6,54 C6,80.51 27.49,102 54,102 C80.51,102 102,80.51 102,54 C102,27.49 80.51,6 54,6 Z" />
+
+    <!-- Subtle accent inner ring -->
+    <path
+        android:strokeColor="#1E293B"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:pathData="M54,12 C30.8,12 12,30.8 12,54 C12,77.2 30.8,96 54,96 C77.2,96 96,77.2 96,54 C96,30.8 77.2,12 54,12 Z" />
+
+    <!-- Monitor / Display frame -->
+    <path
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#1E293B"
+        android:pathData="M26,26 L82,26 A4,4 0 0,1 86,30 L86,66 A4,4 0 0,1 82,70 L26,70 A4,4 0 0,1 22,66 L22,30 A4,4 0 0,1 26,26 Z" />
+
+    <!-- Monitor Stand -->
+    <path
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,70 L54,82 M38,82 L70,82" />
+
+    <!-- Screen Inner Display Wave / Refresh Rate Pulse -->
+    <path
+        android:strokeColor="#34D399"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M28,48 L38,48 L44,36 L52,58 L60,40 L66,48 L80,48" />
+
+    <!-- Overclock Lightning Bolt Accent -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M56,31 L48,46 L55,46 L51,61 L62,44 L55,44 Z" />
+</vector>
+
