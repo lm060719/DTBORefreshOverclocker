@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.core
 
+import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import org.junit.Assert.assertEquals
@@ -263,6 +264,259 @@ class DtsTimingPatcherTest {
             "存在 timing-0 与 timing-1 时应递增生成 qcom,mdss-dsi-panel-timing-2",
             result.text.contains("qcom,mdss-dsi-panel-timing-2 {")
         )
+    }
+
+    @Test
+    fun deleteTimingNodeRemovesTargetNodeAndPreservesSiblings() {
+        val file = File.createTempFile("panel_delete", ".dts")
+        file.writeText(
+            """/dts-v1/;
+                |/ {
+                |    panel {
+                |        timing@0 {
+                |            qcom,mdss-dsi-panel-framerate = <60>;
+                |            qcom,mdss-dsi-panel-clockrate = <0x20000000>;
+                |            qcom,mdss-dsi-panel-width = <1080>;
+                |            qcom,mdss-dsi-panel-height = <2400>;
+                |            qcom,mdss-dsi-h-front-porch = <20>;
+                |            qcom,mdss-dsi-h-back-porch = <20>;
+                |            qcom,mdss-dsi-h-pulse-width = <4>;
+                |            qcom,mdss-dsi-v-front-porch = <20>;
+                |            qcom,mdss-dsi-v-back-porch = <20>;
+                |            qcom,mdss-dsi-v-pulse-width = <2>;
+                |        };
+                |        timing@1 {
+                |            qcom,mdss-dsi-panel-framerate = <120>;
+                |            qcom,mdss-dsi-panel-clockrate = <0x40000000>;
+                |            qcom,mdss-dsi-panel-width = <1080>;
+                |            qcom,mdss-dsi-panel-height = <2400>;
+                |            qcom,mdss-dsi-h-front-porch = <20>;
+                |            qcom,mdss-dsi-h-back-porch = <20>;
+                |            qcom,mdss-dsi-h-pulse-width = <4>;
+                |            qcom,mdss-dsi-v-front-porch = <20>;
+                |            qcom,mdss-dsi-v-back-porch = <20>;
+                |            qcom,mdss-dsi-v-pulse-width = <2>;
+                |        };
+                |    };
+                |};
+            """.trimMargin()
+        )
+
+        val candidates = DtsTimingPatcher.analyzeEntry(0, file)
+        assertEquals(2, candidates.size)
+        val cand120 = candidates.first { it.currentHz == 120 }
+
+        val result = DtsTimingPatcher.patch(
+            candidate = cand120,
+            targetHz = 120,
+            strategy = PatchStrategy.BALANCED_BLANKING_TIME,
+            mode = PatchMode.DELETE_EXISTING
+        )
+
+        assertTrue("timing@0 应完好保留", result.text.contains("timing@0 {"))
+        assertTrue("timing@1 应被彻底移除", !result.text.contains("timing@1 {"))
+
+        val newFile = File.createTempFile("panel_delete_verified", ".dts")
+        newFile.writeText(result.text)
+        val remaining = DtsTimingPatcher.analyzeEntry(0, newFile)
+        assertEquals(1, remaining.size)
+        assertEquals(60, remaining.first().currentHz)
+    }
+
+    @Test
+    fun deleteTimingNodeRemapsNativeModeIfTargetWasNative() {
+        val file = File.createTempFile("panel_native_remap", ".dts")
+        file.writeText(
+            """/dts-v1/;
+                |/ {
+                |    panel {
+                |        display-timings {
+                |            native-mode = <&timing0>;
+                |            timing0: timing@0 {
+                |                qcom,mdss-dsi-panel-framerate = <60>;
+                |                qcom,mdss-dsi-panel-clockrate = <0x20000000>;
+                |            };
+                |            timing1: timing@1 {
+                |                qcom,mdss-dsi-panel-framerate = <120>;
+                |                qcom,mdss-dsi-panel-clockrate = <0x40000000>;
+                |            };
+                |        };
+                |    };
+                |};
+            """.trimMargin()
+        )
+
+        val candidates = DtsTimingPatcher.analyzeEntry(0, file)
+        val cand60 = candidates.first { it.currentHz == 60 }
+
+        val result = DtsTimingPatcher.patch(
+            candidate = cand60,
+            targetHz = 60,
+            strategy = PatchStrategy.BALANCED_BLANKING_TIME,
+            mode = PatchMode.DELETE_EXISTING
+        )
+
+        assertTrue("native-mode 应被重定向至 timing1", result.text.contains("native-mode = <&timing1>;"))
+        assertTrue("timing0 节点已被移除", !result.text.contains("timing0: timing@0 {"))
+        assertTrue("timing1 节点应保留", result.text.contains("timing1: timing@1 {"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun deleteSingleTimingThrowsException() {
+        val file = File.createTempFile("panel_single_del", ".dts")
+        file.writeText(
+            """/dts-v1/;
+                |/ {
+                |    panel {
+                |        timing@0 {
+                |            qcom,mdss-dsi-panel-framerate = <60>;
+                |        };
+                |    };
+                |};
+            """.trimMargin()
+        )
+
+        val candidate = DtsTimingPatcher.analyzeEntry(0, file).single()
+        DtsTimingPatcher.patch(
+            candidate = candidate,
+            targetHz = 60,
+            strategy = PatchStrategy.BALANCED_BLANKING_TIME,
+            mode = PatchMode.DELETE_EXISTING
+        )
+    }
+
+    @Test
+    fun customStrategyAppliesUserSpecifiedClockAndPorches() {
+        val file = File.createTempFile("panel_custom", ".dts")
+        file.writeText(
+            """/dts-v1/;
+                |/ {
+                |    panel {
+                |        timing@0 {
+                |            qcom,mdss-dsi-panel-framerate = <120>;
+                |            qcom,mdss-dsi-panel-clockrate = <0x20000000>;
+                |            qcom,mdss-dsi-panel-width = <1080>;
+                |            qcom,mdss-dsi-panel-height = <2400>;
+                |            qcom,mdss-dsi-h-front-porch = <20>;
+                |            qcom,mdss-dsi-h-back-porch = <20>;
+                |            qcom,mdss-dsi-h-pulse-width = <4>;
+                |            qcom,mdss-dsi-v-front-porch = <20>;
+                |            qcom,mdss-dsi-v-back-porch = <20>;
+                |            qcom,mdss-dsi-v-pulse-width = <2>;
+                |        };
+                |    };
+                |};
+            """.trimMargin()
+        )
+
+        val candidate = DtsTimingPatcher.analyzeEntry(0, file).single()
+        val custom = CustomTimingParams(
+            pixelClockHz = 1_234_567_890L,
+            vFrontPorch = 35,
+            vBackPorch = 45,
+            hFrontPorch = 25,
+            hBackPorch = 35
+        )
+
+        val result = DtsTimingPatcher.patch(
+            candidate = candidate,
+            targetHz = 144,
+            strategy = PatchStrategy.CUSTOM,
+            mode = PatchMode.OVERWRITE_EXISTING,
+            customParams = custom
+        )
+
+        assertTrue(result.text.contains("qcom,mdss-dsi-panel-framerate = <144>;"))
+        assertTrue(result.text.contains("0x499602d2")) // 1234567890 in hex
+        assertTrue(result.text.contains("qcom,mdss-dsi-v-front-porch = <35>;"))
+        assertTrue(result.text.contains("qcom,mdss-dsi-v-back-porch = <45>;"))
+        assertTrue(result.text.contains("qcom,mdss-dsi-h-front-porch = <25>;"))
+        assertTrue(result.text.contains("qcom,mdss-dsi-h-back-porch = <35>;"))
+    }
+
+    @Test
+    fun sequentialMultipleStagedOperationsOnSameDtsFile() {
+        val file = File.createTempFile("panel_sequential", ".dts")
+        file.writeText(
+            """/dts-v1/;
+                |/ {
+                |    panel {
+                |        native-mode = <&timing0>;
+                |        timing0: timing@0 {
+                |            qcom,mdss-dsi-panel-framerate = <60>;
+                |            qcom,mdss-dsi-panel-clockrate = <0x20000000>;
+                |            qcom,mdss-dsi-panel-width = <1080>;
+                |            qcom,mdss-dsi-panel-height = <2400>;
+                |            qcom,mdss-dsi-h-front-porch = <20>;
+                |            qcom,mdss-dsi-h-back-porch = <20>;
+                |            qcom,mdss-dsi-h-pulse-width = <4>;
+                |            qcom,mdss-dsi-v-front-porch = <20>;
+                |            qcom,mdss-dsi-v-back-porch = <20>;
+                |            qcom,mdss-dsi-v-pulse-width = <2>;
+                |        };
+                |        timing1: timing@1 {
+                |            qcom,mdss-dsi-panel-framerate = <120>;
+                |            qcom,mdss-dsi-panel-clockrate = <0x40000000>;
+                |            qcom,mdss-dsi-panel-width = <1080>;
+                |            qcom,mdss-dsi-panel-height = <2400>;
+                |            qcom,mdss-dsi-h-front-porch = <20>;
+                |            qcom,mdss-dsi-h-back-porch = <20>;
+                |            qcom,mdss-dsi-h-pulse-width = <4>;
+                |            qcom,mdss-dsi-v-front-porch = <20>;
+                |            qcom,mdss-dsi-v-back-porch = <20>;
+                |            qcom,mdss-dsi-v-pulse-width = <2>;
+                |        };
+                |    };
+                |};
+            """.trimMargin()
+        )
+
+        // 初始状态：包含 60Hz 和 120Hz 两个档位
+        var candidates = DtsTimingPatcher.analyzeEntry(0, file)
+        assertEquals(2, candidates.size)
+        assertEquals(listOf(60, 120), candidates.map { it.currentHz })
+
+        // 步骤 1：编辑修改 timing1 (120Hz -> 144Hz)
+        val timing1Cand = candidates.first { it.currentHz == 120 }
+        val editResult = DtsTimingPatcher.patch(
+            candidate = timing1Cand,
+            targetHz = 144,
+            strategy = PatchStrategy.BALANCED_BLANKING_TIME,
+            mode = PatchMode.OVERWRITE_EXISTING
+        )
+        file.writeText(editResult.text)
+        candidates = DtsTimingPatcher.analyzeEntry(0, file)
+        assertEquals(2, candidates.size)
+        assertEquals(listOf(60, 144), candidates.map { it.currentHz })
+
+        // 步骤 2：基于 144Hz 档位克隆新增一个 165Hz 档位
+        val timing144Cand = candidates.first { it.currentHz == 144 }
+        val appendResult = DtsTimingPatcher.patch(
+            candidate = timing144Cand,
+            targetHz = 165,
+            strategy = PatchStrategy.BALANCED_BLANKING_TIME,
+            mode = PatchMode.APPEND_NEW
+        )
+        file.writeText(appendResult.text)
+        candidates = DtsTimingPatcher.analyzeEntry(0, file)
+        assertEquals(3, candidates.size)
+        assertEquals(listOf(60, 144, 165), candidates.map { it.currentHz })
+
+        // 步骤 3：删除 60Hz 档位（原 native-mode 所指节点）
+        val timing60Cand = candidates.first { it.currentHz == 60 }
+        val deleteResult = DtsTimingPatcher.patch(
+            candidate = timing60Cand,
+            targetHz = 0,
+            strategy = PatchStrategy.BALANCED_BLANKING_TIME,
+            mode = PatchMode.DELETE_EXISTING
+        )
+        file.writeText(deleteResult.text)
+        candidates = DtsTimingPatcher.analyzeEntry(0, file)
+        assertEquals(2, candidates.size)
+        assertEquals(listOf(144, 165), candidates.map { it.currentHz })
+        // 验证 native-mode 不再指向被删除的 timing0，而是被自动重定向
+        assertTrue(!deleteResult.text.contains("&timing0"))
+        assertTrue(deleteResult.text.contains("native-mode = <&timing1>;"))
     }
 }
 

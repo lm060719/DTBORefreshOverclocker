@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.ui.components
 
+import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.TimingCandidate
 import org.junit.Assert.assertEquals
@@ -86,6 +87,47 @@ class TimingUtilsTest {
         val name42 = TimingUtils.formatPanelDisplayName(o142)
         assertTrue("name38 should start with O1-38: $name38", name38.startsWith("O1-38"))
         assertTrue("name42 should start with O1-42: $name42", name42.startsWith("O1-42"))
+    }
+
+    @Test
+    fun testCalculateSimulationWithCustomParams() {
+        val candidate = TimingCandidate(
+            id = "0:100:test_custom",
+            entryIndex = 0,
+            dtsFile = File("dummy.dts"),
+            nodePath = "/panel/timing@0",
+            nodeStart = 0,
+            nodeEndExclusive = 100,
+            currentHz = 120,
+            pixelClockHz = 1199900000L,
+            hActive = 1440,
+            vActive = 3200,
+            hFrontPorch = 40,
+            hBackPorch = 32,
+            hSync = 16,
+            vFrontPorch = 12,
+            vBackPorch = 8,
+            vSync = 4,
+            hasOpaquePanelTimings = false
+        )
+
+        val custom = CustomTimingParams(
+            pixelClockHz = 1_440_000_000L,
+            vFrontPorch = 16,
+            vBackPorch = 10
+        )
+
+        val sim = TimingUtils.calculateSimulation(
+            candidate = candidate,
+            targetHz = 144,
+            strategy = PatchStrategy.CUSTOM,
+            customParams = custom
+        )
+
+        assertEquals(1_440_000_000L, sim.estimatedClockHz)
+        assertEquals(16, sim.estimatedVfp)
+        assertEquals(10, sim.estimatedVbp)
+        assertTrue("Note should contain theoretical calculation: ${sim.calculationNote}", sim.calculationNote.contains("理论物理刷新率"))
     }
 }
 

@@ -17,6 +17,7 @@ import io.mo.dtbooverclocker.model.BackupRecord
 import io.mo.dtbooverclocker.model.BackupType
 import io.mo.dtbooverclocker.model.BackupVerificationState
 import io.mo.dtbooverclocker.model.BackupVerificationStatus
+import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.FlashResult
 import io.mo.dtbooverclocker.model.PatchMode
@@ -25,6 +26,7 @@ import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.RootState
 import io.mo.dtbooverclocker.model.SlotInfo
 import io.mo.dtbooverclocker.model.SourceMode
+import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 import io.mo.dtbooverclocker.util.AppLogger
@@ -164,13 +166,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setStrategy(strategy: PatchStrategy) {
         _state.update { it.copy(strategy = strategy, patchReport = null) }
+        if (strategy == PatchStrategy.CUSTOM) {
+            val s = _state.value
+            if (s.customPixelClockText.isBlank() && s.customVfpText.isBlank()) {
+                applySuggestedCustomParams()
+            }
+        }
     }
 
     fun setPatchMode(mode: PatchMode) {
         _state.update { it.copy(patchMode = mode, patchReport = null) }
     }
 
-    fun patchSelected() {
+    fun setCustomPixelClock(value: String) {
+        _state.update { it.copy(customPixelClockText = value, patchReport = null) }
+    }
+
+    fun setCustomVfp(value: String) {
+        _state.update { it.copy(customVfpText = value, patchReport = null) }
+    }
+
+    fun setCustomVbp(value: String) {
+        _state.update { it.copy(customVbpText = value, patchReport = null) }
+    }
+
+    fun setCustomHfp(value: String) {
+        _state.update { it.copy(customHfpText = value, patchReport = null) }
+    }
+
+    fun setCustomHbp(value: String) {
+        _state.update { it.copy(customHbpText = value, patchReport = null) }
+    }
+
+    fun applySuggestedCustomParams() {
+        val current = _state.value
+        val candidate = current.workspace?.candidates?.firstOrNull { it.id == current.selectedCandidateId } ?: return
+        val sim = TimingUtils.calculateSimulation(candidate, current.targetHz, PatchStrategy.BALANCED_BLANKING_TIME)
+        _state.update {
+            it.copy(
+                customPixelClockText = (sim.estimatedClockHz ?: candidate.pixelClockHz ?: "").toString(),
+                customVfpText = (sim.estimatedVfp ?: candidate.vFrontPorch ?: "").toString(),
+                customVbpText = (sim.estimatedVbp ?: candidate.vBackPorch ?: "").toString(),
+                customHfpText = (candidate.hFrontPorch ?: "").toString(),
+                customHbpText = (candidate.hBackPorch ?: "").toString(),
+                patchReport = null
+            )
+        }
+    }
+
+    fun stageTimingChange() {
         viewModelScope.launch {
             val current = _state.value
             val workspace = current.workspace ?: return@launch showError(
@@ -179,43 +223,103 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val candidate = workspace.candidates.firstOrNull { it.id == current.selectedCandidateId }
                 ?: return@launch showError(IllegalStateException("请选择一个 DSI 时序节点"))
 
-            val actionName = if (current.patchMode == PatchMode.APPEND_NEW) "正在新增档位并重打包 DTBO…" else "正在修补并二次校验 DTBO…"
-            setBusy(true, actionName)
+            if (current.patchMode == PatchMode.DELETE_EXISTING) {
+                val countInEntry = workspace.candidates.count { it.entryIndex == candidate.entryIndex }
+                requireOrReport(countInEntry > 1) {
+                    "当前 DTB 镜像条目仅存 1 个时序档位，删除会导致设备无法点亮屏幕，已拒绝操作。"
+                } ?: return@launch
+            }
+
+            val customParams = if (current.strategy == PatchStrategy.CUSTOM && current.patchMode != PatchMode.DELETE_EXISTING) {
+                val p = current.customTimingParams
+                requireOrReport(p != null && (p.pixelClockHz != null || candidate.pixelClockHz != null)) {
+                    "在自定义计算策略下，必须输入有效的像素时钟 (Pixel Clock)"
+                } ?: return@launch
+                p
+            } else null
+
             runCatching {
-                val report = patchEngine.patch(workspace, candidate, current.targetHz, current.strategy, current.patchMode)
-                // 若为新增档位模式，则重新分析 patchedDts 中的时序候选，并更新工作区候选列表，使界面即刻展现追加的新档位
-                if (current.patchMode == PatchMode.APPEND_NEW) {
-                    val patchedDts = java.io.File(workspace.rootDir, "patched_entry_${candidate.entryIndex}.dts")
-                    if (patchedDts.isFile) {
-                        val refreshedCandidates = workspace.candidates.toMutableList()
-                        refreshedCandidates.removeAll { it.entryIndex == candidate.entryIndex }
-                        val newEntryCandidates = DtsTimingPatcher.analyzeEntry(candidate.entryIndex, patchedDts)
-                        refreshedCandidates.addAll(newEntryCandidates)
-                        val newCandidate = newEntryCandidates.firstOrNull { it.currentHz == current.targetHz }
-                        val updatedWorkspace = workspace.copy(candidates = refreshedCandidates)
-                        _state.update {
-                            it.copy(
-                                workspace = updatedWorkspace,
-                                selectedCandidateId = newCandidate?.id ?: it.selectedCandidateId,
-                                patchReport = report,
-                                status = "已生成 ${report.outputImage.name} 并追加新档位"
-                            )
-                        }
-                        return@runCatching report
-                    }
+                patchEngine.applyTimingChange(
+                    workspace = workspace,
+                    candidate = candidate,
+                    targetHz = current.targetHz,
+                    strategy = current.strategy,
+                    mode = current.patchMode,
+                    customParams = customParams
+                )
+            }.onSuccess { result ->
+                val newStaged = current.stagedChanges + result.stagedChange
+                val newModifiedEntries = current.modifiedEntryIndices + candidate.entryIndex
+                _state.update {
+                    it.copy(
+                        workspace = result.updatedWorkspace,
+                        selectedCandidateId = result.selectedCandidateId,
+                        stagedChanges = newStaged,
+                        modifiedEntryIndices = newModifiedEntries,
+                        patchReport = null,
+                        status = "已暂存修改：${result.stagedChange.summary} (共 ${newStaged.size} 项修改待打包)",
+                        patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode
+                    )
                 }
-                report
+            }.onFailure(::showError)
+        }
+    }
+
+    fun resetStagedChanges() {
+        viewModelScope.launch {
+            val current = _state.value
+            val workspace = current.workspace ?: return@launch
+            setBusy(true, "正在重置所有修改…")
+            runCatching {
+                patchEngine.resetWorkspace(workspace)
+            }.onSuccess { restoredWorkspace ->
+                _state.update {
+                    it.copy(
+                        workspace = restoredWorkspace,
+                        selectedCandidateId = restoredWorkspace.candidates.firstOrNull()?.id,
+                        stagedChanges = emptyList(),
+                        modifiedEntryIndices = emptySet(),
+                        patchReport = null,
+                        status = "已重置所有时序修改，恢复为原始档位"
+                    )
+                }
+            }.onFailure(::showError)
+            setBusy(false)
+        }
+    }
+
+    fun packageStagedChanges() {
+        viewModelScope.launch {
+            val current = _state.value
+            val workspace = current.workspace ?: return@launch showError(
+                IllegalStateException("请先导入或提取 DTBO 镜像")
+            )
+            requireOrReport(current.stagedChanges.isNotEmpty()) {
+                "当前尚未暂存任何修改，请先编辑、新增或删除档位后再打包"
+            } ?: return@launch
+
+            setBusy(true, "正在重编译 DTB 并集中打包 DTBO 镜像…")
+            runCatching {
+                patchEngine.packageStaged(
+                    workspace = workspace,
+                    stagedChanges = current.stagedChanges,
+                    modifiedEntryIndices = current.modifiedEntryIndices
+                )
             }.onSuccess { report ->
                 _state.update {
                     it.copy(
                         patchReport = report,
-                        status = "已生成 ${report.outputImage.name}"
+                        status = "打包完成，成功生成 ${report.outputImage.name} (包含 ${current.stagedChanges.size} 项修改)"
                     )
                 }
                 refreshCacheSize()
             }.onFailure(::showError)
             setBusy(false)
         }
+    }
+
+    fun patchSelected() {
+        stageTimingChange()
     }
 
     fun flashPatched() {
@@ -534,6 +638,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 selectedCandidateId = selectedCandidate?.id,
                 targetHz = suggestedTarget(selectedCandidate?.currentHz ?: 60),
                 patchReport = null,
+                stagedChanges = emptyList(),
+                modifiedEntryIndices = emptySet(),
                 lastFlash = null,
                 activePanelIdentifier = activePanelId,
                 activePanelDisplayName = activePanelName,
@@ -601,6 +707,8 @@ data class MainUiState(
     val strategy: PatchStrategy = PatchStrategy.BALANCED_BLANKING_TIME,
     val patchMode: PatchMode = PatchMode.OVERWRITE_EXISTING,
     val patchReport: PatchReport? = null,
+    val stagedChanges: List<StagedChange> = emptyList(),
+    val modifiedEntryIndices: Set<Int> = emptySet(),
     val lastFlash: FlashResult? = null,
     val logs: List<String> = emptyList(),
     val activePanelIdentifier: String? = null,
@@ -610,5 +718,21 @@ data class MainUiState(
     val logFilesCount: Int = 0,
     val logFilesSizeBytes: Long = 0L,
     val backups: List<BackupRecord> = emptyList(),
-    val backupVerificationStates: Map<String, BackupVerificationState> = emptyMap()
-)
+    val backupVerificationStates: Map<String, BackupVerificationState> = emptyMap(),
+    val customPixelClockText: String = "",
+    val customVfpText: String = "",
+    val customVbpText: String = "",
+    val customHfpText: String = "",
+    val customHbpText: String = ""
+) {
+    val customTimingParams: CustomTimingParams?
+        get() = if (strategy == PatchStrategy.CUSTOM) {
+            CustomTimingParams(
+                pixelClockHz = customPixelClockText.filter(Char::isDigit).toLongOrNull(),
+                vFrontPorch = customVfpText.filter(Char::isDigit).toIntOrNull(),
+                vBackPorch = customVbpText.filter(Char::isDigit).toIntOrNull(),
+                hFrontPorch = customHfpText.filter(Char::isDigit).toIntOrNull(),
+                hBackPorch = customHbpText.filter(Char::isDigit).toIntOrNull()
+            )
+        } else null
+}

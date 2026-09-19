@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.TimingCandidate
@@ -44,9 +45,10 @@ fun OverclockPreviewCard(
     targetHz: Int,
     strategy: PatchStrategy,
     mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
+    customParams: CustomTimingParams? = null,
     modifier: Modifier = Modifier
 ) {
-    val sim = TimingUtils.calculateSimulation(candidate, targetHz, strategy)
+    val sim = TimingUtils.calculateSimulation(candidate, targetHz, strategy, customParams)
 
     val (riskColor, riskBgColor, riskIcon) = when (sim.risk) {
         OverclockRisk.SAFE -> Triple(

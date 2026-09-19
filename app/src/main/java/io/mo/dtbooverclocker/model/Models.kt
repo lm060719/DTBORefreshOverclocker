@@ -19,19 +19,49 @@ enum class PatchStrategy(val displayName: String, val description: String) {
     FRAMERATE_ONLY(
         "仅 Framerate",
         "只修改刷新率属性。兼容性最高但风险也最高，不建议用于直接刷写。"
+    ),
+    CUSTOM(
+        "自定义参数",
+        "手动指定 Pixel Clock、垂直前肩 (VFP)、垂直后肩 (VBP) 及水平消隐等时序参数。"
     )
 }
 
 enum class PatchMode(val displayName: String, val description: String) {
     OVERWRITE_EXISTING(
-        "覆盖修改档位",
+        "编辑修改档位",
         "将选中的原始时序档位直接超频为目标刷新率（替换原档位）。"
     ),
     APPEND_NEW(
         "新增独立档位",
         "完整保留原有时序档位，以此档位为蓝本克隆并追加全新的刷新率节点。"
+    ),
+    DELETE_EXISTING(
+        "删除指定档位",
+        "从设备树中彻底移除所选的时序档位节点（需保留至少一个档位以供显示驱动初始化）。"
     )
 }
+
+data class CustomTimingParams(
+    val pixelClockHz: Long? = null,
+    val vFrontPorch: Int? = null,
+    val vBackPorch: Int? = null,
+    val hFrontPorch: Int? = null,
+    val hBackPorch: Int? = null
+)
+
+data class StagedChange(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val mode: PatchMode,
+    val entryIndex: Int,
+    val nodePath: String,
+    val nodeName: String,
+    val originalHz: Int,
+    val targetHz: Int,
+    val strategy: PatchStrategy,
+    val customParams: CustomTimingParams? = null,
+    val summary: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 data class RootState(
     val suPresent: Boolean = false,
@@ -147,6 +177,8 @@ data class PatchReport(
     val originalHz: Int,
     val strategy: PatchStrategy,
     val mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
+    val customParams: CustomTimingParams? = null,
+    val stagedChanges: List<StagedChange> = emptyList(),
     val changes: List<String>,
     val warnings: List<String>
 )

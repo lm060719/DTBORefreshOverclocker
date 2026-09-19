@@ -15,7 +15,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,9 +42,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
@@ -52,11 +59,14 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.graphics.Color
+import java.util.Locale
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -101,6 +111,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.SourceMode
+import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.OverclockPreviewCard
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
@@ -294,8 +305,25 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                             onTarget = viewModel::setTargetHz,
                             onStrategy = viewModel::setStrategy,
                             onPatchMode = viewModel::setPatchMode,
-                            onPatch = viewModel::patchSelected
+                            onCustomPixelClock = viewModel::setCustomPixelClock,
+                            onCustomVfp = viewModel::setCustomVfp,
+                            onCustomVbp = viewModel::setCustomVbp,
+                            onCustomHfp = viewModel::setCustomHfp,
+                            onCustomHbp = viewModel::setCustomHbp,
+                            onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
+                            onStageChange = viewModel::stageTimingChange
                         )
+                    }
+
+                    if (state.stagedChanges.isNotEmpty()) {
+                        item {
+                            StagedChangesCard(
+                                stagedChanges = state.stagedChanges,
+                                onPackage = viewModel::packageStagedChanges,
+                                onReset = viewModel::resetStagedChanges,
+                                busy = state.busy
+                            )
+                        }
                     }
                 }
             }
@@ -377,7 +405,10 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     modifier = Modifier.padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.width(28.dp))
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        strokeWidth = 3.dp
+                    )
                     Spacer(Modifier.width(14.dp))
                     Text(state.status)
                 }
@@ -536,11 +567,21 @@ private fun TimingPanel(
     onTarget: (Int) -> Unit,
     onStrategy: (PatchStrategy) -> Unit,
     onPatchMode: (PatchMode) -> Unit,
-    onPatch: () -> Unit
+    onCustomPixelClock: (String) -> Unit,
+    onCustomVfp: (String) -> Unit,
+    onCustomVbp: (String) -> Unit,
+    onCustomHfp: (String) -> Unit,
+    onCustomHbp: (String) -> Unit,
+    onApplySuggestedCustom: () -> Unit,
+    onStageChange: () -> Unit
 ) {
     val workspace = state.workspace ?: return
     val selected = workspace.candidates.firstOrNull { it.id == state.selectedCandidateId }
         ?: workspace.candidates.first()
+
+    val candidatesInEntry = workspace.candidates.count { it.entryIndex == selected.entryIndex }
+    val canDelete = candidatesInEntry > 1
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -574,97 +615,12 @@ private fun TimingPanel(
                 onSelect = onSelect,
                 activePanelIdentifier = state.activePanelIdentifier,
                 activePanelDisplayName = state.activePanelDisplayName,
-                activePanelSource = state.activePanelSource,
-                onAddNewTiming = {
-                    onPatchMode(PatchMode.APPEND_NEW)
-                }
+                activePanelSource = state.activePanelSource
             )
 
             HorizontalDivider()
 
-            // 2. DSI 时序几何剖面图（水平与垂直显像、前肩、同步、后肩比例分布）
-            TimingGeometryChart(candidate = selected)
-
-            HorizontalDivider()
-
-            // 3. 目标刷新率调节与快捷预设芯片
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "目标刷新率：${state.targetHz} Hz",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
-                )
-
-                // 快捷预设增量芯片
-                val presets = remember(selected.currentHz) {
-                    val base = selected.currentHz
-                    val list = mutableListOf<Int>()
-                    if (base in 60..89) list += listOf(75, 90, 120)
-                    else if (base in 90..119) list += listOf(110, 120, 144)
-                    else if (base in 120..143) list += listOf(135, 144, 165)
-                    else if (base >= 144) list += listOf(base + 15, base + 24, 165, 180)
-                    else list += listOf(60, 90, 120)
-                    list.filter { it > base && it <= 360 }.distinct().take(4)
-                }
-
-                if (presets.isNotEmpty()) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            "快捷预设:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        presets.forEach { presetHz ->
-                            AssistChip(
-                                onClick = { onTarget(presetHz) },
-                                label = { Text("$presetHz Hz") }
-                            )
-                        }
-                    }
-                }
-
-                val sliderMax = maxOf(165, selected.currentHz + 90).coerceAtMost(360)
-                Slider(
-                    value = state.targetHz.toFloat().coerceIn(30f, sliderMax.toFloat()),
-                    onValueChange = { onTarget(it.toInt()) },
-                    valueRange = 30f..sliderMax.toFloat()
-                )
-                OutlinedTextField(
-                    value = state.targetHz.toString(),
-                    onValueChange = { value -> value.filter(Char::isDigit).toIntOrNull()?.let(onTarget) },
-                    label = { Text("目标刷新率数值 (Hz)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            HorizontalDivider()
-
-            // 4. 计算策略选择
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("计算策略", style = MaterialTheme.typography.labelLarge)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    PatchStrategy.entries.forEach { strategy ->
-                        FilterChip(
-                            selected = state.strategy == strategy,
-                            onClick = { onStrategy(strategy) },
-                            label = { Text(strategy.displayName) }
-                        )
-                    }
-                }
-                Text(state.strategy.description, style = MaterialTheme.typography.bodySmall)
-            }
-
-            HorizontalDivider()
-
-            // 5. 操作模式选择（覆盖已有档位 vs 新增独立档位）
+            // 2. 操作模式选择（编辑修改档位 vs 新增独立档位 vs 删除指定档位）
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("操作模式", style = MaterialTheme.typography.labelLarge)
                 FlowRow(
@@ -679,9 +635,16 @@ private fun TimingPanel(
                             label = { Text(mode.displayName) },
                             leadingIcon = {
                                 Icon(
-                                    if (mode == PatchMode.APPEND_NEW) Icons.Default.Add else Icons.Default.Build,
+                                    when (mode) {
+                                        PatchMode.APPEND_NEW -> Icons.Default.Add
+                                        PatchMode.DELETE_EXISTING -> Icons.Default.Delete
+                                        PatchMode.OVERWRITE_EXISTING -> Icons.Default.Build
+                                    },
                                     contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (mode == PatchMode.DELETE_EXISTING && state.patchMode == mode)
+                                        MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         )
@@ -690,24 +653,511 @@ private fun TimingPanel(
                 Text(state.patchMode.description, style = MaterialTheme.typography.bodySmall)
             }
 
-            // 6. 实时超频推演卡片（包含原值 vs 目标值、时钟倍率、消隐行数和安全评级）
-            OverclockPreviewCard(
-                candidate = selected,
-                targetHz = state.targetHz,
-                strategy = state.strategy,
-                mode = state.patchMode
-            )
+            HorizontalDivider()
 
-            // 7. 执行修补 / 新增按钮
-            Button(onClick = onPatch, modifier = Modifier.fillMaxWidth()) {
-                Icon(
-                    if (state.patchMode == PatchMode.APPEND_NEW) Icons.Default.Add else Icons.Default.Build,
-                    contentDescription = null
+            if (state.patchMode == PatchMode.DELETE_EXISTING) {
+                // 删除档位专属警告与详情卡片
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (canDelete)
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+                        else
+                            MaterialTheme.colorScheme.errorContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "准备删除时序档位",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Text(
+                            "待删除节点：${TimingUtils.parseTimingNodeName(selected.nodePath)} (${selected.currentHz} Hz)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            "完整节点路径：${selected.nodePath}",
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (!canDelete) {
+                            Text(
+                                "⚠ 严防黑屏限制：当前 DTB 镜像条目仅存此单一档位。屏幕面板必须保留至少 1 个时序档位以供显示驱动初始化，禁止删除！",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else {
+                            Text(
+                                "删除后，当前 DTB 镜像条目仍保留 ${candidatesInEntry - 1} 个时序档位。若此档位为默认 native-mode 开机档位，系统将自动重定向至剩余档位。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // 删除执行按钮
+                Button(
+                    onClick = { showDeleteDialog = true },
+                    enabled = canDelete && !state.busy,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("删除此档位 (暂存)")
+                }
+            } else {
+                // 3. DSI 时序几何剖面图（水平与垂直显像、前肩、同步、后肩比例分布）
+                TimingGeometryChart(candidate = selected)
+
+                HorizontalDivider()
+
+                // 4. 目标刷新率调节与快捷预设芯片
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "目标刷新率：${state.targetHz} Hz",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    val presets = remember(selected.currentHz) {
+                        val base = selected.currentHz
+                        val list = mutableListOf<Int>()
+                        if (base in 60..89) list += listOf(75, 90, 120)
+                        else if (base in 90..119) list += listOf(110, 120, 144)
+                        else if (base in 120..143) list += listOf(135, 144, 165)
+                        else if (base >= 144) list += listOf(base + 15, base + 24, 165, 180)
+                        else list += listOf(60, 90, 120)
+                        list.filter { it > base && it <= 360 }.distinct().take(4)
+                    }
+
+                    if (presets.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "快捷预设:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            presets.forEach { presetHz ->
+                                AssistChip(
+                                    onClick = { onTarget(presetHz) },
+                                    label = { Text("$presetHz Hz") }
+                                )
+                            }
+                        }
+                    }
+
+                    val sliderMax = maxOf(165, selected.currentHz + 90).coerceAtMost(360)
+                    Slider(
+                        value = state.targetHz.toFloat().coerceIn(30f, sliderMax.toFloat()),
+                        onValueChange = { onTarget(it.toInt()) },
+                        valueRange = 30f..sliderMax.toFloat()
+                    )
+                    OutlinedTextField(
+                        value = state.targetHz.toString(),
+                        onValueChange = { value -> value.filter(Char::isDigit).toIntOrNull()?.let(onTarget) },
+                        label = { Text("目标刷新率数值 (Hz)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                HorizontalDivider()
+
+                // 5. 计算策略选择
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("计算策略", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        PatchStrategy.entries.forEach { strategy ->
+                            FilterChip(
+                                selected = state.strategy == strategy,
+                                onClick = { onStrategy(strategy) },
+                                label = { Text(strategy.displayName) }
+                            )
+                        }
+                    }
+                    Text(state.strategy.description, style = MaterialTheme.typography.bodySmall)
+                }
+
+                // 5.1 自定义时序参数配置卡片
+                if (state.strategy == PatchStrategy.CUSTOM) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Tune,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "自定义时序参数",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                TextButton(onClick = onApplySuggestedCustom) {
+                                    Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("填入平衡参考值", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+
+                            val clockVal = state.customPixelClockText.toLongOrNull()
+                            OutlinedTextField(
+                                value = state.customPixelClockText,
+                                onValueChange = onCustomPixelClock,
+                                label = { Text("Pixel Clock / panel-clockrate (Hz)") },
+                                placeholder = { Text(selected.pixelClockHz?.toString() ?: "例如 1200000000") },
+                                supportingText = {
+                                    if (clockVal != null && clockVal > 0) {
+                                        Text(TimingUtils.formatClock(clockVal))
+                                    } else {
+                                        Text("设备树像素/通道时钟，单位 Hz")
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = state.customVfpText,
+                                    onValueChange = onCustomVfp,
+                                    label = { Text("垂直前肩 (VFP)") },
+                                    placeholder = { Text(selected.vFrontPorch?.toString() ?: "行") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = state.customVbpText,
+                                    onValueChange = onCustomVbp,
+                                    label = { Text("垂直后肩 (VBP)") },
+                                    placeholder = { Text(selected.vBackPorch?.toString() ?: "行") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            var showHorizontalCustom by remember { mutableStateOf(false) }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showHorizontalCustom = !showHorizontalCustom },
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "高级消隐参数 (HFP / HBP)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Icon(
+                                    if (showHorizontalCustom) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.outline
+                                )
+                            }
+
+                            AnimatedVisibility(visible = showHorizontalCustom) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = state.customHfpText,
+                                        onValueChange = onCustomHfp,
+                                        label = { Text("水平前肩 (HFP)") },
+                                        placeholder = { Text(selected.hFrontPorch?.toString() ?: "px") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = state.customHbpText,
+                                        onValueChange = onCustomHbp,
+                                        label = { Text("水平后肩 (HBP)") },
+                                        placeholder = { Text(selected.hBackPorch?.toString() ?: "px") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+
+                            val hAct = selected.hActive ?: 0
+                            val hSync = selected.hSync ?: 0
+                            val vAct = selected.vActive ?: 0
+                            val vSync = selected.vSync ?: 0
+                            val vFp = state.customVfpText.toIntOrNull() ?: selected.vFrontPorch ?: 0
+                            val vBp = state.customVbpText.toIntOrNull() ?: selected.vBackPorch ?: 0
+                            val hFp = state.customHfpText.toIntOrNull() ?: selected.hFrontPorch ?: 0
+                            val hBp = state.customHbpText.toIntOrNull() ?: selected.hBackPorch ?: 0
+                            val clk = clockVal ?: selected.pixelClockHz ?: 0L
+
+                            val hTotal = hAct + hFp + hSync + hBp
+                            val vTotal = vAct + vFp + vSync + vBp
+                            if (clk > 0 && hTotal > 0 && vTotal > 0) {
+                                val theoreticalHz = clk.toDouble() / (hTotal.toDouble() * vTotal.toDouble())
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Calculate,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            "理论推算物理刷新率: ${String.format(Locale.US, "%.2f", theoreticalHz)} Hz (目标: ${state.targetHz} Hz)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 6. 实时超频推演卡片
+                OverclockPreviewCard(
+                    candidate = selected,
+                    targetHz = state.targetHz,
+                    strategy = state.strategy,
+                    mode = state.patchMode,
+                    customParams = state.customTimingParams
                 )
-                Spacer(Modifier.width(8.dp))
-                Text(if (state.patchMode == PatchMode.APPEND_NEW) "追加为新档位并重打包" else "修补已有档位并重打包")
+
+                // 7. 执行修补 / 新增按钮
+                Button(onClick = onStageChange, modifier = Modifier.fillMaxWidth()) {
+                    Icon(
+                        if (state.patchMode == PatchMode.APPEND_NEW) Icons.Default.Add else Icons.Default.Build,
+                        contentDescription = null
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (state.patchMode == PatchMode.APPEND_NEW) "追加为此面板新档位 (暂存)" else "应用修改到当前时序 (暂存)")
+                }
             }
         }
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("确认删除该时序档位？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("将从工作区设备树中移除 ${TimingUtils.parseTimingNodeName(selected.nodePath)} (${selected.currentHz} Hz) 节点。")
+                    Text("删除后将记入待打包修改清单，全部调整完成后可统一打包生成 DTBO 镜像。")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteDialog = false
+                        onStageChange()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("确认删除 (暂存)")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun StagedChangesCard(
+    stagedChanges: List<StagedChange>,
+    onPackage: () -> Unit,
+    onReset: () -> Unit,
+    busy: Boolean
+) {
+    var showResetDialog by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.History,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "已暂存的时序修改 (${stagedChanges.size} 项)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                TextButton(
+                    onClick = { showResetDialog = true },
+                    enabled = !busy
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("重置全部修改")
+                }
+            }
+
+            Text(
+                "您可继续在上方对其他档位进行新增、修改或删除。待所有档位操作调整完毕后，点击下方「打包生成 DTBO 镜像」统一重构生成最终刷写文件。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                stagedChanges.forEachIndexed { index, change ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                color = when (change.mode) {
+                                    PatchMode.APPEND_NEW -> MaterialTheme.colorScheme.secondaryContainer
+                                    PatchMode.DELETE_EXISTING -> MaterialTheme.colorScheme.errorContainer
+                                    PatchMode.OVERWRITE_EXISTING -> MaterialTheme.colorScheme.primaryContainer
+                                },
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    "${index + 1}",
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    change.summary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    "节点: ${change.nodeName} · DTB[${change.entryIndex}]",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = onPackage,
+                enabled = !busy && stagedChanges.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Build, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("打包生成 DTBO 镜像 (${stagedChanges.size} 项修改)")
+            }
+        }
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("确认放弃并重置所有修改？") },
+            text = { Text("此操作将丢弃当前暂存的 ${stagedChanges.size} 项修改，工作区将恢复至初始提取状态。") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetDialog = false
+                        onReset()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("确认重置")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
 
@@ -723,10 +1173,12 @@ private fun OutputCard(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("输出", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            val modeTitle = if (report.mode == PatchMode.APPEND_NEW) {
-                "新增独立档位：${report.targetHz} Hz (基于原 ${report.originalHz} Hz 模板) · ${report.strategy.displayName}"
-            } else {
-                "${report.originalHz} Hz → ${report.targetHz} Hz · ${report.strategy.displayName}"
+            val modeTitle = if (report.stagedChanges.size > 1) {
+                "集中打包完成：共包含 ${report.stagedChanges.size} 项时序修改"
+            } else when (report.mode) {
+                PatchMode.APPEND_NEW -> "新增独立档位：${report.targetHz} Hz (基于原 ${report.originalHz} Hz 模板) · ${report.strategy.displayName}"
+                PatchMode.DELETE_EXISTING -> "删除指定档位：已彻底移除 ${report.originalHz} Hz 时序档位"
+                PatchMode.OVERWRITE_EXISTING -> "${report.originalHz} Hz → ${report.targetHz} Hz · ${report.strategy.displayName}"
             }
             Text(modeTitle, fontWeight = FontWeight.Medium)
             report.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
@@ -748,6 +1200,7 @@ private fun OutputCard(
 
             val canFlash = state.rootState.granted &&
                 state.sourceMode == SourceMode.ROOT_PARTITION &&
+                report.stagedChanges.none { it.strategy == PatchStrategy.FRAMERATE_ONLY } &&
                 report.strategy != PatchStrategy.FRAMERATE_ONLY
             Button(
                 onClick = onFlash,
@@ -825,7 +1278,6 @@ private fun RescueMemoCard(
 
 @Composable
 private fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
-    val context = LocalContext.current
     val listState = rememberLazyListState()
     LaunchedEffect(logs.size) {
         if (logs.isNotEmpty()) listState.scrollToItem(logs.lastIndex)
@@ -835,21 +1287,7 @@ private fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("终端回显", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                TextButton(
-                    onClick = {
-                        if (logs.isNotEmpty()) {
-                            copyText(context, "DTBO 终端回显", logs.joinToString("\n"))
-                        }
-                    },
-                    enabled = logs.isNotEmpty()
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("复制")
-                }
-                TextButton(onClick = onClear, enabled = logs.isNotEmpty()) {
-                    Text("清空")
-                }
+                TextButton(onClick = onClear) { Text("清空") }
             }
             SelectionContainer {
                 LazyColumn(

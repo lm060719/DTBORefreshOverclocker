@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.ui.components
 
+import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.TimingCandidate
 import java.util.Locale
@@ -224,7 +225,8 @@ object TimingUtils {
     fun calculateSimulation(
         candidate: TimingCandidate,
         targetHz: Int,
-        strategy: PatchStrategy
+        strategy: PatchStrategy,
+        customParams: CustomTimingParams? = null
     ): TimingSimulation {
         val originalHz = candidate.currentHz
         val hzDelta = targetHz - originalHz
@@ -304,6 +306,41 @@ object TimingUtils {
                         note = "该节点缺少完整消隐参数，回退为 Pixel Clock 等比预估"
                     } else {
                         note = "无可用 Pixel Clock 属性"
+                    }
+                }
+
+                PatchStrategy.CUSTOM -> {
+                    estimatedClock = customParams?.pixelClockHz ?: originalClock
+                    clockMultiplier = if (originalClock != null && originalClock > 0 && estimatedClock != null) {
+                        estimatedClock.toDouble() / originalClock
+                    } else 1.0
+                    newVfp = customParams?.vFrontPorch ?: candidate.vFrontPorch
+                    newVbp = customParams?.vBackPorch ?: candidate.vBackPorch
+
+                    if (vActive != null && vsync != null && newVfp != null && newVbp != null) {
+                        originalVTotal = if (vfp != null && vbp != null) vActive + vsync + vfp + vbp else null
+                        val newVt = vActive + vsync + newVfp + newVbp
+                        estimatedVTotal = newVt
+
+                        // 尝试计算理论物理刷新率: clock / (HTotal * VTotal)
+                        val hFp = (customParams?.hFrontPorch ?: candidate.hFrontPorch)?.toLong()
+                        val hBp = (customParams?.hBackPorch ?: candidate.hBackPorch)?.toLong()
+                        val hAct = candidate.hActive?.toLong()
+                        val hSync = candidate.hSync?.toLong()
+
+                        if (estimatedClock != null && hAct != null && hFp != null && hSync != null && hBp != null) {
+                            val hTotal = hAct + hFp + hSync + hBp
+                            if (hTotal > 0 && newVt > 0) {
+                                val theoreticalHz = estimatedClock.toDouble() / (hTotal.toDouble() * newVt.toDouble())
+                                note = "自定义参数：理论物理刷新率 ≈ ${String.format(Locale.US, "%.2f", theoreticalHz)} Hz (VFP=$newVfp, VBP=$newVbp)"
+                            } else {
+                                note = "自定义参数：时钟 ${formatClockCompact(estimatedClock)}，VFP=$newVfp, VBP=$newVbp"
+                            }
+                        } else {
+                            note = "自定义参数：时钟 ${formatClockCompact(estimatedClock)}，VFP=$newVfp, VBP=$newVbp"
+                        }
+                    } else {
+                        note = "自定义参数：时钟 ${formatClockCompact(estimatedClock)}"
                     }
                 }
             }

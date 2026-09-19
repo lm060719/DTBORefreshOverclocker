@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.core
 
+import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.TimingCandidate
@@ -98,10 +99,13 @@ object DtsTimingPatcher {
         candidate: TimingCandidate,
         targetHz: Int,
         strategy: PatchStrategy,
-        mode: PatchMode = PatchMode.OVERWRITE_EXISTING
+        mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
+        customParams: CustomTimingParams? = null
     ): PatchTextResult {
-        require(targetHz in 30..360) { "目标刷新率必须在 30..360 Hz 范围内" }
-        require(targetHz != candidate.currentHz) { "目标刷新率与当前刷新率相同" }
+        if (mode != PatchMode.DELETE_EXISTING) {
+            require(targetHz in 30..360) { "目标刷新率必须在 30..360 Hz 范围内" }
+            require(targetHz != candidate.currentHz) { "目标刷新率与当前刷新率相同" }
+        }
 
         val fullText = candidate.dtsFile.readText()
         require(candidate.nodeStart >= 0 && candidate.nodeEndExclusive <= fullText.length) {
@@ -116,7 +120,8 @@ object DtsTimingPatcher {
                     candidate = candidate,
                     nodeText = originalNodeText,
                     targetHz = targetHz,
-                    strategy = strategy
+                    strategy = strategy,
+                    customParams = customParams
                 )
                 val patchedFullText = buildString(fullText.length + 128) {
                     append(fullText, 0, candidate.nodeStart)
@@ -135,7 +140,8 @@ object DtsTimingPatcher {
                     candidate = candidate,
                     nodeText = clonedHeaderNodeText,
                     targetHz = targetHz,
-                    strategy = strategy
+                    strategy = strategy,
+                    customParams = customParams
                 )
 
                 val baseIndent = originalNodeText.lines().firstOrNull()?.takeWhile { it.isWhitespace() } ?: ""
@@ -157,6 +163,61 @@ object DtsTimingPatcher {
                 changes += "基准模板节点: ${candidate.nodePath.substringAfterLast('/')} (${candidate.currentHz} Hz)"
                 changes += "保留原有档位: ${candidate.currentHz} Hz 完好保留"
                 changes += innerChanges
+
+                PatchTextResult(text = patchedFullText, changes = changes, warnings = warnings)
+            }
+
+            PatchMode.DELETE_EXISTING -> {
+                val allNodes = parseNodeRanges(fullText)
+                val parentPath = candidate.nodePath.substringBeforeLast('/', "")
+                val siblings = allNodes.filter { it.path.substringBeforeLast('/', "") == parentPath }
+                val remainingSiblings = siblings.filter { it.path != candidate.nodePath }
+                require(remainingSiblings.isNotEmpty()) {
+                    "该屏幕面板仅包含一个时序档位节点，删除会导致屏幕无可用时序无法开机，禁止删除。"
+                }
+
+                val start = candidate.nodeStart
+                var end = candidate.nodeEndExclusive
+                if (end < fullText.length && fullText[end] == '\r') end++
+                if (end < fullText.length && fullText[end] == '\n') end++
+
+                var patchedFullText = buildString(fullText.length) {
+                    append(fullText, 0, start)
+                    append(fullText, end, fullText.length)
+                }
+
+                val changes = mutableListOf<String>()
+                val warnings = mutableListOf<String>()
+                val nodeName = candidate.nodePath.substringAfterLast('/')
+                changes += "🗑 移除时序节点: $nodeName (${candidate.currentHz} Hz)"
+                changes += "节点路径: ${candidate.nodePath}"
+                changes += "剩余档位数量: ${remainingSiblings.size} 个 (${remainingSiblings.joinToString { it.path.substringAfterLast('/') }})"
+
+                // 检查 native-mode 引用
+                val openHeaderRegex = Regex("""^\s*(?:([A-Za-z0-9_.-]+):\s*)?([A-Za-z0-9,._@+\-/#]+)\s*\{""", RegexOption.MULTILINE)
+                val headerMatch = openHeaderRegex.find(originalNodeText)
+                val deletedLabel = headerMatch?.groups?.get(1)?.value
+
+                val nativeModeRegex = Regex("""(?m)^(\s*native-mode\s*=\s*<)([^>]+)(>\s*;)""")
+                val nativeMatch = nativeModeRegex.find(patchedFullText)
+                if (nativeMatch != null) {
+                    val refContent = nativeMatch.groups[2]!!.value.trim()
+                    val isReferencingDeleted = (deletedLabel != null && refContent.contains("&$deletedLabel")) ||
+                        refContent.contains("&{${candidate.nodePath}}") ||
+                        refContent.contains("&$nodeName")
+                    if (isReferencingDeleted) {
+                        val targetSibling = remainingSiblings.first()
+                        val targetSibText = fullText.substring(targetSibling.start, targetSibling.endExclusive)
+                        val targetSibLabel = openHeaderRegex.find(targetSibText)?.groups?.get(1)?.value
+                        val newRef = if (targetSibLabel != null) "&$targetSibLabel" else "&{${targetSibling.path}}"
+                        patchedFullText = patchedFullText.replaceRange(
+                            nativeMatch.groups[2]!!.range,
+                            newRef
+                        )
+                        changes += "🔄 默认开机档位 (native-mode) 原指向被删节点，已自动重定向为 $newRef"
+                        warnings += "已自动修正 native-mode 指向剩余的时序档位。"
+                    }
+                }
 
                 PatchTextResult(text = patchedFullText, changes = changes, warnings = warnings)
             }
@@ -230,7 +291,8 @@ object DtsTimingPatcher {
         candidate: TimingCandidate,
         nodeText: String,
         targetHz: Int,
-        strategy: PatchStrategy
+        strategy: PatchStrategy,
+        customParams: CustomTimingParams? = null
     ): Triple<String, List<String>, List<String>> {
         val refreshProp = findFirstProperty(nodeText, refreshAliases)
             ?: error("目标节点中找不到刷新率属性")
@@ -336,6 +398,69 @@ object DtsTimingPatcher {
                 changes += "${vfpProp.name}: $vfp -> $newVfp lines"
                 changes += "${vbpProp.name}: $vbp -> $newVbp lines"
                 warnings += "水平时序保持不变；垂直 sync 宽度保持不变。"
+                if (candidate.hasOpaquePanelTimings) {
+                    warnings += "检测到 qcom,mdss-dsi-panel-timings PHY 字节数组；该硬件相关数组不会做通用等比修改。"
+                }
+            }
+
+            PatchStrategy.CUSTOM -> {
+                val clockProp = findFirstProperty(nodeText, pixelClockAliases)
+                val oldClock = clockProp?.value ?: candidate.pixelClockHz
+                val newClock = customParams?.pixelClockHz ?: oldClock
+
+                if (newClock != null) {
+                    validatePixelClock(newClock)
+                    if (clockProp != null) {
+                        replacements += clockProp.replaceWith(newClock)
+                        changes += "${clockProp.name}: ${clockProp.value} -> $newClock Hz (${newClock / 1_000_000.0} MHz)"
+                    } else {
+                        val lastBrace = nodeText.lastIndexOf('}')
+                        if (lastBrace != -1) {
+                            val indent = nodeText.substringBeforeLast('}').lines().lastOrNull()?.takeWhile { it.isWhitespace() } ?: "\t"
+                            val insertText = "    qcom,mdss-dsi-panel-clockrate = <0x${newClock.toString(16)}>;\n$indent"
+                            replacements += Replacement(lastBrace..lastBrace - 1, insertText)
+                            changes += "qcom,mdss-dsi-panel-clockrate (自定义新建): $newClock Hz (${newClock / 1_000_000.0} MHz)"
+                        }
+                    }
+                }
+
+                if (customParams?.vFrontPorch != null) {
+                    val vfpProp = findFirstProperty(nodeText, vFrontPorchAliases)
+                    if (vfpProp != null) {
+                        replacements += vfpProp.replaceWith(customParams.vFrontPorch.toLong())
+                        changes += "${vfpProp.name}: ${candidate.vFrontPorch ?: vfpProp.value} -> ${customParams.vFrontPorch} lines"
+                    } else {
+                        warnings += "未在节点中找到 v-front-porch 属性，跳过写入"
+                    }
+                }
+
+                if (customParams?.vBackPorch != null) {
+                    val vbpProp = findFirstProperty(nodeText, vBackPorchAliases)
+                    if (vbpProp != null) {
+                        replacements += vbpProp.replaceWith(customParams.vBackPorch.toLong())
+                        changes += "${vbpProp.name}: ${candidate.vBackPorch ?: vbpProp.value} -> ${customParams.vBackPorch} lines"
+                    } else {
+                        warnings += "未在节点中找到 v-back-porch 属性，跳过写入"
+                    }
+                }
+
+                if (customParams?.hFrontPorch != null) {
+                    val hfpProp = findFirstProperty(nodeText, hFrontPorchAliases)
+                    if (hfpProp != null) {
+                        replacements += hfpProp.replaceWith(customParams.hFrontPorch.toLong())
+                        changes += "${hfpProp.name}: ${candidate.hFrontPorch ?: hfpProp.value} -> ${customParams.hFrontPorch} px"
+                    }
+                }
+
+                if (customParams?.hBackPorch != null) {
+                    val hbpProp = findFirstProperty(nodeText, hBackPorchAliases)
+                    if (hbpProp != null) {
+                        replacements += hbpProp.replaceWith(customParams.hBackPorch.toLong())
+                        changes += "${hbpProp.name}: ${candidate.hBackPorch ?: hbpProp.value} -> ${customParams.hBackPorch} px"
+                    }
+                }
+
+                warnings += "已应用自定义时序参数。请确保 Pixel Clock 与消隐参数相互匹配，以避免屏幕失步或黑屏。"
                 if (candidate.hasOpaquePanelTimings) {
                     warnings += "检测到 qcom,mdss-dsi-panel-timings PHY 字节数组；该硬件相关数组不会做通用等比修改。"
                 }

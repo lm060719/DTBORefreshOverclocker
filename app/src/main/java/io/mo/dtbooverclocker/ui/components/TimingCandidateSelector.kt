@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Search
@@ -77,8 +78,7 @@ fun TimingCandidateSelector(
     modifier: Modifier = Modifier,
     activePanelIdentifier: String? = null,
     activePanelDisplayName: String? = null,
-    activePanelSource: String? = null,
-    onAddNewTiming: (() -> Unit)? = null
+    activePanelSource: String? = null
 ) {
     val groups = remember(candidates) {
         TimingUtils.groupCandidates(candidates)
@@ -400,18 +400,6 @@ fun TimingCandidateSelector(
                     selected = isSelected,
                     onClick = { onSelect(candidate.id) }
                 )
-            }
-
-            if (onAddNewTiming != null) {
-                OutlinedButton(
-                    onClick = onAddNewTiming,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("基于当前档位新建时序档位 (+)")
-                }
             }
         }
 

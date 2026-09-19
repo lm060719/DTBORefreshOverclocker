@@ -2,15 +2,26 @@ package io.mo.dtbooverclocker.core
 
 import android.content.Context
 import android.net.Uri
+import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchReport
 import io.mo.dtbooverclocker.model.PatchStrategy
+import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.TimingCandidate
+import io.mo.dtbooverclocker.ui.components.TimingUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+
+data class TimingApplyResult(
+    val updatedWorkspace: DtboWorkspace,
+    val selectedCandidateId: String?,
+    val stagedChange: StagedChange,
+    val changes: List<String>,
+    val warnings: List<String>
+)
 
 class DtboPatchEngine(
     private val context: Context,
@@ -47,6 +58,7 @@ class DtboPatchEngine(
         ).apply { mkdirs() }
         val entriesDir = File(workRoot, "entries").apply { mkdirs() }
         val dtsDir = File(workRoot, "dts").apply { mkdirs() }
+        val dtsOriginalDir = File(workRoot, "dts_original").apply { mkdirs() }
         val stagedImage = File(workRoot, "dtbo_original.img")
         image.copyTo(stagedImage, overwrite = true)
 
@@ -88,6 +100,8 @@ class DtboPatchEngine(
 
             if (result.isSuccess && dts.isFile) {
                 dtsFiles += dts
+                val backupDts = File(dtsOriginalDir, "entry_$index.dts")
+                dts.copyTo(backupDts, overwrite = true)
                 val found = DtsTimingPatcher.analyzeEntry(index, dts)
                 candidates += found
                 logSink("[INFO] DTB[$index] 找到 ${found.size} 个刷新率候选节点")
@@ -108,75 +122,176 @@ class DtboPatchEngine(
         )
     }
 
-    suspend fun patch(
+    suspend fun resetWorkspace(workspace: DtboWorkspace): DtboWorkspace = withContext(Dispatchers.IO) {
+        val dtsOriginalDir = File(workspace.rootDir, "dts_original")
+        val dtsDir = File(workspace.rootDir, "dts")
+        val refreshedCandidates = mutableListOf<TimingCandidate>()
+        val dtsFiles = mutableListOf<File>()
+
+        workspace.extractedEntries.forEachIndexed { index, _ ->
+            val backupDts = File(dtsOriginalDir, "entry_$index.dts")
+            val targetDts = File(dtsDir, "entry_$index.dts")
+            if (backupDts.isFile) {
+                backupDts.copyTo(targetDts, overwrite = true)
+                dtsFiles += targetDts
+                refreshedCandidates += DtsTimingPatcher.analyzeEntry(index, targetDts)
+            }
+        }
+        logSink("[INFO] 工作区 DTS 已重置为初始状态，共恢复 ${refreshedCandidates.size} 个原始候选档位")
+        workspace.copy(candidates = refreshedCandidates, dtsFiles = dtsFiles)
+    }
+
+    suspend fun applyTimingChange(
         workspace: DtboWorkspace,
         candidate: TimingCandidate,
         targetHz: Int,
         strategy: PatchStrategy,
-        mode: PatchMode = PatchMode.OVERWRITE_EXISTING
-    ): PatchReport = withContext(Dispatchers.IO) {
+        mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
+        customParams: CustomTimingParams? = null
+    ): TimingApplyResult = withContext(Dispatchers.IO) {
         require(candidate.entryIndex in workspace.extractedEntries.indices) {
             "候选节点对应的 DTB 索引无效"
         }
 
-        val patchText = DtsTimingPatcher.patch(candidate, targetHz, strategy, mode)
-        val patchedDts = File(workspace.rootDir, "patched_entry_${candidate.entryIndex}.dts")
-        patchedDts.writeText(patchText.text)
+        val patchResult = DtsTimingPatcher.patch(candidate, targetHz, strategy, mode, customParams)
+        candidate.dtsFile.writeText(patchResult.text)
+
+        val refreshedForEntry = DtsTimingPatcher.analyzeEntry(candidate.entryIndex, candidate.dtsFile)
+        val allCandidates = workspace.candidates.toMutableList()
+        allCandidates.removeAll { it.entryIndex == candidate.entryIndex }
+        allCandidates.addAll(refreshedForEntry)
+
+        val nodeName = TimingUtils.parseTimingNodeName(candidate.nodePath)
+        val nextSelectedId = when (mode) {
+            PatchMode.APPEND_NEW -> {
+                refreshedForEntry.firstOrNull { it.currentHz == targetHz }?.id
+                    ?: refreshedForEntry.firstOrNull()?.id
+            }
+            PatchMode.OVERWRITE_EXISTING -> {
+                refreshedForEntry.firstOrNull { it.nodePath == candidate.nodePath }?.id
+                    ?: refreshedForEntry.firstOrNull { it.currentHz == targetHz }?.id
+                    ?: refreshedForEntry.firstOrNull()?.id
+            }
+            PatchMode.DELETE_EXISTING -> {
+                refreshedForEntry.firstOrNull()?.id
+            }
+        }
+
+        val summary = when (mode) {
+            PatchMode.OVERWRITE_EXISTING ->
+                "编辑档位 $nodeName: ${candidate.currentHz} Hz → $targetHz Hz (${strategy.displayName})"
+            PatchMode.APPEND_NEW ->
+                "新增档位 $targetHz Hz (基于原 $nodeName ${candidate.currentHz} Hz 模板 · ${strategy.displayName})"
+            PatchMode.DELETE_EXISTING ->
+                "删除档位 $nodeName (${candidate.currentHz} Hz)"
+        }
+
+        val staged = StagedChange(
+            mode = mode,
+            entryIndex = candidate.entryIndex,
+            nodePath = candidate.nodePath,
+            nodeName = nodeName,
+            originalHz = candidate.currentHz,
+            targetHz = targetHz,
+            strategy = strategy,
+            customParams = customParams,
+            summary = summary
+        )
+
+        logSink("[OK] 已暂存时序修改：$summary")
+        TimingApplyResult(
+            updatedWorkspace = workspace.copy(candidates = allCandidates),
+            selectedCandidateId = nextSelectedId,
+            stagedChange = staged,
+            changes = patchResult.changes,
+            warnings = patchResult.warnings
+        )
+    }
+
+    suspend fun packageStaged(
+        workspace: DtboWorkspace,
+        stagedChanges: List<StagedChange>,
+        modifiedEntryIndices: Set<Int>
+    ): PatchReport = withContext(Dispatchers.IO) {
+        require(stagedChanges.isNotEmpty()) { "暂存修改列表为空，无需打包" }
+        require(modifiedEntryIndices.isNotEmpty()) { "未检测到修改过的 DTB 条目" }
 
         val rebuiltDir = File(workspace.rootDir, "rebuilt_entries").apply {
             deleteRecursively()
             mkdirs()
         }
 
-        var patchedEntry: File? = null
-        workspace.extractedEntries.forEachIndexed { index, originalEntry ->
-            val target = File(rebuiltDir, "entry_$index.dtb")
-            if (index == candidate.entryIndex) {
+        val replacementEntries = mutableMapOf<Int, ByteArray>()
+        val dtsDir = File(workspace.rootDir, "dts")
+
+        for (index in workspace.extractedEntries.indices) {
+            if (index in modifiedEntryIndices) {
+                val dtsFile = File(dtsDir, "entry_$index.dts")
+                require(dtsFile.isFile) { "条目 $index 对应的 DTS 文件不存在" }
+                val targetDtb = File(rebuiltDir, "entry_$index.dtb")
                 val compile = executor.runDtc(
                     args = listOf(
                         "-I", "dts",
                         "-O", "dtb",
-                        "-o", target.absolutePath,
-                        patchedDts.absolutePath
+                        "-o", targetDtb.absolutePath,
+                        dtsFile.absolutePath
                     ),
                     workingDir = workspace.rootDir
                 )
-                require(compile.isSuccess && target.isFile) {
-                    "DTS 重编译失败：${compile.stderr.ifBlank { compile.stdout }.takeLast(2000)}"
+                require(compile.isSuccess && targetDtb.isFile) {
+                    "DTS[$index] 重编译失败：${compile.stderr.ifBlank { compile.stdout }.takeLast(2000)}"
                 }
-                patchedEntry = target
-            } else {
-                originalEntry.copyTo(target, overwrite = true)
+                replacementEntries[index] = targetDtb.readBytes()
             }
         }
 
-        val replacement = patchedEntry ?: error("未生成目标 DTB")
-        val outputImage = File(workspace.rootDir, "dtbo_patched_${targetHz}hz.img")
+        val outputImage = File(workspace.rootDir, "dtbo_patched.img")
         if (outputImage.exists()) outputImage.delete()
 
-        val originalCompression = workspace.binaryImage.entries[candidate.entryIndex].metadata.compressionFormat
         logSink(
-            "[INFO] 使用纯 Kotlin DTBO builder 重建镜像；目标 entry 保持原 compression=$originalCompression"
+            "[INFO] 使用纯 Kotlin DTBO builder 重建镜像，共替换 ${replacementEntries.size} 个 DTB 条目"
         )
         DtboImageCodec.rebuild(
             original = workspace.binaryImage,
-            replacementDecodedEntries = mapOf(candidate.entryIndex to replacement.readBytes()),
+            replacementDecodedEntries = replacementEntries,
             output = outputImage
         )
 
         verifyMetadataPreserved(workspace, outputImage)
-        verifyPatchedTiming(outputImage, candidate, targetHz, mode, workspace.rootDir)
+        verifyAllPatchedTimings(outputImage, modifiedEntryIndices, workspace)
 
-        logSink("[OK] 修补镜像生成完成：${outputImage.absolutePath}")
+        val allChanges = stagedChanges.map { it.summary }
+        val warnings = mutableListOf<String>()
+        if (stagedChanges.any { it.strategy == PatchStrategy.FRAMERATE_ONLY }) {
+            warnings += "包含仅 Framerate 策略的修改，存在时序不匹配风险，不建议直接刷写。"
+        }
+
+        val lastChange = stagedChanges.last()
+        logSink("[OK] 集中打包镜像生成完成：${outputImage.absolutePath} (包含 ${stagedChanges.size} 项修改)")
+
         PatchReport(
             outputImage = outputImage,
-            targetHz = targetHz,
-            originalHz = candidate.currentHz,
-            strategy = strategy,
-            mode = mode,
-            changes = patchText.changes,
-            warnings = patchText.warnings
+            targetHz = lastChange.targetHz,
+            originalHz = lastChange.originalHz,
+            strategy = lastChange.strategy,
+            mode = lastChange.mode,
+            customParams = lastChange.customParams,
+            stagedChanges = stagedChanges,
+            changes = allChanges,
+            warnings = warnings
         )
+    }
+
+    suspend fun patch(
+        workspace: DtboWorkspace,
+        candidate: TimingCandidate,
+        targetHz: Int,
+        strategy: PatchStrategy,
+        mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
+        customParams: CustomTimingParams? = null
+    ): PatchReport {
+        val applyResult = applyTimingChange(workspace, candidate, targetHz, strategy, mode, customParams)
+        return packageStaged(applyResult.updatedWorkspace, listOf(applyResult.stagedChange), setOf(candidate.entryIndex))
     }
 
     private fun verifyMetadataPreserved(workspace: DtboWorkspace, outputImage: File) {
@@ -191,40 +306,31 @@ class DtboPatchEngine(
         logSink("[OK] DTBO v${rebuilt.metadata.version} 元数据一致性校验通过")
     }
 
-    private suspend fun verifyPatchedTiming(
+    private suspend fun verifyAllPatchedTimings(
         outputImage: File,
-        originalCandidate: TimingCandidate,
-        targetHz: Int,
-        mode: PatchMode,
-        workRoot: File
+        modifiedEntryIndices: Set<Int>,
+        workspace: DtboWorkspace
     ) {
-        val verifyDir = File(workRoot, "verify_patch").apply {
+        val verifyDir = File(workspace.rootDir, "verify_patch").apply {
             deleteRecursively()
             mkdirs()
         }
         val rebuilt = DtboImageCodec.parse(outputImage)
-        val targetEntry = rebuilt.entries.getOrNull(originalCandidate.entryIndex)
-            ?: error("修补后目标 DTB 条目缺失")
+        for (index in modifiedEntryIndices) {
+            val targetEntry = rebuilt.entries.getOrNull(index)
+                ?: error("修补后目标 DTB[$index] 条目缺失")
+            val dtb = File(verifyDir, "verify_entry_$index.dtb")
+            dtb.writeBytes(targetEntry.decodedBytes)
+            val dts = File(verifyDir, "verify_entry_$index.dts")
+            val decompile = executor.runDtc(
+                args = listOf("-I", "dtb", "-O", "dts", "-o", dts.absolutePath, dtb.absolutePath),
+                workingDir = verifyDir
+            )
+            require(decompile.isSuccess) { "修补后目标 DTB[$index] 无法反编译校验" }
 
-        val dtb = File(verifyDir, "target_verify.dtb")
-        dtb.writeBytes(targetEntry.decodedBytes)
-        val dts = File(verifyDir, "target_verify.dts")
-        val decompile = executor.runDtc(
-            args = listOf("-I", "dtb", "-O", "dts", "-o", dts.absolutePath, dtb.absolutePath),
-            workingDir = verifyDir
-        )
-        require(decompile.isSuccess) { "修补后目标 DTB 无法反编译校验" }
-
-        val matches = DtsTimingPatcher.analyzeEntry(originalCandidate.entryIndex, dts)
-        val hasTarget = matches.any { it.currentHz == targetHz }
-        require(hasTarget) { "重建后未能在目标 DTB 中确认 $targetHz Hz 属性，拒绝进入刷写流程" }
-
-        if (mode == PatchMode.APPEND_NEW) {
-            val hasOriginal = matches.any { it.currentHz == originalCandidate.currentHz }
-            require(hasOriginal) { "新增档位模式下，目标 DTB 未能保留原始 ${originalCandidate.currentHz} Hz 档位" }
-            logSink("[OK] 目标刷新率与原始刷新率双重校验通过：新增 $targetHz Hz，保留 ${originalCandidate.currentHz} Hz")
-        } else {
-            logSink("[OK] 目标刷新率二次反编译校验通过：$targetHz Hz")
+            val verifiedCandidates = DtsTimingPatcher.analyzeEntry(index, dts)
+            require(verifiedCandidates.isNotEmpty()) { "DTB[$index] 校验失败：反编译后无有效时序档位" }
+            logSink("[OK] DTB[$index] 二次反编译校验通过：包含 ${verifiedCandidates.size} 个档位 (${verifiedCandidates.joinToString { "${it.currentHz}Hz" }})")
         }
     }
 }
