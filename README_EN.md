@@ -2,6 +2,24 @@
 
 # DTBO Refresh Overclocker
 
+Version 1.1.1 preserves partition padding and embedded AVB footers, recalculates unsigned
+AVB hash descriptors, and rejects signed or unsupported layouts instead of discarding them.
+Command modes with an MDP transfer budget now scale that budget inversely with refresh rate;
+the balanced strategy keeps their porches unchanged. Vendor dynamic/idle modes cannot be used
+as generic overclock templates: select a normal mode on the same panel. New modes are appended
+without shifting existing mode order. Packaging verifies AVB, decoded entry bytes and timing parameters.
+
+For the supplied `o1_42_02_0a_dsc_cmd` sample, select `timing@wqhd_normal_120hz_index_01`
+from the original image, append a 144 Hz mode using the balanced strategy. The expected clock
+is 1632000000, VFP/VBP are 16/24, and MDP transfer time is 6083 microseconds.
+These settings are specific to this sample, not a recommendation for other panels.
+
+Optional real-image regression: run `gradlew.bat testDebugUnitTest assembleDebug
+"-PsampleDir=E:/path/to/cs" "-PhostDtc=E:/path/to/dtc.exe"` with `dtbo_b.img` and
+`dtbo_b_144hz_scaled.img` in that directory. It compares all DT properties and tests
+byte-for-byte envelope reconstruction. Firmware and host tools are not bundled; device boot
+testing is still required.
+
 **DTBO Refresh Overclocker** is an advanced display refresh rate overclocking and timing tuning tool tailored for Android devices. By accurately deconstructing, recalculating, and safely rebuilding the Device Tree Blob Overlay (DTBO) partition, it allows users to unlock higher refresh rates and optimize display timings beyond factory limitations.
 
 The application features a dual-mode architecture supporting both **No-Root (SAF offline processing)** and **Root (direct active slot flashing)** workflows. It is powered by a proprietary pure-Kotlin DTBO codec, multi-tier active panel auto-detection, continuous staging with batch rebuild, and an enterprise-grade Triple Safety Guard system.
@@ -210,4 +228,3 @@ gradle wrapper --gradle-version 9.6.0
 ## 📄 License
 
 This project is licensed under the **[GNU General Public License v3.0 (GPLv3)](LICENSE)**.
-

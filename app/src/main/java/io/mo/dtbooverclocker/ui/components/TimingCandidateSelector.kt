@@ -571,6 +571,20 @@ private fun TimingCandidateCard(
                         )
                     }
 
+                    if (candidate.hasVendorDynamicMode) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                "自动变频 / idle",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
                     if (candidate.hasOpaquePanelTimings) {
                         Surface(
                             color = MaterialTheme.colorScheme.tertiaryContainer,
@@ -584,6 +598,15 @@ private fun TimingCandidateCard(
                             )
                         }
                     }
+                }
+
+                if (candidate.hasVendorDynamicMode) {
+                    Text(
+                        "不建议修改或作为新增模板，请选择同面板的 normal 普通档位。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
 
                 Spacer(Modifier.height(3.dp))
@@ -623,4 +646,3 @@ private fun TimingCandidateCard(
         }
     }
 }
-

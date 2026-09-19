@@ -255,7 +255,9 @@ object TimingUtils {
         if (originalHz > 0) {
             val ratio = targetHz.toDouble() / originalHz
 
-            when (strategy) {
+            val effectiveStrategy = if (strategy == PatchStrategy.BALANCED_BLANKING_TIME && candidate.mdpTransferTimeUs != null)
+                PatchStrategy.PIXEL_CLOCK_ONLY else strategy
+            when (effectiveStrategy) {
                 PatchStrategy.FRAMERATE_ONLY -> {
                     estimatedClock = originalClock
                     clockMultiplier = 1.0
@@ -346,6 +348,14 @@ object TimingUtils {
             }
         }
 
+        candidate.mdpTransferTimeUs?.let { originalTransfer ->
+            val transfer = if (strategy == PatchStrategy.FRAMERATE_ONLY) originalTransfer else
+                (originalTransfer.toDouble() * originalHz / targetHz).roundToLong()
+            note += "；MDP 传输时间 $originalTransfer→$transfer µs"
+            if (transfer <= 0 || transfer >= 1_000_000.0 / targetHz) note += "（超出帧预算，禁止生成）"
+        }
+        if (candidate.hasVendorDynamicMode) note = "自动变频/idle 档位不支持直接超频，请选择同面板 normal 普通档位。"
+
         return TimingSimulation(
             originalHz = originalHz,
             targetHz = targetHz,
@@ -365,4 +375,3 @@ object TimingUtils {
         )
     }
 }
-

@@ -278,6 +278,14 @@ class DtboPatchEngine(
             output = outputImage
         )
 
+        val rebuiltImage = DtboImageCodec.parse(outputImage)
+        AvbImageEnvelope.validate(outputImage.readBytes(), rebuiltImage.metadata.totalSize)
+        rebuiltImage.entries.forEachIndexed { index, entry ->
+            val expected = replacementEntries[index] ?: workspace.binaryImage.entries[index].decodedBytes
+            require(entry.decodedBytes.contentEquals(expected)) { "DTB[$index] 打包后字节与预期不一致" }
+        }
+        logSink("[OK] 完整镜像尾部与 AVB 摘要校验通过，全部 DTB 回读字节与预期一致")
+
         verifyMetadataPreserved(workspace, outputImage)
         verifyAllPatchedTimings(outputImage, modifiedEntryIndices, workspace)
 
@@ -350,7 +358,14 @@ class DtboPatchEngine(
             require(decompile.isSuccess) { "修补后目标 DTB[$index] 无法反编译校验" }
 
             val verifiedCandidates = DtsTimingPatcher.analyzeEntry(index, dts)
-            require(verifiedCandidates.isNotEmpty()) { "DTB[$index] 校验失败：反编译后无有效时序档位" }
+            val expectedCandidates = workspace.candidates.filter { it.entryIndex == index }
+            fun signature(c: TimingCandidate) = listOf(c.nodePath, c.currentHz, c.pixelClockHz,
+                c.hActive, c.vActive, c.hFrontPorch, c.hBackPorch, c.hSync,
+                c.vFrontPorch, c.vBackPorch, c.vSync, c.mdpTransferTimeUs, c.hasVendorDynamicMode)
+            require(expectedCandidates.isNotEmpty() &&
+                verifiedCandidates.map(::signature).toSet() == expectedCandidates.map(::signature).toSet()) {
+                "DTB[$index] 校验失败：档位路径或时序参数与暂存修改不一致"
+            }
             logSink("[OK] DTB[$index] 二次反编译校验通过：包含 ${verifiedCandidates.size} 个档位 (${verifiedCandidates.joinToString { "${it.currentHz}Hz" }})")
         }
     }

@@ -146,9 +146,10 @@ class ActivePanelDetector(
             val panelGrouped = candidates.groupBy { TimingUtils.parsePanelIdentifier(it.nodePath) }
             for ((panelId, panelCandidates) in panelGrouped) {
                 if (matchPanel(panelId, normDetected)) {
-                    return panelCandidates.find { it.currentHz == 120 }
-                        ?: panelCandidates.find { it.currentHz == 144 }
-                        ?: panelCandidates.maxByOrNull { it.currentHz }
+                    val normalCandidates = panelCandidates.filterNot { it.hasVendorDynamicMode }
+                    return normalCandidates.find { it.currentHz == 120 }
+                        ?: normalCandidates.find { it.currentHz == 144 }
+                        ?: normalCandidates.maxByOrNull { it.currentHz }
                         ?: panelCandidates.firstOrNull()
                 }
             }
@@ -157,4 +158,3 @@ class ActivePanelDetector(
         }
     }
 }
-

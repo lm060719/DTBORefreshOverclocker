@@ -13,8 +13,8 @@ android {
         applicationId = "io.mo.dtbooverclocker"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 4
+        versionName = "1.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -53,6 +53,16 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    // Optional real-image regression; fixtures stay outside the source tree.
+    systemProperty("dtbo.sampleDir", providers.gradleProperty("sampleDir").getOrElse(""))
+    systemProperty("dtbo.dtc", providers.gradleProperty("hostDtc").getOrElse(""))
+    providers.gradleProperty("sampleDir").orNull?.let { directory ->
+        inputs.files(File(directory, "dtbo_b.img"), File(directory, "dtbo_b_144hz_scaled.img"))
+    }
+    providers.gradleProperty("hostDtc").orNull?.let { inputs.file(it) }
 }
 
 dependencies {

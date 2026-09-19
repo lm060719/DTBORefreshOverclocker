@@ -71,7 +71,10 @@ object DtsTimingPatcher {
                 vFrontPorch = intValueOf(nodeText, vFrontPorchAliases),
                 vBackPorch = intValueOf(nodeText, vBackPorchAliases),
                 vSync = intValueOf(nodeText, vSyncAliases),
-                hasOpaquePanelTimings = nodeText.contains("qcom,mdss-dsi-panel-timings")
+                hasOpaquePanelTimings = nodeText.contains("qcom,mdss-dsi-panel-timings") ||
+                    nodeText.contains("qcom,mdss-dsi-panel-phy-timings"),
+                mdpTransferTimeUs = valueOf(nodeText, listOf("qcom,mdss-mdp-transfer-time-us")),
+                hasVendorDynamicMode = hasVendorDynamicMode(nodeText)
             )
         }.distinctBy { it.id }
     }
@@ -113,6 +116,11 @@ object DtsTimingPatcher {
         }
 
         val originalNodeText = fullText.substring(candidate.nodeStart, candidate.nodeEndExclusive)
+        if (mode != PatchMode.DELETE_EXISTING) {
+            require(!hasVendorDynamicMode(originalNodeText)) {
+                "该档位含厂商自动变频/idle 配置，不能直接改成普通高刷档位。请在同一面板下选择 normal 普通档位（例如 normal_120hz）作为模板。"
+            }
+        }
 
         return when (mode) {
             PatchMode.OVERWRITE_EXISTING -> {
@@ -133,6 +141,9 @@ object DtsTimingPatcher {
 
             PatchMode.APPEND_NEW -> {
                 val allNodes = parseNodeRanges(fullText)
+                require(!Regex("""(?m)^\s*(?:linux,)?phandle\s*=""").containsMatchIn(originalNodeText)) {
+                    "该时序含 phandle 引用，暂不支持直接克隆，避免生成重复引用"
+                }
                 val newNodeName = generateUniqueSiblingNodeName(allNodes, candidate, targetHz)
                 val clonedHeaderNodeText = replaceNodeHeader(originalNodeText, newNodeName)
 
@@ -151,11 +162,14 @@ object DtsTimingPatcher {
                     baseIndent + patchedClonedNode.trimStart()
                 }
 
+                val parentPath = candidate.nodePath.substringBeforeLast('/')
+                val insertionPoint = allNodes.filter { it.path.substringBeforeLast('/') == parentPath }
+                    .maxOf { it.endExclusive }
                 val patchedFullText = buildString(fullText.length + indentedNewNode.length + 32) {
-                    append(fullText, 0, candidate.nodeEndExclusive)
+                    append(fullText, 0, insertionPoint)
                     append("\n\n")
                     append(indentedNewNode)
-                    append(fullText, candidate.nodeEndExclusive, fullText.length)
+                    append(fullText, insertionPoint, fullText.length)
                 }
 
                 val changes = mutableListOf<String>()
@@ -236,6 +250,14 @@ object DtsTimingPatcher {
             .map { it.path.substringAfterLast('/') }
             .toSet()
 
+        // Xiaomi normal modes encode both the refresh rate and a shared sibling index.
+        val normalName = Regex("""^(.*_normal_)\d+hz_index_\d+$""").matchEntire(currentName)
+        if (normalName != null) {
+            val next = siblingNames.mapNotNull { Regex("""_index_(\d+)$""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+                .maxOrNull()?.plus(1) ?: 0
+            return "${normalName.groupValues[1]}${targetHz}hz_index_$next"
+        }
+
         // 1. Check for @<number> pattern (e.g. timing@0, mode@0)
         val atRegex = Regex("""^([A-Za-z0-9,._\-/#]+)@([0-9a-fA-F]+)$""")
         val atMatch = atRegex.matchEntire(currentName)
@@ -304,7 +326,13 @@ object DtsTimingPatcher {
         replacements += refreshProp.replaceWith(targetHz.toLong())
         changes += "${refreshProp.name}: ${candidate.currentHz} -> $targetHz"
 
-        when (strategy) {
+        val transfer = findFirstProperty(nodeText, listOf("qcom,mdss-mdp-transfer-time-us"))
+        val effectiveStrategy = if (strategy == PatchStrategy.BALANCED_BLANKING_TIME && transfer != null) {
+            warnings += "检测到 MDP 传输预算：保持原前后肩，按刷新率缩放时钟及传输时间。"
+            PatchStrategy.PIXEL_CLOCK_ONLY
+        } else strategy
+
+        when (effectiveStrategy) {
             PatchStrategy.FRAMERATE_ONLY -> {
                 warnings += "仅修改 framerate，不会自动保证 DSI 链路时钟与 porch 满足目标刷新率。"
             }
@@ -467,9 +495,24 @@ object DtsTimingPatcher {
             }
         }
 
+        if (transfer != null) {
+            val newTransfer = if (strategy == PatchStrategy.FRAMERATE_ONLY) transfer.value else
+                (transfer.value.toDouble() * candidate.currentHz / targetHz).roundToLong()
+            require(newTransfer > 0 && newTransfer < 1_000_000.0 / targetHz) {
+                "MDP 传输时间 $newTransfer µs 必须小于 $targetHz Hz 的帧周期；不能只修改 Framerate"
+            }
+            if (newTransfer != transfer.value) {
+                replacements += transfer.replaceWith(newTransfer)
+                changes += "${transfer.name}: ${transfer.value} -> $newTransfer µs"
+            }
+        }
         val patchedNode = applyReplacements(nodeText, replacements)
         return Triple(patchedNode, changes, warnings)
     }
+
+    private fun hasVendorDynamicMode(nodeText: String): Boolean = Regex(
+        """(?m)^\s*mi,mdss-dsi-(?:ddic-mode|ddic-min-framerate|sf-framerate)\s*="""
+    ).containsMatchIn(nodeText)
 
     private fun validatePixelClock(clock: Long) {
         require(clock in 1_000_000L..4_000_000_000L) {

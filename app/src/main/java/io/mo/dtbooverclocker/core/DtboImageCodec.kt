@@ -158,7 +158,8 @@ object DtboImageCodec {
                 entries = entries.map { it.metadata }
             ),
             prefixTemplate = prefixTemplate,
-            entries = entries
+            entries = entries,
+            originalBytes = bytes
         )
     }
 
@@ -171,6 +172,14 @@ object DtboImageCodec {
         require(metadata.entries.size == original.entries.size) { "DTBO 元数据与条目数量不一致" }
         replacementDecodedEntries.keys.forEach { index ->
             require(index in original.entries.indices) { "替换条目索引越界：$index" }
+        }
+
+        if (original.originalBytes != null && replacementDecodedEntries.all { (index, bytes) ->
+                bytes.contentEquals(original.entries[index].decodedBytes)
+            }) {
+            output.parentFile?.mkdirs()
+            output.writeBytes(original.originalBytes)
+            return
         }
 
         val payloadStart = original.prefixTemplate.size
@@ -254,12 +263,13 @@ object DtboImageCodec {
             }
         }
 
+        val dtboBytes = prefix + payload
+        val imageBytes = original.originalBytes?.let {
+            AvbImageEnvelope.rebuild(it, metadata.totalSize, dtboBytes)
+        } ?: dtboBytes
         output.parentFile?.mkdirs()
-        output.outputStream().buffered().use { out ->
-            out.write(prefix)
-            out.write(payload)
-        }
-        require(output.length() == totalSize.toLong()) { "DTBO 重建长度校验失败" }
+        output.writeBytes(imageBytes)
+        require(output.length() == imageBytes.size.toLong()) { "DTBO 重建长度校验失败" }
     }
 
     fun metadataEquivalent(a: DtboMetadata, b: DtboMetadata): Boolean {

@@ -727,6 +727,30 @@ private fun TimingPanel(
                     Spacer(Modifier.width(8.dp))
                     Text("删除此档位 (暂存)")
                 }
+            } else if (selected.hasVendorDynamicMode) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("自动变频档位不支持直接超频", fontWeight = FontWeight.SemiBold)
+                        }
+                        Text(
+                            "该档位包含自动变频或低功耗参数及专用屏幕命令。仅修改刷新率或复制为高刷档位，可能导致黑屏、刷新率切换异常或卡在开机画面。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "请在上方选择同一面板的 normal 普通档位，再编辑或新增。例如新增 144 Hz，应选 normal_120hz，而不是 auto_120_to_30hz。",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                    Text("请选择普通档位后继续")
+                }
             } else {
                 // 3. DSI 时序几何剖面图（水平与垂直显像、前肩、同步、后肩比例分布）
                 TimingGeometryChart(candidate = selected)

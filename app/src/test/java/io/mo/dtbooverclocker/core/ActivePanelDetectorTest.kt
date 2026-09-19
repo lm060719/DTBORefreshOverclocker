@@ -79,6 +79,10 @@ class ActivePanelDetectorTest {
         val best = ActivePanelDetector.findBestMatchCandidate(candidates, "mdss_dsi_o1_42_02_0a_dsc_cmd")
         assertNotNull(best)
         assertEquals("0:200:o1_42_120", best?.id)
+
+        val dynamicFirst = candidate42_120.copy(id = "dynamic", hasVendorDynamicMode = true)
+        assertEquals(candidate42_120.id, ActivePanelDetector.findBestMatchCandidate(
+            listOf(dynamicFirst) + candidates, "mdss_dsi_o1_42_02_0a_dsc_cmd"
+        )?.id)
     }
 }
-

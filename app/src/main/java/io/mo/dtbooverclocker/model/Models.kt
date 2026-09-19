@@ -10,11 +10,11 @@ enum class SourceMode {
 enum class PatchStrategy(val displayName: String, val description: String) {
     BALANCED_BLANKING_TIME(
         "平衡时序",
-        "同步调整 Pixel Clock 与垂直前/后肩，使目标刷新率满足时序公式。"
+        "普通时序调整时钟与垂直前后肩；含 MDP 传输预算的命令模式保留前后肩，同步调整时钟与传输时间。"
     ),
     PIXEL_CLOCK_ONLY(
         "仅 Pixel Clock",
-        "保持 porch 不变，仅按刷新率比例调整 Pixel Clock。"
+        "保持 porch 不变，按刷新率比例调整时钟，并同步缩放已有的 MDP 传输时间。"
     ),
     FRAMERATE_ONLY(
         "仅 Framerate",
@@ -125,7 +125,8 @@ data class DtboBinaryEntry(
 data class DtboBinaryImage(
     val metadata: DtboMetadata,
     val prefixTemplate: ByteArray,
-    val entries: List<DtboBinaryEntry>
+    val entries: List<DtboBinaryEntry>,
+    val originalBytes: ByteArray? = null
 )
 
 data class TimingCandidate(
@@ -145,7 +146,9 @@ data class TimingCandidate(
     val vFrontPorch: Int? = null,
     val vBackPorch: Int? = null,
     val vSync: Int? = null,
-    val hasOpaquePanelTimings: Boolean = false
+    val hasOpaquePanelTimings: Boolean = false,
+    val mdpTransferTimeUs: Long? = null,
+    val hasVendorDynamicMode: Boolean = false
 ) {
     val hasFullGeometry: Boolean
         get() = listOf(
