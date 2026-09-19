@@ -256,10 +256,6 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                         title = {
                             Column {
                                 Text("DTBO Refresh Overclocker", fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    "Dual-Mode · 单槽位安全策略",
-                                    style = MaterialTheme.typography.labelSmall
-                                )
                             }
                         },
                         actions = {
@@ -1347,7 +1343,7 @@ private fun DangerousFlashDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("目标：$partition")
-                Text("本应用只写当前目标槽位，不会同时覆盖 A/B。写入前会强制备份、SHA-256 校验并生成 Rescue Zip。")
+                Text("本应用只写当前目标槽位。写入前会强制备份、SHA-256 校验并生成 Rescue Zip。")
                 Text("请输入目标刷新率 $targetHz，或输入大写 FLASH：")
                 OutlinedTextField(
                     value = confirmation,
@@ -1355,10 +1351,12 @@ private fun DangerousFlashDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text(
-                    if (seconds > 0) "确认按钮将在 $seconds 秒后解锁" else "倒计时结束；仍需通过文本校验",
-                    color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                )
+                if (seconds > 0) {
+                    Text(
+                        "确认按钮将在 $seconds 秒后解锁",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         },
         confirmButton = {
