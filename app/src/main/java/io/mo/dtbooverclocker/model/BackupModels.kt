@@ -36,3 +36,4 @@ data class BackupVerificationState(
     val computedMd5: String? = null,
     val message: String? = null
 )
+

@@ -291,18 +291,6 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                         )
                     }
 
-                    item {
-                        RollbackQuickCard(
-                            backupCount = state.backups.size,
-                            onNavigateToRollback = { currentScreen = AppScreen.ROLLBACK },
-                            onManualBackup = {
-                                viewModel.createManualBackup { ok, msg ->
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        )
-                    }
-
             state.workspace?.let { workspace ->
                 item {
                     ImageSummaryCard(state)
@@ -983,84 +971,4 @@ private fun captureWindowToPng(activity: Activity, uri: Uri) {
         },
         Handler(Looper.getMainLooper())
     )
-}
-
-@Composable
-private fun RollbackQuickCard(
-    backupCount: Int,
-    onNavigateToRollback: () -> Unit,
-    onManualBackup: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Restore,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text("镜像备份与回滚", fontWeight = FontWeight.SemiBold)
-                }
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Text(
-                        text = "已备份 $backupCount 个",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-
-            Text(
-                "物理刷写前自动备份当前 DTBO；也可随时手动备份并在时间轴中一键回滚或导出。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onManualBackup,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("手动备份当前", style = MaterialTheme.typography.labelSmall)
-                }
-
-                Button(
-                    onClick = onNavigateToRollback,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("查看回滚时间轴", style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-    }
 }

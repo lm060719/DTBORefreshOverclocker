@@ -38,3 +38,4 @@ class HashUtilsMd5Test {
         assertEquals("5d41402abc4b2a76b9719d911017c592", HashUtils.md5(input, limit = 5L))
     }
 }
+
