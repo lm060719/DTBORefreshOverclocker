@@ -55,14 +55,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val KEY_HAS_REQUESTED_ROOT = "has_requested_root"
         private const val KEY_AUTO_CHECK_ROOT = "auto_check_root"
+        private const val KEY_DISCLAIMER_ACCEPTED = "disclaimer_accepted"
     }
 
     init {
         AppLogger.init(application)
-        refreshEnvironment()
+        val accepted = prefs.getBoolean(KEY_DISCLAIMER_ACCEPTED, false)
+        _state.update { it.copy(isDisclaimerAccepted = accepted) }
+        if (accepted) {
+            refreshEnvironment()
+        } else {
+            _state.update { it.copy(status = "等待同意免责声明") }
+        }
         refreshCacheSize()
         refreshLogStats()
         loadBackups()
+    }
+
+    fun acceptDisclaimer() {
+        prefs.edit().putBoolean(KEY_DISCLAIMER_ACCEPTED, true).apply()
+        _state.update { it.copy(isDisclaimerAccepted = true) }
+        refreshEnvironment()
     }
 
     fun refreshEnvironment() {
@@ -696,6 +709,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 data class MainUiState(
+    val isDisclaimerAccepted: Boolean = false,
     val rootState: RootState = RootState(),
     val slotInfo: SlotInfo? = null,
     val sourceMode: SourceMode = SourceMode.LOCAL_IMAGE,

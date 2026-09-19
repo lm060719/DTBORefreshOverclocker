@@ -113,6 +113,7 @@ import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.TimingCandidate
+import io.mo.dtbooverclocker.ui.components.DisclaimerDialog
 import io.mo.dtbooverclocker.ui.components.OverclockPreviewCard
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
 import io.mo.dtbooverclocker.ui.components.TimingGeometryChart
@@ -414,6 +415,14 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 }
             }
         }
+    }
+
+    if (!state.isDisclaimerAccepted) {
+        DisclaimerDialog(
+            isFirstLaunch = true,
+            onConfirm = viewModel::acceptDisclaimer,
+            onExit = { activity.finish() }
+        )
     }
 
     if (showFlashDialog) {

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,8 +44,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import io.mo.dtbooverclocker.ui.components.DisclaimerDialog
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +66,7 @@ private const val GITHUB_REPO_URL = "https://github.com/lm060719/DTBORefreshOver
 fun AboutScreen(onNavigateBack: () -> Unit) {
     BackHandler(onBack = onNavigateBack)
     val context = LocalContext.current
+    var showDisclaimerDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -272,6 +278,51 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                 }
             }
 
+            // Disclaimer Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                        Text(
+                            text = "免责声明与风险须知",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Text(
+                        text = "本软件属于高危底层硬件调试工具。使用前请确保您已完整知悉屏幕黑屏、Bootloop 及硬件损耗风险，并具备独立救砖能力。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedButton(
+                        onClick = { showDisclaimerDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("查看完整免责声明")
+                    }
+                }
+            }
+
             // License & Disclaimer
             Text(
                 text = "本应用为开源工具，仅供设备所有者与系统开发者进行屏幕显示测试与超频研究。使用物理刷写功能存在一定风险，请务必保管好预生成的备份救砖文件。",
@@ -282,5 +333,14 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    if (showDisclaimerDialog) {
+        DisclaimerDialog(
+            isFirstLaunch = false,
+            onConfirm = { showDisclaimerDialog = false },
+            onExit = { showDisclaimerDialog = false },
+            onDismiss = { showDisclaimerDialog = false }
+        )
     }
 }
