@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
@@ -275,7 +276,6 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     item {
                         SourceCard(
                             state = state,
-                            onMode = viewModel::setSourceMode,
                             onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },
                             onExtract = viewModel::extractActivePartition
                         )
@@ -401,44 +401,46 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
 @Composable
 private fun SourceCard(
     state: MainUiState,
-    onMode: (SourceMode) -> Unit,
     onImport: () -> Unit,
     onExtract: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("镜像来源", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FilterChip(
-                    selected = state.sourceMode == SourceMode.LOCAL_IMAGE,
-                    onClick = { onMode(SourceMode.LOCAL_IMAGE) },
-                    label = { Text("手动导入 · 免 Root") }
-                )
-                FilterChip(
-                    selected = state.sourceMode == SourceMode.ROOT_PARTITION,
-                    onClick = { onMode(SourceMode.ROOT_PARTITION) },
-                    label = { Text("当前分区 · Root") }
-                )
+                Button(
+                    onClick = onImport,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("手动导入")
+                }
+                Button(
+                    onClick = onExtract,
+                    enabled = state.rootState.suPresent,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("提取当前分区")
+                }
             }
 
-            if (state.sourceMode == SourceMode.LOCAL_IMAGE) {
-                Button(onClick = onImport) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("选择 dtbo.img")
-                }
-            } else {
-                Button(onClick = onExtract, enabled = state.rootState.suPresent) {
-                    Icon(Icons.Default.Save, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("提取当前活跃槽位")
-                }
+            if (!state.rootState.suPresent) {
                 Text(
-                    "只读取 ${state.slotInfo?.blockDevice ?: "当前 dtbo"}，不会读取或覆盖另一槽位。",
-                    style = MaterialTheme.typography.bodySmall
+                    "未检测到 Root 权限，可点击“手动导入”选择外部 dtbo.img 文件。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    "手动导入支持外部镜像（免 Root）；提取当前分区只读取 ${state.slotInfo?.blockDevice ?: "当前 dtbo"}（需 Root）。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -823,6 +825,7 @@ private fun RescueMemoCard(
 
 @Composable
 private fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     LaunchedEffect(logs.size) {
         if (logs.isNotEmpty()) listState.scrollToItem(logs.lastIndex)
@@ -832,22 +835,38 @@ private fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("终端回显", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = onClear) { Text("清空") }
+                TextButton(
+                    onClick = {
+                        if (logs.isNotEmpty()) {
+                            copyText(context, "DTBO 终端回显", logs.joinToString("\n"))
+                        }
+                    },
+                    enabled = logs.isNotEmpty()
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("复制")
+                }
+                TextButton(onClick = onClear, enabled = logs.isNotEmpty()) {
+                    Text("清空")
+                }
             }
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(230.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
-                    .padding(10.dp),
-                state = listState
-            ) {
-                items(logs) { line ->
-                    Text(
-                        line,
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.labelSmall
-                    )
+            SelectionContainer {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(230.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
+                        .padding(10.dp),
+                    state = listState
+                ) {
+                    items(logs) { line ->
+                        Text(
+                            line,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
             }
         }
