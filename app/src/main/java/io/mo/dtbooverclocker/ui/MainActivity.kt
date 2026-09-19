@@ -55,8 +55,6 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -253,15 +251,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                         },
                         actions = {
                             IconButton(onClick = { currentScreen = AppScreen.ROLLBACK }) {
-                                BadgedBox(
-                                    badge = {
-                                        if (state.backups.isNotEmpty()) {
-                                            Badge { Text("${state.backups.size}") }
-                                        }
-                                    }
-                                ) {
-                                    Icon(Icons.Default.Restore, contentDescription = "镜像回滚")
-                                }
+                                Icon(Icons.Default.Restore, contentDescription = "镜像回滚")
                             }
                             IconButton(onClick = viewModel::refreshEnvironment) {
                                 Icon(Icons.Default.Refresh, contentDescription = "刷新环境")
