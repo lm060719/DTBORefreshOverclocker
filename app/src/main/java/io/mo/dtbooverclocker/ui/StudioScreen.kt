@@ -43,6 +43,10 @@ fun StudioScreen(
     onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit,
     onCustomVbp: (String) -> Unit, onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit,
     onApplySuggestedCustom: () -> Unit, onStageChange: () -> Unit,
+    onSetDeviceTreeProperty: (Int, String, String, String?) -> Unit,
+    onAddDeviceTreeProperty: (Int, String, String, String?) -> Unit,
+    onDeleteDeviceTreeProperty: (Int, String, String) -> Unit,
+    onUndoDeviceTreeChange: (String) -> Unit,
     onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit,
     onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onFlash: () -> Unit,
     onExportBackup: (File) -> Unit, onExportRescue: (File) -> Unit, onScreenshot: () -> Unit,
@@ -52,7 +56,14 @@ fun StudioScreen(
         when (tab) {
             StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onSavePatched, onRecoveryZip, onFastbootBundle, onFlash, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
             StudioTab.MODULES -> ModulesTab(state, padding, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange)
-            StudioTab.DEVICE_TREE -> DeviceTreeScreen(state, padding)
+            StudioTab.DEVICE_TREE -> DeviceTreeScreen(
+                state = state,
+                contentPadding = padding,
+                onSetProperty = onSetDeviceTreeProperty,
+                onAddProperty = onAddDeviceTreeProperty,
+                onDeleteProperty = onDeleteDeviceTreeProperty,
+                onUndoChange = onUndoDeviceTreeChange
+            )
             StudioTab.SETTINGS -> SettingsHubTab(state, padding, onRequestRoot, onRefreshEnvironment, onOpenRollback, onOpenAdvancedSettings, onOpenAbout)
         }
     }
@@ -126,11 +137,48 @@ private fun OverviewTab(
         if (state.workspace != null) {
             item(key = "summary") { ImageSummaryCard(state) }
             if (state.stagedChanges.isNotEmpty()) item(key = "staged") { StagedChangesCard(state.stagedChanges, onPackage, onReset, state.busy) }
+            if (state.deviceTreeChanges.isNotEmpty()) item(key = "device-tree-staged") {
+                DeviceTreeStagedChangesCard(state, onPackage, onReset)
+            }
         }
         state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onFlash) } }
         state.lastFlash?.let { flash -> item(key = "rescue") { RescueMemoCard(state, onCopy, { onExportBackup(flash.backupFile) }, { onExportRescue(flash.rescueZip) }, onScreenshot) } }
         item(key = "terminal") { TerminalCard(state.logs, onClearLogs) }
         item(key = "status") { Text(state.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 24.dp)) }
+    }
+}
+
+
+@Composable
+private fun DeviceTreeStagedChangesCard(
+    state: MainUiState,
+    onPackage: () -> Unit,
+    onReset: () -> Unit
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "通用设备树修改 · ${state.deviceTreeChanges.size} 项",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            state.deviceTreeChanges.takeLast(4).forEach { change ->
+                Text(
+                    "• ${change.summary}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                "自由设备树编辑当前阶段只允许导出验证，禁止 Root 直刷。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
+                OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
+            }
+        }
     }
 }
 
