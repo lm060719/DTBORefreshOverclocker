@@ -284,6 +284,10 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 onCustomHbp = viewModel::setCustomHbp,
                 onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
                 onStageChange = viewModel::stageTimingChange,
+                onSetDeviceTreeProperty = viewModel::setDeviceTreeProperty,
+                onAddDeviceTreeProperty = viewModel::addDeviceTreeProperty,
+                onDeleteDeviceTreeProperty = viewModel::deleteDeviceTreeProperty,
+                onUndoDeviceTreeChange = viewModel::undoDeviceTreeChange,
                 onPackage = viewModel::packageStagedChanges,
                 onReset = viewModel::resetStagedChanges,
                 onSavePatched = { file ->
@@ -1132,12 +1136,18 @@ internal fun OutputCard(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("输出", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            val modeTitle = if (report.stagedChanges.size > 1) {
-                "集中打包完成：共包含 ${report.stagedChanges.size} 项时序修改"
-            } else when (report.mode) {
-                PatchMode.APPEND_NEW -> "新增独立档位：${report.targetHz} Hz (基于原 ${report.originalHz} Hz 模板) · ${report.strategy.displayName}"
-                PatchMode.DELETE_EXISTING -> "删除指定档位：已彻底移除 ${report.originalHz} Hz 时序档位"
-                PatchMode.OVERWRITE_EXISTING -> "${report.originalHz} Hz → ${report.targetHz} Hz · ${report.strategy.displayName}"
+            val modeTitle = when {
+                state.deviceTreeChanges.isNotEmpty() && report.stagedChanges.isNotEmpty() ->
+                    "集中打包完成：${report.stagedChanges.size} 项时序修改 + ${state.deviceTreeChanges.size} 项通用设备树修改"
+                state.deviceTreeChanges.isNotEmpty() ->
+                    "通用设备树修改打包完成：共 ${state.deviceTreeChanges.size} 项属性修改"
+                report.stagedChanges.size > 1 ->
+                    "集中打包完成：共包含 ${report.stagedChanges.size} 项时序修改"
+                else -> when (report.mode) {
+                    PatchMode.APPEND_NEW -> "新增独立档位：${report.targetHz} Hz (基于原 ${report.originalHz} Hz 模板) · ${report.strategy.displayName}"
+                    PatchMode.DELETE_EXISTING -> "删除指定档位：已彻底移除 ${report.originalHz} Hz 时序档位"
+                    PatchMode.OVERWRITE_EXISTING -> "${report.originalHz} Hz → ${report.targetHz} Hz · ${report.strategy.displayName}"
+                }
             }
             Text(modeTitle, fontWeight = FontWeight.Medium)
             report.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
@@ -1159,6 +1169,7 @@ internal fun OutputCard(
 
             val canFlash = state.rootState.granted &&
                 state.sourceMode == SourceMode.ROOT_PARTITION &&
+                state.deviceTreeChanges.isEmpty() &&
                 report.stagedChanges.none { it.strategy == PatchStrategy.FRAMERATE_ONLY } &&
                 report.strategy != PatchStrategy.FRAMERATE_ONLY
             Button(
@@ -1172,7 +1183,11 @@ internal fun OutputCard(
             }
             if (!canFlash) {
                 Text(
-                    "直接刷写要求：Root 已授权、镜像来自当前手机分区、且不是“仅 Framerate”策略。",
+                    if (state.deviceTreeChanges.isNotEmpty()) {
+                        "检测到通用设备树自由编辑：当前阶段禁止 Root 直刷，请导出镜像或刷机包验证。"
+                    } else {
+                        "直接刷写要求：Root 已授权、镜像来自当前手机分区、且不是“仅 Framerate”策略。"
+                    },
                     style = MaterialTheme.typography.labelSmall
                 )
             }
