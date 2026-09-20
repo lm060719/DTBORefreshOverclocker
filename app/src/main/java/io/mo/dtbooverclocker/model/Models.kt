@@ -163,6 +163,17 @@ data class TimingCandidate(
         ).all { it != null }
 }
 
+/** Describes the original container; a Root cache file is not a persistent partition backup. */
+data class DtboSourceImage(
+    val sourceMode: SourceMode,
+    val sourcePath: String,
+    val sha256: String,
+    val containerSize: Int,
+    val dtboTotalSize: Int,
+    val logicalImageSize: Int?,
+    val footerOffset: Int?
+)
+
 data class DtboWorkspace(
     val rootDir: File,
     val inputImage: File,
@@ -171,7 +182,8 @@ data class DtboWorkspace(
     val binaryImage: DtboBinaryImage,
     val extractedEntries: List<File>,
     val dtsFiles: List<File>,
-    val candidates: List<TimingCandidate>
+    val candidates: List<TimingCandidate>,
+    val sourceImage: DtboSourceImage? = null
 )
 
 data class PatchReport(

@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.core
 
+import io.mo.dtbooverclocker.util.HashUtils
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -9,29 +10,44 @@ import java.security.MessageDigest
  * and signed vbmeta fail closed instead of silently producing an incomplete flashable image.
  */
 object AvbImageEnvelope {
-    private data class Layout(val footer: Int, val vbmeta: Int, val size: Int)
+    data class Layout(
+        val footer: Int, val vbmeta: Int, val size: Int,
+        val originalSize: Int, val major: Long, val minor: Long
+    )
+    data class Inspection(
+        val containerSize: Int,
+        val dtboTotalSize: Int,
+        val sha256: String,
+        val layout: Layout?,
+        val magicCandidates: Int,
+        val validFooters: Int
+    ) {
+        // A zero-padded image without AVB does not establish a logical envelope boundary.
+        val logicalImageSize: Int? get() = layout?.let { it.footer + 64 }
+            ?: dtboTotalSize.takeIf { it == containerSize }
+    }
     private data class HashField(val descriptor: Int, val digest: Int, val size: Int,
                                  val algorithm: String, val salt: ByteArray)
 
-    fun rebuild(original: ByteArray, originalTotal: Int, payload: ByteArray): ByteArray {
-        val layout = layout(original, originalTotal)
+    fun rebuild(
+        original: ByteArray, originalTotal: Int, payload: ByteArray,
+        logSink: (String) -> Unit = {}
+    ): ByteArray {
+        val layout = validate(original, originalTotal, logSink, "REBUILD_ORIGINAL").layout
         if (layout == null) {
             require((originalTotal until original.size).all { original[it] == 0.toByte() }) {
                 "镜像尾部含无法识别的数据，不能丢弃后直接打包"
             }
             // A bare DTBO is allowed to grow; a padded partition dump keeps its capacity.
             require(original.size == originalTotal || payload.size <= original.size) { "新 DTBO 超出原分区镜像容量" }
-            return payload.copyOf(if (original.size == originalTotal) payload.size else original.size)
+            return payload.copyOf(if (original.size == originalTotal) payload.size else original.size).also {
+                validate(it, payload.size, logSink, "REBUILD_OUTPUT")
+            }
         }
         val vbmeta = original.copyOfRange(layout.vbmeta, layout.vbmeta + layout.size)
         val fields = hashFields(vbmeta)
         val vb = buffer(vbmeta)
         fields.forEach { field ->
-            require(vb.getLong(field.descriptor + 16) == originalTotal.toLong()) {
-                "AVB 哈希覆盖范围与 DTBO total_size 不一致，暂不支持重建此布局"
-            }
-            require(digest(field, original, originalTotal).contentEquals(
-                vbmeta.copyOfRange(field.digest, field.digest + field.size))) { "原镜像 AVB 摘要不匹配" }
             vb.putLong(field.descriptor + 16, payload.size.toLong())
             digest(field, payload, payload.size).copyInto(vbmeta, field.digest)
         }
@@ -46,44 +62,137 @@ object AvbImageEnvelope {
             putLong(layout.footer + 12, payload.size.toLong())
             putLong(layout.footer + 20, newOffset)
         }
-        validate(result, payload.size)
+        validate(result, payload.size, logSink, "REBUILD_OUTPUT")
         return result
     }
 
-    fun validate(bytes: ByteArray, total: Int) {
-        val layout = layout(bytes, total) ?: run {
-            require((total until bytes.size).all { bytes[it] == 0.toByte() }) { "镜像含未知尾部数据" }
-            return
-        }
-        val vbmeta = bytes.copyOfRange(layout.vbmeta, layout.vbmeta + layout.size)
-        hashFields(vbmeta).forEach { field ->
-            require(buffer(vbmeta).getLong(field.descriptor + 16) == total.toLong()) { "AVB 镜像长度不匹配" }
-            require(digest(field, bytes, total).contentEquals(vbmeta.copyOfRange(field.digest, field.digest + field.size))) {
-                "AVB 摘要校验失败"
+    fun validate(
+        bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "VALIDATE"
+    ): Inspection {
+        val inspection = inspect(bytes, total, logSink, stage)
+        val layout = inspection.layout ?: return inspection
+        try {
+            require(layout.major == 1L && layout.minor == 0L) { "不支持的 AVB footer 版本 ${layout.major}.${layout.minor}" }
+            require(layout.originalSize == total) { "AVB footer 原始大小与 DTBO 不匹配" }
+            val vbmeta = bytes.copyOfRange(layout.vbmeta, layout.vbmeta + layout.size)
+            val b = buffer(vbmeta)
+            require(b.getInt(4) == 1 && b.getInt(8) in 0..3) { "不支持的 AVB vbmeta required version" }
+            hashFields(vbmeta).forEach { field ->
+                require(b.getLong(field.descriptor + 16) == total.toLong()) {
+                    "AVB 哈希覆盖范围与 DTBO total_size 不一致，暂不支持重建此布局"
+                }
+                require(digest(field, bytes, total).contentEquals(vbmeta.copyOfRange(field.digest, field.digest + field.size))) {
+                    "AVB 摘要校验失败"
+                }
             }
+        } catch (e: IllegalArgumentException) {
+            val message = "[AVB][$stage] ${e.message}; footerOffset=${layout.footer}, input_sha256=${inspection.sha256}"
+            logSink("[ERROR] $message")
+            throw IllegalArgumentException(message, e)
         }
+        return inspection
     }
 
-    private fun layout(bytes: ByteArray, total: Int): Layout? {
-        require(total in 32..bytes.size) { "无效的 DTBO 长度" }
-        val matches = (total..(bytes.size - 64)).filter {
-            bytes[it] == 0x41.toByte() && bytes[it + 1] == 0x56.toByte() &&
-                bytes[it + 2] == 0x42.toByte() && bytes[it + 3] == 0x66.toByte()
+    /** Recognizes structure independently of signing/descriptor support; never drops unknown trailers. */
+    fun inspect(
+        bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "INSPECT"
+    ): Inspection {
+        val sha256 = HashUtils.sha256(bytes)
+        val input = "input_size=${bytes.size}, dtbo_total_size=$total, input_sha256=$sha256"
+        logSink("[AVB][$stage] $input")
+        var candidates = 0
+        var valid = 0
+        var selected: Layout? = null
+        val offsets = mutableListOf<Int>()
+        try {
+            require(total in 32..bytes.size) { "无效的 DTBO 长度" }
+            // Include truncated magic near EOF in diagnostics, and avoid allocating a list per byte.
+            for (offset in total..(bytes.size - 4)) {
+                if (bytes[offset] != 0x41.toByte() || bytes[offset + 1] != 0x56.toByte() ||
+                    bytes[offset + 2] != 0x42.toByte() || bytes[offset + 3] != 0x66.toByte()) continue
+                candidates++
+                val details = if (bytes.size - offset >= 64) buffer(bytes).let {
+                    "version=${it.getInt(offset + 4).toUInt()}.${it.getInt(offset + 8).toUInt()}, " +
+                        "originalImageSize=${it.getLong(offset + 12)}, vbmetaOffset=${it.getLong(offset + 20)}, " +
+                        "vbmetaSize=${it.getLong(offset + 28)}"
+                } else "truncated=true"
+                val status = try {
+                    val layout = parseCandidate(bytes, total, offset)
+                    valid++
+                    if (selected == null) selected = layout
+                    "structuralValid=true"
+                } catch (e: IllegalArgumentException) {
+                    "structuralValid=false, reason=${e.message}"
+                }
+                // Bound diagnostics for corrupt files containing millions of magic sequences.
+                if (offsets.size < 32) {
+                    offsets += offset
+                    logSink("[AVB][$stage] candidate offset=$offset (0x${offset.toString(16)}), $details, $status")
+                }
+            }
+            logSink("[AVB][$stage] magicCandidates=$candidates, validFooters=$valid" +
+                if (candidates > offsets.size) ", candidate details limited to ${offsets.size}" else "")
+            if (candidates == 0) {
+                require((total until bytes.size).all { bytes[it] == 0.toByte() }) {
+                    "未找到 AVBf magic，镜像含未知尾部数据，不能安全重建"
+                }
+            } else {
+                require(valid > 0) { "找到 AVBf magic，但没有任何候选通过结构验证" }
+                require(valid == 1) { "找到多个有效 AVB footer，无法安全确定目标" }
+                val layout = requireNotNull(selected)
+                require((total until layout.vbmeta).all { bytes[it] == 0.toByte() } &&
+                    (layout.vbmeta + layout.size until layout.footer).all { bytes[it] == 0.toByte() } &&
+                    (layout.footer + 64 until bytes.size).all { bytes[it] == 0.toByte() }) {
+                    "AVB 区域外存在未知数据，无法安全重建"
+                }
+                logSink("[AVB][$stage] selectedFooter=${layout.footer}, logicalImageSize=${layout.footer + 64}, " +
+                    "containerSize=${bytes.size}")
+            }
+        } catch (e: IllegalArgumentException) {
+            val message = "[AVB][$stage] ${e.message}; $input, magicCandidates=$candidates, " +
+                "validFooters=$valid, candidateOffsets=$offsets"
+            logSink("[ERROR] $message")
+            throw IllegalArgumentException(message, e)
         }
-        if (matches.isEmpty()) return null
-        require(matches.size == 1) { "发现多个 AVB footer，无法确定镜像布局" }
-        val f = matches.single()
+        return Inspection(bytes.size, total, sha256, selected, candidates, valid)
+    }
+
+    private fun parseCandidate(bytes: ByteArray, total: Int, f: Int): Layout {
+        require(bytes.size - f >= 64) { "AVB footer 截断" }
         val b = buffer(bytes)
-        require(b.getInt(f + 4) == 1 && b.getInt(f + 8) == 0) { "不支持的 AVB footer 版本" }
-        require(b.getLong(f + 12) == total.toLong()) { "AVB footer 原始大小与 DTBO 不匹配" }
+        val major = b.getInt(f + 4).toLong() and 0xffffffffL
+        val minor = b.getInt(f + 8).toLong() and 0xffffffffL
+        require(major > 0) { "无效的 AVB footer 版本" }
+        require((f + 36 until f + 64).all { bytes[it] == 0.toByte() }) { "AVB footer 保留区非零" }
+        val originalSize = bounded(b.getLong(f + 12), f)
+        require(originalSize >= 32) { "AVB original_image_size 无效" }
         val offset = bounded(b.getLong(f + 20), bytes.size)
         val size = bounded(b.getLong(f + 28), bytes.size)
-        require(size >= 256 && offset >= total && offset.toLong() + size <= f) { "AVB vbmeta 范围无效" }
+        require(size >= 256 && offset >= maxOf(total, originalSize) && offset.toLong() + size <= f) { "AVB vbmeta 范围无效" }
         require(b.getInt(offset) == 0x41564230) { "AVB vbmeta magic 无效" }
-        require((total until offset).all { bytes[it] == 0.toByte() } &&
-            (offset + size until f).all { bytes[it] == 0.toByte() } &&
-            (f + 64 until bytes.size).all { bytes[it] == 0.toByte() }) { "AVB 区域外存在未知数据，无法安全重建" }
-        return Layout(f, offset, size)
+        val authSize = bounded(b.getLong(offset + 12), size - 256)
+        val auxSize = bounded(b.getLong(offset + 20), size - 256 - authSize)
+        require(authSize % 64 == 0 && auxSize % 64 == 0 && 256L + authSize + auxSize == size.toLong()) {
+            "AVB authentication/auxiliary 数据大小无效"
+        }
+        fun checkRange(field: Int, limit: Int): Int {
+            val start = bounded(b.getLong(offset + field), limit)
+            return bounded(b.getLong(offset + field + 8), limit - start)
+        }
+        checkRange(32, authSize) // Hash
+        checkRange(48, authSize) // Signature
+        checkRange(64, auxSize) // Public key
+        checkRange(80, auxSize) // Public key metadata
+        val descriptorSize = checkRange(96, auxSize)
+        var p = offset + 256 + authSize + bounded(b.getLong(offset + 96), auxSize)
+        val end = p + descriptorSize
+        while (p < end) {
+            require(end - p >= 16) { "AVB descriptor 头部截断" }
+            val remaining = bounded(b.getLong(p + 8), end - p - 16)
+            require(remaining % 8 == 0) { "AVB descriptor 未对齐" }
+            p += 16 + remaining
+        }
+        return Layout(f, offset, size, originalSize, major, minor)
     }
 
     private fun hashFields(v: ByteArray): List<HashField> {
@@ -117,14 +226,14 @@ object AvbImageEnvelope {
                     val javaAlgorithm = when (algorithm) {
                         "sha256" -> "SHA-256"
                         "sha512" -> "SHA-512"
-                        else -> error("不支持的 AVB 哈希算法：$algorithm")
+                        else -> throw IllegalArgumentException("不支持的 AVB 哈希算法：$algorithm")
                     }
                     require(digestSize == MessageDigest.getInstance(javaAlgorithm).digestLength) { "AVB 摘要长度无效" }
                     val saltStart = p + 132 + nameSize
                     fields += HashField(p, saltStart + saltSize, digestSize, javaAlgorithm,
                         v.copyOfRange(saltStart, saltStart + saltSize))
                 }
-                else -> error("暂不支持重建 AVB descriptor 类型 $tag")
+                else -> throw IllegalArgumentException("暂不支持重建 AVB descriptor 类型 $tag")
             }
             p = next
         }

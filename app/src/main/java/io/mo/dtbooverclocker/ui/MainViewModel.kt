@@ -152,7 +152,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(rootState = root, slotInfo = slot) }
 
                 val image = safetyGuard.extractActiveImage(slot)
-                val workspace = patchEngine.analyze(image)
+                val workspace = patchEngine.analyze(image, SourceMode.ROOT_PARTITION, slot.blockDevice)
                 val detectedActive = activePanelDetector.detect()
                 applyWorkspace(workspace, SourceMode.ROOT_PARTITION, detectedActive)
                 refreshCacheSize()

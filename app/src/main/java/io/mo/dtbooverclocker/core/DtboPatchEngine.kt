@@ -3,13 +3,16 @@ package io.mo.dtbooverclocker.core
 import android.content.Context
 import android.net.Uri
 import io.mo.dtbooverclocker.model.CustomTimingParams
+import io.mo.dtbooverclocker.model.DtboSourceImage
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchReport
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.StagedChange
+import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.TimingUtils
+import io.mo.dtbooverclocker.util.HashUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -48,9 +51,17 @@ class DtboPatchEngine(
         logSink("[OK] 已导出 ${source.name}")
     }
 
-    suspend fun analyze(image: File): DtboWorkspace = withContext(Dispatchers.IO) {
+    suspend fun analyze(
+        image: File,
+        sourceMode: SourceMode = SourceMode.LOCAL_IMAGE,
+        sourcePath: String = image.absolutePath
+    ): DtboWorkspace = withContext(Dispatchers.IO) {
         executor.validateToolchain().getOrThrow()
         require(image.isFile && image.length() >= 32) { "DTBO 镜像不存在或过小" }
+        val sourceSize = image.length()
+        val sourceHash = HashUtils.sha256(image)
+        logSink("[IMAGE][SOURCE_INPUT] mode=$sourceMode, source=$sourcePath, file=${image.absolutePath}, " +
+            "input_size=$sourceSize, input_sha256=$sourceHash")
 
         val workRoot = File(
             context.cacheDir,
@@ -64,6 +75,12 @@ class DtboPatchEngine(
 
         logSink("[INFO] 使用纯 Kotlin DTBO codec 解析表头、entry table 与压缩条目")
         val binaryImage = DtboImageCodec.parse(stagedImage)
+        val inspection = AvbImageEnvelope.validate(
+            requireNotNull(binaryImage.originalBytes), binaryImage.metadata.totalSize, logSink, "STAGED_INPUT"
+        )
+        require(inspection.containerSize.toLong() == sourceSize && inspection.sha256 == sourceHash) {
+            "工作区镜像与导入源不一致，已停止处理：source_sha256=$sourceHash, staged_sha256=${inspection.sha256}"
+        }
         val metadataFile = File(workRoot, "metadata.txt")
         metadataFile.writeText(DtboImageCodec.describe(binaryImage))
 
@@ -124,7 +141,11 @@ class DtboPatchEngine(
             binaryImage = binaryImage,
             extractedEntries = entries,
             dtsFiles = dtsFiles,
-            candidates = candidates
+            candidates = candidates,
+            sourceImage = DtboSourceImage(
+                sourceMode, sourcePath, inspection.sha256, inspection.containerSize,
+                inspection.dtboTotalSize, inspection.logicalImageSize, inspection.layout?.footer
+            )
         )
     }
 
@@ -269,17 +290,27 @@ class DtboPatchEngine(
         val outputImage = File(workspace.rootDir, "dtbo_patched.img")
         if (outputImage.exists()) outputImage.delete()
 
+        workspace.sourceImage?.let { source ->
+            val actualHash = HashUtils.sha256(requireNotNull(workspace.binaryImage.originalBytes))
+            logSink("[IMAGE][REBUILD_ORIGINAL] source=${source.sourcePath}, expected_sha256=${source.sha256}, " +
+                "input_sha256=$actualHash")
+            require(actualHash == source.sha256) { "重建输入与分析时的原始镜像不一致，已停止打包" }
+        }
+
         logSink(
             "[INFO] 使用纯 Kotlin DTBO builder 重建镜像，共替换 ${replacementEntries.size} 个 DTB 条目"
         )
         DtboImageCodec.rebuild(
             original = workspace.binaryImage,
             replacementDecodedEntries = replacementEntries,
-            output = outputImage
+            output = outputImage,
+            logSink = logSink
         )
 
         val rebuiltImage = DtboImageCodec.parse(outputImage)
-        AvbImageEnvelope.validate(outputImage.readBytes(), rebuiltImage.metadata.totalSize)
+        AvbImageEnvelope.validate(
+            requireNotNull(rebuiltImage.originalBytes), rebuiltImage.metadata.totalSize, logSink, "FINAL_VALIDATE"
+        )
         rebuiltImage.entries.forEachIndexed { index, entry ->
             val expected = replacementEntries[index] ?: workspace.binaryImage.entries[index].decodedBytes
             require(entry.decodedBytes.contentEquals(expected)) { "DTB[$index] 打包后字节与预期不一致" }

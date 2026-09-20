@@ -166,7 +166,8 @@ object DtboImageCodec {
     fun rebuild(
         original: DtboBinaryImage,
         replacementDecodedEntries: Map<Int, ByteArray>,
-        output: File
+        output: File,
+        logSink: (String) -> Unit = {}
     ) {
         val metadata = original.metadata
         require(metadata.entries.size == original.entries.size) { "DTBO 元数据与条目数量不一致" }
@@ -265,7 +266,7 @@ object DtboImageCodec {
 
         val dtboBytes = prefix + payload
         val imageBytes = original.originalBytes?.let {
-            AvbImageEnvelope.rebuild(it, metadata.totalSize, dtboBytes)
+            AvbImageEnvelope.rebuild(it, metadata.totalSize, dtboBytes, logSink)
         } ?: dtboBytes
         output.parentFile?.mkdirs()
         output.writeBytes(imageBytes)

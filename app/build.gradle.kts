@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -15,6 +16,19 @@ android {
         targetSdk = 37
         versionCode = 4
         versionName = "1.1.2"
+
+        // Includes uncommitted source edits, unlike a git commit alone. Stable across identical builds.
+        val sourceDigest = MessageDigest.getInstance("SHA-256")
+        fileTree("src/main") { include("**/*.kt", "**/*.xml") }.files
+            .sortedBy { it.relativeTo(projectDir).invariantSeparatorsPath }
+            .forEach { source ->
+                sourceDigest.update(source.relativeTo(projectDir).invariantSeparatorsPath.toByteArray(Charsets.UTF_8))
+                sourceDigest.update(0.toByte())
+                sourceDigest.update(source.readBytes())
+                sourceDigest.update(0.toByte())
+            }
+        val sourceId = sourceDigest.digest().joinToString("") { "%02x".format(it) }.take(16)
+        buildConfigField("String", "SOURCE_ID", "\"$sourceId\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

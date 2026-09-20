@@ -41,6 +41,8 @@ class SafetyGuardManager(
         require(result.isSuccess && output.isFile && output.length() >= 32) {
             "从 ${slot.blockDevice} 提取 DTBO 失败：${result.stderr.ifBlank { result.stdout }.takeLast(1500)}"
         }
+        logSink("[IMAGE][ROOT_DUMP] source=${slot.blockDevice}, file=${output.absolutePath}, " +
+            "input_size=${output.length()}, input_sha256=${HashUtils.sha256(output)}")
         logSink("[OK] 已提取当前活跃槽位镜像：${output.absolutePath}")
         output
     }

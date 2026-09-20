@@ -2,6 +2,7 @@ package io.mo.dtbooverclocker.util
 
 import android.content.Context
 import android.os.Build
+import io.mo.dtbooverclocker.BuildConfig
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -61,6 +62,8 @@ object AppLogger {
         val sb = StringBuilder()
         sb.appendLine("==================== SYSTEM BASELINE SNAPSHOT ====================")
         sb.appendLine("Timestamp: ${dateFormat.format(Date())}")
+        sb.appendLine("App: ${BuildConfig.APPLICATION_ID} ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}), " +
+            "buildType=${BuildConfig.BUILD_TYPE}, sourceId=${BuildConfig.SOURCE_ID}")
         sb.appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.PRODUCT} / ${Build.DEVICE})")
         sb.appendLine("Board / Hardware: ${Build.BOARD} / ${Build.HARDWARE}")
         sb.appendLine("Android OS: Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}, Build ${Build.ID})")
