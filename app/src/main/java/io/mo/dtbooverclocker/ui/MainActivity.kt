@@ -194,6 +194,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     }
 
     var currentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
+    var selectedTab by rememberSaveable { mutableStateOf(StudioTab.OVERVIEW) }
 
     when (currentScreen) {
         AppScreen.ROLLBACK -> {
@@ -229,7 +230,10 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
         AppScreen.SETTINGS -> {
             SettingsScreen(
                 state = state,
-                onNavigateBack = { currentScreen = AppScreen.MAIN },
+                onNavigateBack = {
+                    selectedTab = StudioTab.SETTINGS
+                    currentScreen = AppScreen.MAIN
+                },
                 onNavigateToAbout = { currentScreen = AppScreen.ABOUT },
                 onNavigateToRollback = { currentScreen = AppScreen.ROLLBACK },
                 onRequestRoot = viewModel::requestRoot,
@@ -246,148 +250,69 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
         }
         AppScreen.ABOUT -> {
             AboutScreen(
-                onNavigateBack = { currentScreen = AppScreen.SETTINGS }
+                onNavigateBack = {
+                    selectedTab = StudioTab.SETTINGS
+                    currentScreen = AppScreen.MAIN
+                }
             )
         }
         AppScreen.MAIN -> {
-            Scaffold(
-                topBar = {
-                    TopAppBar(
-                        title = {
-                            Column {
-                                Text("DTBO Refresh Overclocker", fontWeight = FontWeight.SemiBold)
-                            }
-                        },
-                        actions = {
-                            IconButton(onClick = { currentScreen = AppScreen.ROLLBACK }) {
-                                Icon(Icons.Default.Restore, contentDescription = "镜像回滚")
-                            }
-                            IconButton(onClick = viewModel::refreshEnvironment) {
-                                Icon(Icons.Default.Refresh, contentDescription = "刷新环境")
-                            }
-                            IconButton(onClick = { currentScreen = AppScreen.SETTINGS }) {
-                                Icon(Icons.Default.Settings, contentDescription = "设置")
-                            }
-                        }
-                    )
-                }
-            ) { innerPadding ->
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    item { Spacer(Modifier.height(2.dp)) }
-
-                    item {
-                        SourceCard(
-                            state = state,
-                            onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },
-                            onExtract = viewModel::extractActivePartition
-                        )
+            StudioScreen(
+                state = state,
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it },
+                onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },
+                onExtract = viewModel::extractActivePartition,
+                onRefreshEnvironment = viewModel::refreshEnvironment,
+                onOpenRollback = { currentScreen = AppScreen.ROLLBACK },
+                onOpenAdvancedSettings = { currentScreen = AppScreen.SETTINGS },
+                onOpenAbout = { currentScreen = AppScreen.ABOUT },
+                onRequestRoot = viewModel::requestRoot,
+                onSelect = viewModel::selectCandidate,
+                onTarget = viewModel::setTargetHz,
+                onStrategy = viewModel::setStrategy,
+                onPatchMode = viewModel::setPatchMode,
+                onCustomPixelClock = viewModel::setCustomPixelClock,
+                onCustomVfp = viewModel::setCustomVfp,
+                onCustomVbp = viewModel::setCustomVbp,
+                onCustomHfp = viewModel::setCustomHfp,
+                onCustomHbp = viewModel::setCustomHbp,
+                onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
+                onStageChange = viewModel::stageTimingChange,
+                onPackage = viewModel::packageStagedChanges,
+                onReset = viewModel::resetStagedChanges,
+                onSavePatched = { file ->
+                    pendingBinary = file
+                    saveBinary.launch(file.name)
+                },
+                onRecoveryZip = {
+                    viewModel.prepareRecoveryZip { file ->
+                        pendingZip = file
+                        saveZip.launch(file.name)
                     }
-
-            state.workspace?.let { workspace ->
-                item {
-                    ImageSummaryCard(state)
-                }
-
-                if (workspace.candidates.isNotEmpty()) {
-                    item {
-                        TimingPanel(
-                            state = state,
-                            onSelect = viewModel::selectCandidate,
-                            onTarget = viewModel::setTargetHz,
-                            onStrategy = viewModel::setStrategy,
-                            onPatchMode = viewModel::setPatchMode,
-                            onCustomPixelClock = viewModel::setCustomPixelClock,
-                            onCustomVfp = viewModel::setCustomVfp,
-                            onCustomVbp = viewModel::setCustomVbp,
-                            onCustomHfp = viewModel::setCustomHfp,
-                            onCustomHbp = viewModel::setCustomHbp,
-                            onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
-                            onStageChange = viewModel::stageTimingChange
-                        )
+                },
+                onFastbootBundle = {
+                    viewModel.prepareFastbootBundle { file ->
+                        pendingZip = file
+                        saveZip.launch(file.name)
                     }
-
-                    if (state.stagedChanges.isNotEmpty()) {
-                        item {
-                            StagedChangesCard(
-                                stagedChanges = state.stagedChanges,
-                                onPackage = viewModel::packageStagedChanges,
-                                onReset = viewModel::resetStagedChanges,
-                                busy = state.busy
-                            )
-                        }
-                    }
-                }
-            }
-
-            state.patchReport?.let { report ->
-                item {
-                    OutputCard(
-                        state = state,
-                        onSavePatched = {
-                            pendingBinary = report.outputImage
-                            saveBinary.launch(report.outputImage.name)
-                        },
-                        onRecoveryZip = {
-                            viewModel.prepareRecoveryZip { file ->
-                                pendingZip = file
-                                saveZip.launch(file.name)
-                            }
-                        },
-                        onFastbootBundle = {
-                            viewModel.prepareFastbootBundle { file ->
-                                pendingZip = file
-                                saveZip.launch(file.name)
-                            }
-                        },
-                        onFlash = { showFlashDialog = true }
-                    )
-                }
-            }
-
-            state.lastFlash?.let { flash ->
-                item {
-                    RescueMemoCard(
-                        state = state,
-                        onCopy = { text -> copyText(context, "DTBO rollback", text) },
-                        onExportBackup = {
-                            pendingBinary = flash.backupFile
-                            saveBinary.launch(flash.backupFile.name)
-                        },
-                        onExportRescue = {
-                            pendingZip = flash.rescueZip
-                            saveZip.launch(flash.rescueZip.name)
-                        },
-                        onScreenshot = {
-                            saveScreenshot.launch("DTBO_rescue_memo_${System.currentTimeMillis()}.png")
-                        }
-                    )
-                }
-            }
-
-            item {
-                TerminalCard(
-                    logs = state.logs,
-                    onClear = viewModel::clearLogs
-                )
-            }
-
-            item {
-                Text(
-                    state.status,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 24.dp)
-                )
-            }
+                },
+                onFlash = { showFlashDialog = true },
+                onExportBackup = { file ->
+                    pendingBinary = file
+                    saveBinary.launch(file.name)
+                },
+                onExportRescue = { file ->
+                    pendingZip = file
+                    saveZip.launch(file.name)
+                },
+                onScreenshot = {
+                    saveScreenshot.launch("DTBO_rescue_memo_${System.currentTimeMillis()}.png")
+                },
+                onCopy = { text -> copyText(context, "DTBO rollback", text) },
+                onClearLogs = viewModel::clearLogs
+            )
         }
-    }
-}
 }
 
     if (state.busy) {
@@ -435,7 +360,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
 }
 
 @Composable
-private fun SourceCard(
+internal fun SourceCard(
     state: MainUiState,
     onImport: () -> Unit,
     onExtract: () -> Unit
@@ -484,7 +409,7 @@ private fun SourceCard(
 }
 
 @Composable
-private fun ImageSummaryCard(state: MainUiState) {
+internal fun ImageSummaryCard(state: MainUiState) {
     val workspace = state.workspace ?: return
     val groups = remember(workspace.candidates) {
         TimingUtils.groupCandidates(workspace.candidates)
@@ -566,7 +491,7 @@ private fun ImageSummaryCard(state: MainUiState) {
 }
 
 @Composable
-private fun TimingPanel(
+internal fun TimingPanel(
     state: MainUiState,
     onSelect: (String) -> Unit,
     onTarget: (Int) -> Unit,
@@ -1052,7 +977,7 @@ private fun TimingPanel(
 }
 
 @Composable
-private fun StagedChangesCard(
+internal fun StagedChangesCard(
     stagedChanges: List<StagedChange>,
     onPackage: () -> Unit,
     onReset: () -> Unit,
@@ -1191,7 +1116,7 @@ private fun StagedChangesCard(
 }
 
 @Composable
-private fun OutputCard(
+internal fun OutputCard(
     state: MainUiState,
     onSavePatched: () -> Unit,
     onRecoveryZip: () -> Unit,
@@ -1251,7 +1176,7 @@ private fun OutputCard(
 }
 
 @Composable
-private fun RescueMemoCard(
+internal fun RescueMemoCard(
     state: MainUiState,
     onCopy: (String) -> Unit,
     onExportBackup: () -> Unit,
@@ -1306,7 +1231,7 @@ private fun RescueMemoCard(
 }
 
 @Composable
-private fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
+internal fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
     val listState = rememberLazyListState()
     LaunchedEffect(logs.size) {
         if (logs.isNotEmpty()) listState.scrollToItem(logs.lastIndex)
