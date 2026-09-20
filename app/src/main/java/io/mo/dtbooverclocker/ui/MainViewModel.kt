@@ -9,6 +9,8 @@ import io.mo.dtbooverclocker.core.ActivePanelDetectionResult
 import io.mo.dtbooverclocker.core.ActivePanelDetector
 import io.mo.dtbooverclocker.core.DtboPatchEngine
 import io.mo.dtbooverclocker.core.DtsTimingPatcher
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
 import io.mo.dtbooverclocker.core.NativeToolExecutor
 import io.mo.dtbooverclocker.core.RootDetector
 import io.mo.dtbooverclocker.core.SafetyGuardManager
@@ -278,6 +280,122 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+
+    fun setDeviceTreeProperty(
+        entryIndex: Int,
+        nodePath: String,
+        propertyName: String,
+        newRawValue: String?
+    ) {
+        stageDeviceTreeChange(entryIndex) { text ->
+            DeviceTreeEditor.buildSetChange(
+                entryIndex = entryIndex,
+                text = text,
+                nodePath = nodePath,
+                propertyName = propertyName,
+                newRawValue = newRawValue
+            )
+        }
+    }
+
+    fun addDeviceTreeProperty(
+        entryIndex: Int,
+        nodePath: String,
+        propertyName: String,
+        rawValue: String?
+    ) {
+        stageDeviceTreeChange(entryIndex) { text ->
+            DeviceTreeEditor.buildAddChange(
+                entryIndex = entryIndex,
+                text = text,
+                nodePath = nodePath,
+                propertyName = propertyName,
+                newRawValue = rawValue
+            )
+        }
+    }
+
+    fun deleteDeviceTreeProperty(
+        entryIndex: Int,
+        nodePath: String,
+        propertyName: String
+    ) {
+        stageDeviceTreeChange(entryIndex) { text ->
+            DeviceTreeEditor.buildDeleteChange(
+                entryIndex = entryIndex,
+                text = text,
+                nodePath = nodePath,
+                propertyName = propertyName
+            )
+        }
+    }
+
+    fun undoDeviceTreeChange(changeId: String) {
+        viewModelScope.launch {
+            val current = _state.value
+            val workspace = current.workspace ?: return@launch
+            val change = current.deviceTreeChanges.lastOrNull()
+            requireOrReport(change != null && change.id == changeId) {
+                "为避免覆盖后续修改，当前阶段只允许撤销最近一项通用设备树修改。"
+            } ?: return@launch
+
+            runCatching {
+                patchEngine.applyDeviceTreeChange(workspace, change.inverse())
+            }.onSuccess { updatedWorkspace ->
+                val remaining = current.deviceTreeChanges.dropLast(1)
+                val modifiedEntries = (
+                    current.stagedChanges.map { it.entryIndex } +
+                        remaining.map { it.entryIndex }
+                    ).toSet()
+                _state.update {
+                    it.copy(
+                        workspace = updatedWorkspace,
+                        deviceTreeChanges = remaining,
+                        modifiedEntryIndices = modifiedEntries,
+                        patchReport = null,
+                        lastFlash = null,
+                        status = "已撤销通用设备树修改：${change.summary}"
+                    )
+                }
+            }.onFailure(::showError)
+        }
+    }
+
+    private fun stageDeviceTreeChange(
+        entryIndex: Int,
+        builder: (String) -> DeviceTreeChange
+    ) {
+        viewModelScope.launch {
+            val current = _state.value
+            val workspace = current.workspace ?: return@launch showError(
+                IllegalStateException("请先导入或提取 DTBO 镜像")
+            )
+
+            runCatching {
+                val dtsFile = File(workspace.rootDir, "dts/entry_$entryIndex.dts")
+                require(dtsFile.isFile) { "Entry $entryIndex 没有可编辑的 DTS 文件" }
+                val change = withContext(Dispatchers.IO) {
+                    builder(dtsFile.readText())
+                }
+                val updatedWorkspace = patchEngine.applyDeviceTreeChange(workspace, change)
+                change to updatedWorkspace
+            }.onSuccess { (change, updatedWorkspace) ->
+                val newChanges = current.deviceTreeChanges + change
+                val total = current.stagedChanges.size + newChanges.size
+                _state.update {
+                    it.copy(
+                        workspace = updatedWorkspace,
+                        deviceTreeChanges = newChanges,
+                        modifiedEntryIndices = current.modifiedEntryIndices + entryIndex,
+                        patchReport = null,
+                        lastFlash = null,
+                        status = "已暂存设备树修改：${change.summary} (共 $total 项修改待打包)"
+                    )
+                }
+            }.onFailure(::showError)
+        }
+    }
+
     fun resetStagedChanges() {
         viewModelScope.launch {
             val current = _state.value
@@ -291,6 +409,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         workspace = restoredWorkspace,
                         selectedCandidateId = restoredWorkspace.candidates.firstOrNull()?.id,
                         stagedChanges = emptyList(),
+                        deviceTreeChanges = emptyList(),
                         modifiedEntryIndices = emptySet(),
                         patchReport = null,
                         status = "已重置所有时序修改，恢复为原始档位"
@@ -307,8 +426,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val workspace = current.workspace ?: return@launch showError(
                 IllegalStateException("请先导入或提取 DTBO 镜像")
             )
-            requireOrReport(current.stagedChanges.isNotEmpty()) {
-                "当前尚未暂存任何修改，请先编辑、新增或删除档位后再打包"
+            requireOrReport(current.stagedChanges.isNotEmpty() || current.deviceTreeChanges.isNotEmpty()) {
+                "当前尚未暂存任何修改，请先修改时序或设备树属性后再打包"
             } ?: return@launch
 
             setBusy(true, "正在重编译 DTB 并集中打包 DTBO 镜像…")
@@ -316,13 +435,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 patchEngine.packageStaged(
                     workspace = workspace,
                     stagedChanges = current.stagedChanges,
+                    deviceTreeChanges = current.deviceTreeChanges,
                     modifiedEntryIndices = current.modifiedEntryIndices
                 )
             }.onSuccess { report ->
                 _state.update {
                     it.copy(
                         patchReport = report,
-                        status = "打包完成，成功生成 ${report.outputImage.name} (包含 ${current.stagedChanges.size} 项修改)"
+                        status = "打包完成，成功生成 ${report.outputImage.name} (包含 ${current.stagedChanges.size + current.deviceTreeChanges.size} 项修改)"
                     )
                 }
                 refreshCacheSize()
@@ -344,6 +464,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ?: return@launch showError(IllegalStateException("无法确定目标槽位"))
             requireOrReport(current.sourceMode == SourceMode.ROOT_PARTITION) {
                 "直接刷写仅允许用于“从手机当前分区读取”的工作区，防止误刷入来自其他设备的导入镜像。"
+            } ?: return@launch
+            requireOrReport(current.deviceTreeChanges.isEmpty()) {
+                "通用设备树自由编辑当前阶段禁止 Root 直刷。请先导出镜像或刷机包进行离线验证。"
             } ?: return@launch
 
             setBusy(true, "正在执行备份、救援包生成与单槽位刷写…")
@@ -652,6 +775,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 targetHz = suggestedTarget(selectedCandidate?.currentHz ?: 60),
                 patchReport = null,
                 stagedChanges = emptyList(),
+                deviceTreeChanges = emptyList(),
                 modifiedEntryIndices = emptySet(),
                 lastFlash = null,
                 activePanelIdentifier = activePanelId,
@@ -722,6 +846,7 @@ data class MainUiState(
     val patchMode: PatchMode = PatchMode.OVERWRITE_EXISTING,
     val patchReport: PatchReport? = null,
     val stagedChanges: List<StagedChange> = emptyList(),
+    val deviceTreeChanges: List<DeviceTreeChange> = emptyList(),
     val modifiedEntryIndices: Set<Int> = emptySet(),
     val lastFlash: FlashResult? = null,
     val logs: List<String> = emptyList(),
