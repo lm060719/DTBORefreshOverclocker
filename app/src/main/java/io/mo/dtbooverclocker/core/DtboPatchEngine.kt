@@ -398,7 +398,12 @@ class DtboPatchEngine(
         customParams: CustomTimingParams? = null
     ): PatchReport {
         val applyResult = applyTimingChange(workspace, candidate, targetHz, strategy, mode, customParams)
-        return packageStaged(applyResult.updatedWorkspace, listOf(applyResult.stagedChange), setOf(candidate.entryIndex))
+        return packageStaged(
+            workspace = applyResult.updatedWorkspace,
+            stagedChanges = listOf(applyResult.stagedChange),
+            deviceTreeChanges = emptyList(),
+            modifiedEntryIndices = setOf(candidate.entryIndex)
+        )
     }
 
     private fun verifyMetadataPreserved(workspace: DtboWorkspace, outputImage: File) {
