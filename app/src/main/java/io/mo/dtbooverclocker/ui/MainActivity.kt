@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -97,6 +98,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -194,7 +197,9 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     }
 
     var currentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
-    var selectedTab by rememberSaveable { mutableStateOf(StudioTab.OVERVIEW) }
+    val studioPagerState = rememberPagerState { StudioTab.entries.size }
+    val pageStateHolder = rememberSaveableStateHolder()
+    val navigationScope = rememberCoroutineScope()
 
     when (currentScreen) {
         AppScreen.ROLLBACK -> {
@@ -231,7 +236,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
             SettingsScreen(
                 state = state,
                 onNavigateBack = {
-                    selectedTab = StudioTab.SETTINGS
+                    navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
                     currentScreen = AppScreen.MAIN
                 },
                 onNavigateToAbout = { currentScreen = AppScreen.ABOUT },
@@ -251,7 +256,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
         AppScreen.ABOUT -> {
             AboutScreen(
                 onNavigateBack = {
-                    selectedTab = StudioTab.SETTINGS
+                    navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
                     currentScreen = AppScreen.MAIN
                 }
             )
@@ -259,8 +264,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
         AppScreen.MAIN -> {
             StudioScreen(
                 state = state,
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it },
+                pagerState = studioPagerState,
+                pageStateHolder = pageStateHolder,
                 onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },
                 onExtract = viewModel::extractActivePartition,
                 onRefreshEnvironment = viewModel::refreshEnvironment,

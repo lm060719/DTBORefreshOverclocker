@@ -3,11 +3,14 @@ package io.mo.dtbooverclocker.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -17,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import java.io.File
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 enum class StudioTab(val label: String, val icon: ImageVector) {
     OVERVIEW("概览", Icons.Default.Dashboard),
@@ -30,7 +35,7 @@ private enum class StudioModule { REFRESH_RATE }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudioScreen(
-    state: MainUiState, selectedTab: StudioTab, onTabSelected: (StudioTab) -> Unit,
+    state: MainUiState, pagerState: PagerState, pageStateHolder: SaveableStateHolder,
     onImport: () -> Unit, onExtract: () -> Unit, onRefreshEnvironment: () -> Unit,
     onOpenRollback: () -> Unit, onOpenAdvancedSettings: () -> Unit, onOpenAbout: () -> Unit,
     onRequestRoot: () -> Unit, onSelect: (String) -> Unit, onTarget: (Int) -> Unit,
@@ -43,29 +48,66 @@ fun StudioScreen(
     onExportBackup: (File) -> Unit, onExportRescue: (File) -> Unit, onScreenshot: () -> Unit,
     onCopy: (String) -> Unit, onClearLogs: () -> Unit
 ) {
+    StudioNavigation(pagerState, pageStateHolder, !state.busy, onOpenRollback, onRefreshEnvironment) { tab, padding ->
+        when (tab) {
+            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onSavePatched, onRecoveryZip, onFastbootBundle, onFlash, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
+            StudioTab.MODULES -> ModulesTab(state, padding, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange)
+            StudioTab.DEVICE_TREE -> DeviceTreeScreen(state, padding)
+            StudioTab.SETTINGS -> SettingsHubTab(state, padding, onRequestRoot, onRefreshEnvironment, onOpenRollback, onOpenAdvancedSettings, onOpenAbout)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun StudioNavigation(
+    pagerState: PagerState,
+    pageStateHolder: SaveableStateHolder,
+    enabled: Boolean,
+    onOpenRollback: () -> Unit,
+    onRefreshEnvironment: () -> Unit,
+    content: @Composable (StudioTab, PaddingValues) -> Unit
+) {
+    val selectedTab = StudioTab.entries[pagerState.currentPage]
+    val scope = rememberCoroutineScope()
+    var navigationJob by remember { mutableStateOf<Job?>(null) }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Column { Text("DTBO Studio", fontWeight = FontWeight.SemiBold); Text(selectedTab.label, style = MaterialTheme.typography.labelSmall) } },
                 actions = {
                     if (selectedTab != StudioTab.SETTINGS) {
-                        IconButton(onClick = onOpenRollback) { Icon(Icons.Default.Restore, "备份与恢复") }
-                        IconButton(onClick = onRefreshEnvironment) { Icon(Icons.Default.Refresh, "刷新环境") }
+                        IconButton(onClick = onOpenRollback, enabled = enabled) { Icon(Icons.Default.Restore, "备份与恢复") }
+                        IconButton(onClick = onRefreshEnvironment, enabled = enabled) { Icon(Icons.Default.Refresh, "刷新环境") }
                     }
                 }
             )
         },
         bottomBar = {
             NavigationBar { StudioTab.entries.forEach { tab ->
-                NavigationBarItem(selectedTab == tab, { onTabSelected(tab) }, { Icon(tab.icon, tab.label) }, label = { Text(tab.label) })
+                NavigationBarItem(
+                    selected = selectedTab == tab,
+                    onClick = {
+                        navigationJob?.cancel()
+                        navigationJob = scope.launch { pagerState.animateScrollToPage(tab.ordinal) }
+                    },
+                    icon = { Icon(tab.icon, null) },
+                    label = { Text(tab.label) },
+                    enabled = enabled
+                )
             } }
         }
     ) { padding ->
-        when (selectedTab) {
-            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onSavePatched, onRecoveryZip, onFastbootBundle, onFlash, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
-            StudioTab.MODULES -> ModulesTab(state, padding, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange)
-            StudioTab.DEVICE_TREE -> DeviceTreeScreen(state, padding)
-            StudioTab.SETTINGS -> SettingsHubTab(state, padding, onRequestRoot, onRefreshEnvironment, onOpenRollback, onOpenAdvancedSettings, onOpenAbout)
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize().padding(padding),
+            key = { StudioTab.entries[it].name },
+            userScrollEnabled = enabled
+        ) { page ->
+            val tab = StudioTab.entries[page]
+            pageStateHolder.SaveableStateProvider(tab.name) {
+                content(tab, PaddingValues())
+            }
         }
     }
 }
@@ -78,17 +120,17 @@ private fun OverviewTab(
     onExportRescue: (File) -> Unit, onScreenshot: () -> Unit, onCopy: (String) -> Unit, onClearLogs: () -> Unit
 ) {
     LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Spacer(Modifier.height(2.dp)) }
-        item { StudioHeroCard(state) }
-        item { SourceCard(state, onImport, onExtract) }
+        item(key = "top") { Spacer(Modifier.height(2.dp)) }
+        item(key = "hero") { StudioHeroCard(state) }
+        item(key = "source") { SourceCard(state, onImport, onExtract) }
         if (state.workspace != null) {
-            item { ImageSummaryCard(state) }
-            if (state.stagedChanges.isNotEmpty()) item { StagedChangesCard(state.stagedChanges, onPackage, onReset, state.busy) }
+            item(key = "summary") { ImageSummaryCard(state) }
+            if (state.stagedChanges.isNotEmpty()) item(key = "staged") { StagedChangesCard(state.stagedChanges, onPackage, onReset, state.busy) }
         }
-        state.patchReport?.let { report -> item { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onFlash) } }
-        state.lastFlash?.let { flash -> item { RescueMemoCard(state, onCopy, { onExportBackup(flash.backupFile) }, { onExportRescue(flash.rescueZip) }, onScreenshot) } }
-        item { TerminalCard(state.logs, onClearLogs) }
-        item { Text(state.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 24.dp)) }
+        state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onFlash) } }
+        state.lastFlash?.let { flash -> item(key = "rescue") { RescueMemoCard(state, onCopy, { onExportBackup(flash.backupFile) }, { onExportRescue(flash.rescueZip) }, onScreenshot) } }
+        item(key = "terminal") { TerminalCard(state.logs, onClearLogs) }
+        item(key = "status") { Text(state.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 24.dp)) }
     }
 }
 
