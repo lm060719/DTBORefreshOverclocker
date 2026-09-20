@@ -3,7 +3,7 @@ name: DTBO Studio UI validation
 on:
   push:
     branches:
-      - chatgpt/dtbo-studio-ui
+      - "chatgpt/**"
 
 jobs:
   validate:
