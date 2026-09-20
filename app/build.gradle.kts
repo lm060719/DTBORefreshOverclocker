@@ -14,8 +14,8 @@ android {
         applicationId = "io.mo.dtbooverclocker"
         minSdk = 26
         targetSdk = 37
-        versionCode = 4
-        versionName = "1.1.2"
+        versionCode = 5
+        versionName = "1.1.5"
 
         // Includes uncommitted source edits, unlike a git commit alone. Stable across identical builds.
         val sourceDigest = MessageDigest.getInstance("SHA-256")
@@ -77,6 +77,10 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         inputs.files(File(directory, "dtbo_b.img"), File(directory, "dtbo_b_144hz_scaled.img"))
     }
     providers.gradleProperty("hostDtc").orNull?.let { inputs.file(it) }
+    providers.gradleProperty("avbSampleImage").orNull?.let {
+        systemProperty("dtbo.avbSampleImage", it)
+        inputs.file(it)
+    }
 }
 
 dependencies {

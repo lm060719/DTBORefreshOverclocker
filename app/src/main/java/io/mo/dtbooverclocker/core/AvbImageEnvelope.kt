@@ -5,7 +5,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
 
-/** Preserves the partition dump layout, including AVB footers embedded before trailing padding.
+/** Preserves the partition dump layout, including identical AVB footer copies and trailing padding.
  * Only unsigned hash descriptors can be updated without a signing key. Unknown nonzero trailers
  * and signed vbmeta fail closed instead of silently producing an incomplete flashable image.
  */
@@ -20,7 +20,9 @@ object AvbImageEnvelope {
         val sha256: String,
         val layout: Layout?,
         val magicCandidates: Int,
-        val validFooters: Int
+        val validFooters: Int,
+        // Sorted by position; all accepted copies describe exactly the same vbmeta and payload.
+        val footerOffsets: List<Int>
     ) {
         // A zero-padded image without AVB does not establish a logical envelope boundary.
         val logicalImageSize: Int? get() = layout?.let { it.footer + 64 }
@@ -33,7 +35,8 @@ object AvbImageEnvelope {
         original: ByteArray, originalTotal: Int, payload: ByteArray,
         logSink: (String) -> Unit = {}
     ): ByteArray {
-        val layout = validate(original, originalTotal, logSink, "REBUILD_ORIGINAL").layout
+        val inspection = validate(original, originalTotal, logSink, "REBUILD_ORIGINAL")
+        val layout = inspection.layout
         if (layout == null) {
             require((originalTotal until original.size).all { original[it] == 0.toByte() }) {
                 "镜像尾部含无法识别的数据，不能丢弃后直接打包"
@@ -53,14 +56,15 @@ object AvbImageEnvelope {
         }
         // AVB uses 4096-byte image alignment independently of the DTBO table's page_size.
         val newOffset = ((payload.size.toLong() + 4095) / 4096 * 4096)
-        require(newOffset + vbmeta.size <= layout.footer) { "新 DTBO 与 AVB 尾部重叠，超出可用容量" }
+        require(newOffset + vbmeta.size <= inspection.footerOffsets.first()) { "新 DTBO 与 AVB 尾部重叠，超出可用容量" }
         val result = ByteArray(original.size)
         payload.copyInto(result)
         vbmeta.copyInto(result, newOffset.toInt())
-        original.copyInto(result, layout.footer, layout.footer, layout.footer + 64)
-        buffer(result).apply {
-            putLong(layout.footer + 12, payload.size.toLong())
-            putLong(layout.footer + 20, newOffset)
+        val outputBuffer = buffer(result)
+        inspection.footerOffsets.forEach { footer ->
+            original.copyInto(result, footer, footer, footer + 64)
+            outputBuffer.putLong(footer + 12, payload.size.toLong())
+            outputBuffer.putLong(footer + 20, newOffset)
         }
         validate(result, payload.size, logSink, "REBUILD_OUTPUT")
         return result
@@ -103,6 +107,7 @@ object AvbImageEnvelope {
         var candidates = 0
         var valid = 0
         var selected: Layout? = null
+        val layouts = mutableListOf<Layout>()
         val offsets = mutableListOf<Int>()
         try {
             require(total in 32..bytes.size) { "无效的 DTBO 长度" }
@@ -119,7 +124,8 @@ object AvbImageEnvelope {
                 val status = try {
                     val layout = parseCandidate(bytes, total, offset)
                     valid++
-                    if (selected == null) selected = layout
+                    layouts += layout
+                    selected = layout
                     "structuralValid=true"
                 } catch (e: IllegalArgumentException) {
                     "structuralValid=false, reason=${e.message}"
@@ -138,12 +144,29 @@ object AvbImageEnvelope {
                 }
             } else {
                 require(valid > 0) { "找到 AVBf magic，但没有任何候选通过结构验证" }
-                require(valid == 1) { "找到多个有效 AVB footer，无法安全确定目标" }
                 val layout = requireNotNull(selected)
-                require((total until layout.vbmeta).all { bytes[it] == 0.toByte() } &&
-                    (layout.vbmeta + layout.size until layout.footer).all { bytes[it] == 0.toByte() } &&
-                    (layout.footer + 64 until bytes.size).all { bytes[it] == 0.toByte() }) {
+                // Repeated footer bytes are unambiguous only when every field and vbmeta location
+                // match. Keep every copy, using the outermost footer as the logical boundary.
+                require(layouts.all { it.copy(footer = layout.footer) == layout }) {
+                    "找到多个有效 AVB footer，且内容或指向的 vbmeta 不一致，无法安全确定目标"
+                }
+                require((total until layout.vbmeta).all { bytes[it] == 0.toByte() }) {
                     "AVB 区域外存在未知数据，无法安全重建"
+                }
+                var paddingStart = layout.vbmeta + layout.size
+                layouts.forEach { copy ->
+                    require(copy.footer >= paddingStart &&
+                        (paddingStart until copy.footer).all { bytes[it] == 0.toByte() }) {
+                        "AVB 区域外存在未知数据或 footer 重叠，无法安全重建"
+                    }
+                    paddingStart = copy.footer + 64
+                }
+                require((paddingStart until bytes.size).all { bytes[it] == 0.toByte() }) {
+                    "AVB 区域外存在未知数据，无法安全重建"
+                }
+                if (valid > 1) {
+                    logSink("[AVB][$stage] identicalFooterCopies=$valid, preserving all copies at offsets=" +
+                        layouts.take(32).map { it.footer })
                 }
                 logSink("[AVB][$stage] selectedFooter=${layout.footer}, logicalImageSize=${layout.footer + 64}, " +
                     "containerSize=${bytes.size}")
@@ -154,7 +177,7 @@ object AvbImageEnvelope {
             logSink("[ERROR] $message")
             throw IllegalArgumentException(message, e)
         }
-        return Inspection(bytes.size, total, sha256, selected, candidates, valid)
+        return Inspection(bytes.size, total, sha256, selected, candidates, valid, layouts.map { it.footer })
     }
 
     private fun parseCandidate(bytes: ByteArray, total: Int, f: Int): Layout {

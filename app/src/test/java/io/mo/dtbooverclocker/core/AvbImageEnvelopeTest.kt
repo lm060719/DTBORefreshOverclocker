@@ -188,6 +188,101 @@ class AvbImageEnvelopeTest {
         } finally { out.delete() }
     }
 
+    @Test fun identicalFootersArePreservedAndUpdatedTogetherIncludingWithTrailingPadding() {
+        for (padding in listOf(0, 4096)) {
+            val original = fixture()
+            val second = original.size - 64
+            original.copyInto(original, second, footer, footer + 64)
+            val raw = original.copyOf(original.size + padding)
+            val logs = mutableListOf<String>()
+            val inspected = AvbImageEnvelope.validate(raw, 128, logs::add)
+            assertEquals(2, inspected.validFooters)
+            assertEquals(listOf(footer, second), inspected.footerOffsets)
+            assertEquals(second, inspected.layout!!.footer)
+            assertEquals(second + 64, inspected.logicalImageSize)
+
+            val payload = raw.copyOf(6000).apply { fill(0, 128); this[100] = 7 }
+            ByteBuffer.wrap(payload).putInt(4, payload.size)
+            val result = AvbImageEnvelope.rebuild(raw, 128, payload)
+            assertEquals(raw.size, result.size)
+            for (offset in listOf(footer, second)) {
+                assertEquals(6000L, ByteBuffer.wrap(result).getLong(offset + 12))
+                assertEquals(8192L, ByteBuffer.wrap(result).getLong(offset + 20))
+            }
+            assertArrayEquals(result.copyOfRange(footer, footer + 64), result.copyOfRange(second, second + 64))
+            assertEquals(2, AvbImageEnvelope.validate(result, payload.size).validFooters)
+            assertTrue(result.copyOfRange(second + 64, result.size).all { it == 0.toByte() })
+            val out = File.createTempFile("duplicate_footer_noop", ".img")
+            try {
+                DtboImageCodec.rebuild(DtboImageCodec.parse(raw), emptyMap(), out)
+                assertArrayEquals(raw, out.readBytes())
+            } finally { out.delete() }
+        }
+    }
+
+    @Test fun duplicateFootersDoNotPermitOverwritingTheEarlierFooterOrUnknownPadding() {
+        val raw = fixture()
+        raw.copyInto(raw, raw.size - 64, footer, footer + 64)
+        assertTrue(assertThrows(IllegalArgumentException::class.java) {
+            AvbImageEnvelope.rebuild(raw, 128, ByteArray(footer))
+        }.message!!.contains("超出可用容量"))
+        for (offset in listOf(256, 5000, footer + 128)) {
+            val corrupt = raw.copyOf().apply { this[offset] = 1 }
+            assertTrue(assertThrows(IllegalArgumentException::class.java) {
+                AvbImageEnvelope.validate(corrupt, 128)
+            }.message!!.contains("AVB 区域外存在未知数据"))
+        }
+    }
+
+    @Test fun conflictingFooterFieldsAreStillRejected() {
+        val mutations: List<(ByteBuffer, Int) -> Unit> = listOf(
+            { b, offset -> b.putInt(offset + 4, 2) },
+            { b, offset -> b.putInt(offset + 8, 1) },
+            { b, offset -> b.putLong(offset + 12, 256) }
+        )
+        mutations.forEach { mutate ->
+            val raw = fixture()
+            val second = raw.size - 64
+            raw.copyInto(raw, second, footer, footer + 64)
+            mutate(ByteBuffer.wrap(raw), second)
+            val error = assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.validate(raw, 128) }
+            assertTrue(error.message!!.contains("多个有效 AVB footer"))
+            assertTrue(error.message!!.contains("validFooters=2"))
+        }
+    }
+
+    /** Opt in with -PavbSampleImage=<path to the reported dtbo_a.img>. Never modifies the sample. */
+    @Test fun reportedImageImportsAndRebuildsWithBothFootersIntact() {
+        val sample = System.getProperty("dtbo.avbSampleImage", "") ?: ""
+        org.junit.Assume.assumeTrue("Local AVB sample was not configured", sample.isNotBlank())
+        val raw = File(sample).readBytes()
+        assertEquals("26aeb45e60c4b24ebdfa50173c96164583289812c1cb5dd032cabe2f1db8a625",
+            io.mo.dtbooverclocker.util.HashUtils.sha256(raw))
+        val original = DtboImageCodec.parse(raw)
+        val inspection = AvbImageEnvelope.validate(raw, original.metadata.totalSize)
+        assertEquals(2, inspection.validFooters)
+        assertEquals(raw.size, inspection.logicalImageSize)
+        val out = File.createTempFile("reported_avb_roundtrip", ".img")
+        try {
+            DtboImageCodec.rebuild(original, emptyMap(), out)
+            assertArrayEquals(raw, out.readBytes())
+            // Change the FDT boot CPU ID to exercise the rebuild path without altering the tree.
+            val replacement = original.entries.first().decodedBytes.copyOf().apply {
+                this[31] = (this[31].toInt() xor 1).toByte()
+            }
+            DtboImageCodec.rebuild(original, mapOf(0 to replacement), out)
+            val result = out.readBytes()
+            val rebuilt = DtboImageCodec.parse(result)
+            assertEquals(raw.size, result.size)
+            assertArrayEquals(replacement, rebuilt.entries.first().decodedBytes)
+            assertTrue(DtboImageCodec.metadataEquivalent(original.metadata, rebuilt.metadata))
+            assertEquals(2, AvbImageEnvelope.validate(result, rebuilt.metadata.totalSize).validFooters)
+            assertArrayEquals(result.copyOfRange(20971456, 20971520), result.copyOfRange(25165760, 25165824))
+            assertFalse(raw.contentEquals(result))
+            println("PASS: reported 24 MiB image imports, no-op is byte-identical, changed payload passes AVB with both footers preserved")
+        } finally { out.delete() }
+    }
+
     @Test fun rejectsTwoStructuralFootersEvenIfSecondUsesUnsupportedSigning() {
         val raw = fixture()
         raw.copyInto(raw, 8192, 4096, 4608)
