@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -58,8 +59,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.mo.dtbooverclocker.BuildConfig
+import io.mo.dtbooverclocker.ui.components.UpdateCheckDialog
+import io.mo.dtbooverclocker.update.GitHubUpdateChecker
 
-private const val GITHUB_REPO_URL = "https://github.com/lm060719/DTBORefreshOverclocker"
+private const val GITHUB_REPO_URL = GitHubUpdateChecker.REPOSITORY_URL
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +70,7 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
     BackHandler(onBack = onNavigateBack)
     val context = LocalContext.current
     var showDisclaimerDialog by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -166,6 +170,15 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(4.dp))
+
+            OutlinedButton(
+                onClick = { showUpdateDialog = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("检测更新")
+            }
 
             // Source Code Section
             Card(
@@ -333,6 +346,10 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
 
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    if (showUpdateDialog) {
+        UpdateCheckDialog(onDismiss = { showUpdateDialog = false })
     }
 
     if (showDisclaimerDialog) {

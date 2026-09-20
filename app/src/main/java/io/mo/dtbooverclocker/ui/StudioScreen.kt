@@ -98,7 +98,7 @@ private fun StudioHeroCard(state: MainUiState) {
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Android Device Tree Toolkit", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            Text("导入、分析、编辑、验证并重新构建 DTBO。刷新率现在只是功能模块之一。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("导入、分析、编辑、验证并重新构建 DTBO。", color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip({}, { Text(if (state.rootState.granted) "Root ✓" else "免 Root 可用") })
                 state.slotInfo?.let { AssistChip({}, { Text(it.label) }) }

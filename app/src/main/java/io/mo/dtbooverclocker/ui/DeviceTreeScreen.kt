@@ -20,6 +20,13 @@ fun DeviceTreeScreen(state: MainUiState, contentPadding: PaddingValues) {
     val workspace = state.workspace
     var query by remember { mutableStateOf("") }
     var selectedEntry by remember { mutableIntStateOf(0) }
+    val file = workspace?.dtsFiles?.getOrNull(selectedEntry)
+    val nodes = remember(file, query) {
+        if (file == null || !file.isFile) emptyList()
+        else parseNodeSummaries(file.readText()).filter {
+            query.isBlank() || it.path.contains(query, ignoreCase = true)
+        }
+    }
     LazyColumn(Modifier.fillMaxSize().padding(contentPadding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Spacer(Modifier.height(2.dp)) }
         item { Column { Text("设备树", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("当前阶段提供只读浏览与搜索；下一阶段在这里接入通用属性编辑。", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
@@ -28,8 +35,6 @@ fun DeviceTreeScreen(state: MainUiState, contentPadding: PaddingValues) {
         } else {
             item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { workspace.dtsFiles.forEachIndexed { index, _ -> Card(Modifier.clickable { selectedEntry = index }) { Text("Entry " + index, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if (selectedEntry == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) } } } }
             item { OutlinedTextField(query, { query = it }, label = { Text("搜索节点路径") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-            val file = workspace.dtsFiles.getOrNull(selectedEntry)
-            val nodes = remember(file, query) { if (file == null || !file.isFile) emptyList() else parseNodeSummaries(file.readText()).filter { query.isBlank() || it.path.contains(query, ignoreCase = true) } }
             item { Text("Entry " + selectedEntry + " · " + nodes.size + " 个节点", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(nodes.take(500)) { node ->
                 Card(Modifier.fillMaxWidth()) { Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) { Icon(Icons.Default.AccountTree, null); Column(Modifier.weight(1f)) { Text(node.path, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall); Text(node.propertyCount.toString() + " 个直接属性", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
