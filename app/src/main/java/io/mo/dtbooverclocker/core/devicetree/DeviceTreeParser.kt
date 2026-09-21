@@ -195,7 +195,6 @@ object DeviceTreeParser
             return when (tokens.size)
             {
                 1 -> PropertyType.U32
-                2 -> PropertyType.U64
                 else -> PropertyType.CELLS
             }
         }
