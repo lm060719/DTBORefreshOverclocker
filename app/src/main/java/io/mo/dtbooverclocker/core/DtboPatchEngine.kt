@@ -26,6 +26,7 @@ data class TimingApplyResult(
     val updatedWorkspace: DtboWorkspace,
     val selectedCandidateId: String?,
     val stagedChange: StagedChange,
+    val operations: List<DeviceTreeChange>,
     val changes: List<String>,
     val warnings: List<String>
 )
@@ -184,8 +185,16 @@ class DtboPatchEngine(
             "候选节点对应的 DTB 索引无效"
         }
 
-        val patchResult = DtsTimingPatcher.patch(candidate, targetHz, strategy, mode, customParams)
-        candidate.dtsFile.writeText(patchResult.text)
+        val plan = TimingDeviceTreePlanner.plan(
+            candidate = candidate,
+            targetHz = targetHz,
+            strategy = strategy,
+            mode = mode,
+            customParams = customParams
+        )
+
+        // 真正写入工作区的内容来自通用 DeviceTreeChange 回放结果，而不是旧文本修补器。
+        candidate.dtsFile.writeText(plan.replayedText)
 
         val refreshedForEntry = DtsTimingPatcher.analyzeEntry(candidate.entryIndex, candidate.dtsFile)
         val allCandidates = workspace.candidates.toMutableList()
@@ -195,7 +204,8 @@ class DtboPatchEngine(
         val nodeName = TimingUtils.parseTimingNodeName(candidate.nodePath)
         val nextSelectedId = when (mode) {
             PatchMode.APPEND_NEW -> {
-                refreshedForEntry.firstOrNull { it.currentHz == targetHz }?.id
+                refreshedForEntry.firstOrNull { it.nodePath == plan.targetNodePath }?.id
+                    ?: refreshedForEntry.firstOrNull { it.currentHz == targetHz }?.id
                     ?: refreshedForEntry.firstOrNull()?.id
             }
             PatchMode.OVERWRITE_EXISTING -> {
@@ -234,8 +244,9 @@ class DtboPatchEngine(
             updatedWorkspace = workspace.copy(candidates = allCandidates),
             selectedCandidateId = nextSelectedId,
             stagedChange = staged,
-            changes = patchResult.changes,
-            warnings = patchResult.warnings
+            operations = plan.operations,
+            changes = plan.changes,
+            warnings = plan.warnings
         )
     }
 
@@ -268,6 +279,7 @@ class DtboPatchEngine(
     suspend fun packageStaged(
         workspace: DtboWorkspace,
         stagedChanges: List<StagedChange>,
+        timingDeviceTreeChanges: List<DeviceTreeChange> = emptyList(),
         deviceTreeChanges: List<DeviceTreeChange> = emptyList(),
         modifiedEntryIndices: Set<Int>
     ): PatchReport = withContext(Dispatchers.IO) {
@@ -308,15 +320,24 @@ class DtboPatchEngine(
 
                 val originalDecoded = workspace.binaryImage.entries[index].decodedBytes
                 val rebuiltDecoded = targetDtb.readBytes()
-                val modifiedPaths = stagedChanges
-                    .filter { it.entryIndex == index }
-                    .map { it.nodePath }
-                    .toSet()
+                val timingOpsForEntry = timingDeviceTreeChanges.filter { it.entryIndex == index }
                 val genericChanges = deviceTreeChanges.filter { it.entryIndex == index }
-                val modifiedProperties = genericChanges
+                val declaredChanges = timingOpsForEntry + genericChanges
+
+                // 新版刷新率模块已经生成精确 DeviceTreeChange，因此优先使用属性/节点白名单。
+                // 仅在没有低层操作记录时保留旧 timing-node 范围白名单，兼容旧调用路径。
+                val modifiedPaths = if (timingOpsForEntry.isEmpty()) {
+                    stagedChanges
+                        .filter { it.entryIndex == index }
+                        .map { it.nodePath }
+                        .toSet()
+                } else {
+                    emptySet()
+                }
+                val modifiedProperties = declaredChanges
                     .mapNotNull { it.allowedPropertyPath() }
                     .toSet()
-                val modifiedNodePaths = genericChanges
+                val modifiedNodePaths = declaredChanges
                     .flatMap { it.allowedNodePaths() }
                     .toSet()
                 verifyDtbIntegrity(
@@ -407,6 +428,7 @@ class DtboPatchEngine(
         return packageStaged(
             workspace = applyResult.updatedWorkspace,
             stagedChanges = listOf(applyResult.stagedChange),
+            timingDeviceTreeChanges = applyResult.operations,
             deviceTreeChanges = emptyList(),
             modifiedEntryIndices = setOf(candidate.entryIndex)
         )
