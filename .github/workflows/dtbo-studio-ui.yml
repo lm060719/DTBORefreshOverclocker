@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - "chatgpt"
+  workflow_dispatch:
 
 jobs:
   validate:
@@ -46,10 +47,10 @@ jobs:
           path: DTBOStudio_Source.zip
           if-no-files-found: error
 
-      # 可选：归档生成的 Debug APK
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: DTBOStudio_Debug_APK
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
+          retention-days: 14
