@@ -30,10 +30,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: ./gradlew testDebugUnitTest --stacktrace -Dorg.gradle.java.home="$JAVA_HOME"
 
       - name: Assemble debug
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace -Dorg.gradle.java.home="$JAVA_HOME"
 
       - name: Package source
         run: |
