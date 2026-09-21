@@ -114,6 +114,44 @@ object DtsNumericValueCodec
         return encodeLike(originalRawValue, value)
     }
 
+    fun decodeCells(rawValue: String?): List<Long>?
+    {
+        val raw = rawValue?.trim() ?: return null
+        return parseCellList(raw)
+    }
+
+    fun encodeCellsLike(
+        originalRawValue: String?,
+        values: List<Long>
+    ): String
+    {
+        require(values.isNotEmpty()) {
+            "DTS Cell 列表不能为空"
+        }
+        require(values.all { it in 0..0xffffffffL }) {
+            "DTS Cell 列表包含超出 U32 的值：$values"
+        }
+
+        val raw = originalRawValue?.trim().orEmpty()
+        val originalTokens = parseCellList(raw)?.let {
+            raw.removePrefix("<")
+                .removeSuffix(">")
+                .trim()
+                .split(Regex("\\s+"))
+                .filter(String::isNotBlank)
+        }.orEmpty()
+        val useHex = originalTokens.any { it.startsWith("0x", ignoreCase = true) } ||
+            originalTokens.isEmpty()
+
+        return values.joinToString(
+            prefix = "<",
+            postfix = ">",
+            separator = " "
+        ) { value ->
+            if (useHex) "0x${value.toString(16)}" else value.toString()
+        }
+    }
+
     private fun defaultCells(value: Long): String
     {
         return if (value <= 0xffffffffL)
@@ -130,6 +168,12 @@ object DtsNumericValueCodec
 
     private fun parseCells(raw: String): List<Long>?
     {
+        val cells = parseCellList(raw) ?: return null
+        return cells.takeIf { it.size in 1..2 }
+    }
+
+    private fun parseCellList(raw: String): List<Long>?
+    {
         if (!raw.startsWith('<') || !raw.endsWith('>') || '&' in raw)
         {
             return null
@@ -142,13 +186,18 @@ object DtsNumericValueCodec
             .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
 
-        if (tokens.isEmpty() || tokens.size > 2)
+        if (tokens.isEmpty())
         {
             return null
         }
 
         return tokens.map { token ->
-            parseUnsignedNumber(token) ?: return null
+            val value = parseUnsignedNumber(token) ?: return null
+            if (value !in 0..0xffffffffL)
+            {
+                return null
+            }
+            value
         }
     }
 

@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
+import io.mo.dtbooverclocker.model.ResolutionScope
 import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -30,7 +31,7 @@ enum class StudioTab(val label: String, val icon: ImageVector) {
     SETTINGS("设置", Icons.Default.Settings)
 }
 
-private enum class StudioModule { REFRESH_RATE }
+private enum class StudioModule { REFRESH_RATE, RESOLUTION }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +44,9 @@ fun StudioScreen(
     onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit,
     onCustomVbp: (String) -> Unit, onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit,
     onApplySuggestedCustom: () -> Unit, onStageChange: () -> Unit,
+    onResolutionWidth: (String) -> Unit, onResolutionHeight: (String) -> Unit,
+    onResolutionScope: (ResolutionScope) -> Unit, onResolutionPreset: (Int, Int) -> Unit,
+    onStageResolution: () -> Unit,
     onSetDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onAddDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onDeleteDeviceTreeProperty: (Int, String, String) -> Unit,
@@ -59,7 +63,12 @@ fun StudioScreen(
     StudioNavigation(pagerState, pageStateHolder, !state.busy, onOpenRollback, onRefreshEnvironment) { tab, padding ->
         when (tab) {
             StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onSavePatched, onRecoveryZip, onFastbootBundle, onFlash, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
-            StudioTab.MODULES -> ModulesTab(state, padding, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange)
+            StudioTab.MODULES -> ModulesTab(
+                state, padding, onSelect, onTarget, onStrategy, onPatchMode,
+                onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp,
+                onApplySuggestedCustom, onStageChange, onResolutionWidth, onResolutionHeight,
+                onResolutionScope, onResolutionPreset, onStageResolution
+            )
             StudioTab.DEVICE_TREE -> DeviceTreeScreen(
                 state = state,
                 contentPadding = padding,
@@ -145,6 +154,9 @@ private fun OverviewTab(
         if (state.workspace != null) {
             item(key = "summary") { ImageSummaryCard(state) }
             if (state.stagedChanges.isNotEmpty()) item(key = "staged") { StagedChangesCard(state.stagedChanges, onPackage, onReset, state.busy) }
+            if (state.moduleStagedChanges.isNotEmpty()) item(key = "module-staged") {
+                ModuleStagedChangesCard(state, onPackage, onReset)
+            }
             if (state.deviceTreeChanges.isNotEmpty()) item(key = "device-tree-staged") {
                 DeviceTreeStagedChangesCard(state, onPackage, onReset)
             }
@@ -156,6 +168,42 @@ private fun OverviewTab(
     }
 }
 
+
+@Composable
+private fun ModuleStagedChangesCard(
+    state: MainUiState,
+    onPackage: () -> Unit,
+    onReset: () -> Unit
+)
+{
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "功能模块修改 · ${state.moduleStagedChanges.size} 项",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            state.moduleStagedChanges.takeLast(4).forEach { change ->
+                Text(
+                    "• ${change.module.displayName}: ${change.summary}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (state.moduleStagedChanges.any { !it.directFlashAllowed }) {
+                Text(
+                    "当前包含仅允许导出验证的功能模块修改，因此 Root 直刷已禁用。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
+                OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
+            }
+        }
+    }
+}
 
 @Composable
 private fun DeviceTreeStagedChangesCard(
@@ -212,7 +260,10 @@ private fun ModulesTab(
     state: MainUiState, padding: PaddingValues, onSelect: (String) -> Unit, onTarget: (Int) -> Unit,
     onStrategy: (PatchStrategy) -> Unit, onPatchMode: (PatchMode) -> Unit,
     onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit, onCustomVbp: (String) -> Unit,
-    onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit, onApplySuggestedCustom: () -> Unit, onStageChange: () -> Unit
+    onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit, onApplySuggestedCustom: () -> Unit,
+    onStageChange: () -> Unit, onResolutionWidth: (String) -> Unit, onResolutionHeight: (String) -> Unit,
+    onResolutionScope: (ResolutionScope) -> Unit, onResolutionPreset: (Int, Int) -> Unit,
+    onStageResolution: () -> Unit
 ) {
     var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
     val workspace = state.workspace
@@ -225,7 +276,8 @@ private fun ModulesTab(
             item { Text("显示", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             item { FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ModuleCard("刷新率", workspace.candidates.size.toString() + " 个时序候选", Icons.Default.Monitor, workspace.candidates.isNotEmpty(), activeModule == StudioModule.REFRESH_RATE) { activeModule = if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE }
-                ModuleCard("分辨率", "规划中", Icons.Default.AspectRatio, false)
+                val resolutionCandidates = workspace.candidates.count { it.hActive != null && it.vActive != null }
+                ModuleCard("分辨率", "$resolutionCandidates 个可分析档位", Icons.Default.AspectRatio, resolutionCandidates > 0, activeModule == StudioModule.RESOLUTION) { activeModule = if (activeModule == StudioModule.RESOLUTION) null else StudioModule.RESOLUTION }
                 ModuleCard("DSC", "规划中", Icons.Default.Tune, false)
                 ModuleCard("亮度 / HBM", "规划中", Icons.Default.Brightness6, false)
             } }
@@ -239,6 +291,20 @@ private fun ModulesTab(
             if (activeModule == StudioModule.REFRESH_RATE && workspace.candidates.isNotEmpty()) {
                 item { HorizontalDivider() }
                 item { TimingPanel(state, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange) }
+            }
+            if (activeModule == StudioModule.RESOLUTION) {
+                item { HorizontalDivider() }
+                item {
+                    ResolutionPanel(
+                        state = state,
+                        onSelect = onSelect,
+                        onWidth = onResolutionWidth,
+                        onHeight = onResolutionHeight,
+                        onScope = onResolutionScope,
+                        onPreset = onResolutionPreset,
+                        onStage = onStageResolution
+                    )
+                }
             }
         }
         item { Spacer(Modifier.height(24.dp)) }

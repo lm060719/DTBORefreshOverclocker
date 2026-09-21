@@ -27,6 +27,23 @@ class DtsNumericValueCodecTest
     }
 
     @Test
+    fun decodesAndReencodesMultiCellListsForCoupledDisplayProperties()
+    {
+        val raw = "<0x5a0 0x14 0x5a0 0x14 0x5a0 0x14>"
+        assertEquals(
+            listOf(1440L, 20L, 1440L, 20L, 1440L, 20L),
+            DtsNumericValueCodec.decodeCells(raw)
+        )
+        assertEquals(
+            "<0x438 0x14 0x438 0x14 0x438 0x14>",
+            DtsNumericValueCodec.encodeCellsLike(
+                raw,
+                listOf(1080L, 20L, 1080L, 20L, 1080L, 20L)
+            )
+        )
+    }
+
+    @Test
     fun stringAndByteRepresentationsAreSafelyReencodedAsEquivalentBytes()
     {
         assertEquals(

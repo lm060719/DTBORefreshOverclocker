@@ -284,6 +284,11 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 onCustomHbp = viewModel::setCustomHbp,
                 onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
                 onStageChange = viewModel::stageTimingChange,
+                onResolutionWidth = viewModel::setResolutionWidth,
+                onResolutionHeight = viewModel::setResolutionHeight,
+                onResolutionScope = viewModel::setResolutionScope,
+                onResolutionPreset = viewModel::applyResolutionPreset,
+                onStageResolution = viewModel::stageResolutionChange,
                 onSetDeviceTreeProperty = viewModel::setDeviceTreeProperty,
                 onAddDeviceTreeProperty = viewModel::addDeviceTreeProperty,
                 onDeleteDeviceTreeProperty = viewModel::deleteDeviceTreeProperty,
@@ -1141,6 +1146,11 @@ internal fun OutputCard(
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("输出", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             val modeTitle = when {
+                state.moduleStagedChanges.isNotEmpty() &&
+                    (report.stagedChanges.isNotEmpty() || state.deviceTreeChanges.isNotEmpty()) ->
+                    "集中打包完成：${report.stagedChanges.size} 项时序 + ${state.moduleStagedChanges.size} 项功能模块 + ${state.deviceTreeChanges.size} 项自由编辑"
+                state.moduleStagedChanges.isNotEmpty() ->
+                    "功能模块修改打包完成：共 ${state.moduleStagedChanges.size} 项"
                 state.deviceTreeChanges.isNotEmpty() && report.stagedChanges.isNotEmpty() ->
                     "集中打包完成：${report.stagedChanges.size} 项时序修改 + ${state.deviceTreeChanges.size} 项通用设备树修改"
                 state.deviceTreeChanges.isNotEmpty() ->
@@ -1174,6 +1184,7 @@ internal fun OutputCard(
             val canFlash = state.rootState.granted &&
                 state.sourceMode == SourceMode.ROOT_PARTITION &&
                 state.deviceTreeChanges.isEmpty() &&
+                state.moduleStagedChanges.all { it.directFlashAllowed } &&
                 report.stagedChanges.none { it.strategy == PatchStrategy.FRAMERATE_ONLY } &&
                 report.strategy != PatchStrategy.FRAMERATE_ONLY
             Button(
@@ -1187,10 +1198,13 @@ internal fun OutputCard(
             }
             if (!canFlash) {
                 Text(
-                    if (state.deviceTreeChanges.isNotEmpty()) {
-                        "检测到通用设备树自由编辑：当前阶段禁止 Root 直刷，请导出镜像或刷机包验证。"
-                    } else {
-                        "直接刷写要求：Root 已授权、镜像来自当前手机分区、且不是“仅 Framerate”策略。"
+                    when {
+                        state.deviceTreeChanges.isNotEmpty() ->
+                            "检测到通用设备树自由编辑：当前阶段禁止 Root 直刷，请导出镜像或刷机包验证。"
+                        state.moduleStagedChanges.any { !it.directFlashAllowed } ->
+                            "检测到分辨率等仅允许导出验证的功能模块修改：当前阶段禁止 Root 直刷。"
+                        else ->
+                            "直接刷写要求：Root 已授权、镜像来自当前手机分区、且不是“仅 Framerate”策略。"
                     },
                     style = MaterialTheme.typography.labelSmall
                 )

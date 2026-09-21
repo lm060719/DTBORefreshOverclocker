@@ -22,9 +22,11 @@ import io.mo.dtbooverclocker.model.BackupVerificationStatus
 import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.FlashResult
+import io.mo.dtbooverclocker.model.ModuleStagedChange
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchReport
 import io.mo.dtbooverclocker.model.PatchStrategy
+import io.mo.dtbooverclocker.model.ResolutionScope
 import io.mo.dtbooverclocker.model.RootState
 import io.mo.dtbooverclocker.model.SlotInfo
 import io.mo.dtbooverclocker.model.SourceMode
@@ -169,6 +171,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 selectedCandidateId = id,
                 targetHz = suggestedTarget(candidate.currentHz),
+                resolutionWidthText = candidate.hActive?.let { width ->
+                    if (width % 4 == 0) (width * 3 / 4).toString() else ""
+                } ?: "",
+                resolutionHeightText = candidate.vActive?.let { height ->
+                    if (height % 4 == 0) (height * 3 / 4).toString() else ""
+                } ?: "",
                 patchReport = null,
                 lastFlash = null
             )
@@ -276,6 +284,90 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         patchReport = null,
                         status = "已暂存修改：${result.stagedChange.summary} (共 ${newStaged.size} 项修改待打包)",
                         patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode
+                    )
+                }
+            }.onFailure(::showError)
+        }
+    }
+
+
+    fun setResolutionWidth(value: String)
+    {
+        _state.update {
+            it.copy(
+                resolutionWidthText = value.filter(Char::isDigit),
+                patchReport = null
+            )
+        }
+    }
+
+    fun setResolutionHeight(value: String)
+    {
+        _state.update {
+            it.copy(
+                resolutionHeightText = value.filter(Char::isDigit),
+                patchReport = null
+            )
+        }
+    }
+
+    fun setResolutionScope(scope: ResolutionScope)
+    {
+        _state.update { it.copy(resolutionScope = scope, patchReport = null) }
+    }
+
+    fun applyResolutionPreset(width: Int, height: Int)
+    {
+        _state.update {
+            it.copy(
+                resolutionWidthText = width.toString(),
+                resolutionHeightText = height.toString(),
+                patchReport = null
+            )
+        }
+    }
+
+    fun stageResolutionChange()
+    {
+        viewModelScope.launch {
+            val current = _state.value
+            val workspace = current.workspace ?: return@launch showError(
+                IllegalStateException("请先导入或提取 DTBO 镜像")
+            )
+            val candidate = workspace.candidates
+                .firstOrNull { it.id == current.selectedCandidateId }
+                ?: return@launch showError(IllegalStateException("请选择一个带分辨率信息的 DSI 时序节点"))
+
+            val targetWidth = current.resolutionWidthText.toIntOrNull()
+                ?: return@launch showError(IllegalArgumentException("请输入有效的目标宽度"))
+            val targetHeight = current.resolutionHeightText.toIntOrNull()
+                ?: return@launch showError(IllegalArgumentException("请输入有效的目标高度"))
+
+            runCatching {
+                patchEngine.applyResolutionChange(
+                    workspace = workspace,
+                    candidate = candidate,
+                    targetWidth = targetWidth,
+                    targetHeight = targetHeight,
+                    scope = current.resolutionScope
+                )
+            }.onSuccess { result ->
+                val newModuleChanges = current.moduleStagedChanges + result.stagedChange
+                val newModuleOperations = current.moduleDeviceTreeChanges + result.operations
+                val total = current.stagedChanges.size +
+                    newModuleChanges.size +
+                    current.deviceTreeChanges.size
+
+                _state.update {
+                    it.copy(
+                        workspace = result.updatedWorkspace,
+                        selectedCandidateId = result.selectedCandidateId,
+                        moduleStagedChanges = newModuleChanges,
+                        moduleDeviceTreeChanges = newModuleOperations,
+                        modifiedEntryIndices = current.modifiedEntryIndices + candidate.entryIndex,
+                        patchReport = null,
+                        lastFlash = null,
+                        status = "已暂存分辨率修改：${result.stagedChange.summary} (共 $total 项修改待打包)"
                     )
                 }
             }.onFailure(::showError)
@@ -406,6 +498,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val remaining = current.deviceTreeChanges.dropLast(1)
                 val modifiedEntries = (
                     current.stagedChanges.map { it.entryIndex } +
+                        current.moduleStagedChanges.map { it.entryIndex } +
                         remaining.map { it.entryIndex }
                     ).toSet()
                 _state.update {
@@ -442,7 +535,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 change to updatedWorkspace
             }.onSuccess { (change, updatedWorkspace) ->
                 val newChanges = current.deviceTreeChanges + change
-                val total = current.stagedChanges.size + newChanges.size
+                val total = current.stagedChanges.size + current.moduleStagedChanges.size + newChanges.size
                 _state.update {
                     it.copy(
                         workspace = updatedWorkspace,
@@ -471,10 +564,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         selectedCandidateId = restoredWorkspace.candidates.firstOrNull()?.id,
                         stagedChanges = emptyList(),
                         timingDeviceTreeChanges = emptyList(),
+                        moduleStagedChanges = emptyList(),
+                        moduleDeviceTreeChanges = emptyList(),
                         deviceTreeChanges = emptyList(),
                         modifiedEntryIndices = emptySet(),
                         patchReport = null,
-                        status = "已重置所有时序修改，恢复为原始档位"
+                        status = "已重置所有修改，恢复原始工作区"
                     )
                 }
             }.onFailure(::showError)
@@ -488,8 +583,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val workspace = current.workspace ?: return@launch showError(
                 IllegalStateException("请先导入或提取 DTBO 镜像")
             )
-            requireOrReport(current.stagedChanges.isNotEmpty() || current.deviceTreeChanges.isNotEmpty()) {
-                "当前尚未暂存任何修改，请先修改时序或设备树属性后再打包"
+            requireOrReport(
+                current.stagedChanges.isNotEmpty() ||
+                    current.moduleStagedChanges.isNotEmpty() ||
+                    current.deviceTreeChanges.isNotEmpty()
+            ) {
+                "当前尚未暂存任何修改，请先修改功能模块、时序或设备树属性后再打包"
             } ?: return@launch
 
             setBusy(true, "正在重编译 DTB 并集中打包 DTBO 镜像…")
@@ -498,6 +597,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     workspace = workspace,
                     stagedChanges = current.stagedChanges,
                     timingDeviceTreeChanges = current.timingDeviceTreeChanges,
+                    moduleStagedChanges = current.moduleStagedChanges,
+                    moduleDeviceTreeChanges = current.moduleDeviceTreeChanges,
                     deviceTreeChanges = current.deviceTreeChanges,
                     modifiedEntryIndices = current.modifiedEntryIndices
                 )
@@ -505,7 +606,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update {
                     it.copy(
                         patchReport = report,
-                        status = "打包完成，成功生成 ${report.outputImage.name} (包含 ${current.stagedChanges.size + current.deviceTreeChanges.size} 项修改)"
+                        status = "打包完成，成功生成 ${report.outputImage.name} (包含 ${current.stagedChanges.size + current.moduleStagedChanges.size + current.deviceTreeChanges.size} 项修改)"
                     )
                 }
                 refreshCacheSize()
@@ -530,6 +631,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } ?: return@launch
             requireOrReport(current.deviceTreeChanges.isEmpty()) {
                 "通用设备树自由编辑当前阶段禁止 Root 直刷。请先导出镜像或刷机包进行离线验证。"
+            } ?: return@launch
+            requireOrReport(current.moduleStagedChanges.all { it.directFlashAllowed }) {
+                "当前包含尚未开放 Root 直刷的功能模块修改。分辨率模块请先导出镜像或刷机包离线验证。"
             } ?: return@launch
 
             setBusy(true, "正在执行备份、救援包生成与单槽位刷写…")
@@ -836,9 +940,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 workspace = workspace,
                 selectedCandidateId = selectedCandidate?.id,
                 targetHz = suggestedTarget(selectedCandidate?.currentHz ?: 60),
+                resolutionWidthText = selectedCandidate?.hActive?.let { width ->
+                    if (width % 4 == 0) (width * 3 / 4).toString() else ""
+                } ?: "",
+                resolutionHeightText = selectedCandidate?.vActive?.let { height ->
+                    if (height % 4 == 0) (height * 3 / 4).toString() else ""
+                } ?: "",
                 patchReport = null,
                 stagedChanges = emptyList(),
                 timingDeviceTreeChanges = emptyList(),
+                moduleStagedChanges = emptyList(),
+                moduleDeviceTreeChanges = emptyList(),
                 deviceTreeChanges = emptyList(),
                 modifiedEntryIndices = emptySet(),
                 lastFlash = null,
@@ -911,6 +1023,8 @@ data class MainUiState(
     val patchReport: PatchReport? = null,
     val stagedChanges: List<StagedChange> = emptyList(),
     val timingDeviceTreeChanges: List<DeviceTreeChange> = emptyList(),
+    val moduleStagedChanges: List<ModuleStagedChange> = emptyList(),
+    val moduleDeviceTreeChanges: List<DeviceTreeChange> = emptyList(),
     val deviceTreeChanges: List<DeviceTreeChange> = emptyList(),
     val modifiedEntryIndices: Set<Int> = emptySet(),
     val lastFlash: FlashResult? = null,
@@ -923,6 +1037,9 @@ data class MainUiState(
     val logFilesSizeBytes: Long = 0L,
     val backups: List<BackupRecord> = emptyList(),
     val backupVerificationStates: Map<String, BackupVerificationState> = emptyMap(),
+    val resolutionWidthText: String = "",
+    val resolutionHeightText: String = "",
+    val resolutionScope: ResolutionScope = ResolutionScope.MATCHING_GROUP,
     val customPixelClockText: String = "",
     val customVfpText: String = "",
     val customVbpText: String = "",

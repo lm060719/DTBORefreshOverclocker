@@ -112,7 +112,13 @@ fun DeviceTreeScreen(
     }
 
     val file = workspace?.let { File(it.rootDir, "dts/entry_$entry.dts") }?.takeIf { it.isFile }
-    val invalidation = state.stagedChanges.size to state.deviceTreeChanges.size
+    val invalidation = listOf(
+        state.stagedChanges.size,
+        state.timingDeviceTreeChanges.size,
+        state.moduleStagedChanges.size,
+        state.moduleDeviceTreeChanges.size,
+        state.deviceTreeChanges.size
+    )
 
     val loaded by produceState(
         initialValue = DocumentLoadResult(),
@@ -179,7 +185,11 @@ fun DeviceTreeScreen(
     }
 
     val expandedSet = remember(expandedPaths) { expandedPaths.toSet() }
-    val changesForEntry = state.deviceTreeChanges.filter { it.entryIndex == entry }
+    val changesForEntry = (
+        state.timingDeviceTreeChanges +
+            state.moduleDeviceTreeChanges +
+            state.deviceTreeChanges
+        ).filter { it.entryIndex == entry }
     val modifiedNodePaths = remember(changesForEntry)
     {
         changesForEntry
@@ -433,7 +443,7 @@ fun DeviceTreeScreen(
                     item { HorizontalDivider() }
                     item {
                         Text(
-                            "暂存 Diff · ${changesForEntry.size} 项",
+                            "暂存 Diff · ${changesForEntry.size} 个底层设备树操作",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
