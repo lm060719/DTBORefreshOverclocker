@@ -16,6 +16,10 @@ import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransactionKind
+import io.mo.dtbooverclocker.core.devicetree.allOperations
+import io.mo.dtbooverclocker.core.devicetree.modifiedEntryIndices
 import io.mo.dtbooverclocker.core.devicetree.allowedNodePaths
 import io.mo.dtbooverclocker.core.devicetree.allowedPropertyPath
 import io.mo.dtbooverclocker.ui.components.TimingUtils
@@ -345,18 +349,17 @@ class DtboPatchEngine(
 
     suspend fun packageStaged(
         workspace: DtboWorkspace,
-        stagedChanges: List<StagedChange>,
-        timingDeviceTreeChanges: List<DeviceTreeChange> = emptyList(),
-        moduleStagedChanges: List<ModuleStagedChange> = emptyList(),
-        moduleDeviceTreeChanges: List<DeviceTreeChange> = emptyList(),
-        deviceTreeChanges: List<DeviceTreeChange> = emptyList(),
-        modifiedEntryIndices: Set<Int>
+        transactions: List<DeviceTreeTransaction>
     ): PatchReport = withContext(Dispatchers.IO) {
-        require(
-            stagedChanges.isNotEmpty() ||
-                moduleStagedChanges.isNotEmpty() ||
-                deviceTreeChanges.isNotEmpty()
-        ) { "暂存修改列表为空，无需打包" }
+        require(transactions.isNotEmpty()) { "暂存事务列表为空，无需打包" }
+
+        val stagedChanges = transactions.mapNotNull { it.timingChange }
+        val moduleStagedChanges = transactions.mapNotNull { it.moduleChange }
+        val allOperations = transactions.allOperations()
+        val genericChanges = transactions
+            .filter { it.kind == DeviceTreeTransactionKind.GENERIC_EDIT }
+            .flatMap { it.operations }
+        val modifiedEntryIndices = transactions.modifiedEntryIndices()
         require(modifiedEntryIndices.isNotEmpty()) { "未检测到修改过的 DTB 条目" }
 
         val rebuiltDir = File(workspace.rootDir, "rebuilt_entries").apply {
@@ -393,21 +396,11 @@ class DtboPatchEngine(
 
                 val originalDecoded = workspace.binaryImage.entries[index].decodedBytes
                 val rebuiltDecoded = targetDtb.readBytes()
-                val timingOpsForEntry = timingDeviceTreeChanges.filter { it.entryIndex == index }
-                val moduleChanges = moduleDeviceTreeChanges.filter { it.entryIndex == index }
-                val genericChanges = deviceTreeChanges.filter { it.entryIndex == index }
-                val declaredChanges = timingOpsForEntry + moduleChanges + genericChanges
-
-                // 新版刷新率模块已经生成精确 DeviceTreeChange，因此优先使用属性/节点白名单。
-                // 仅在没有低层操作记录时保留旧 timing-node 范围白名单，兼容旧调用路径。
-                val modifiedPaths = if (timingOpsForEntry.isEmpty()) {
-                    stagedChanges
-                        .filter { it.entryIndex == index }
-                        .map { it.nodePath }
-                        .toSet()
-                } else {
-                    emptySet()
+                val declaredChanges = allOperations.filter { it.entryIndex == index }
+                require(declaredChanges.isNotEmpty()) {
+                    "Entry $index 被标记为已修改，但事务中没有对应的 DeviceTreeChange"
                 }
+
                 val modifiedProperties = declaredChanges
                     .mapNotNull { it.allowedPropertyPath() }
                     .toSet()
@@ -418,7 +411,7 @@ class DtboPatchEngine(
                     entryIndex = index,
                     originalDtbBytes = originalDecoded,
                     rebuiltDtbBytes = rebuiltDecoded,
-                    modifiedTimingNodePaths = modifiedPaths,
+                    modifiedTimingNodePaths = emptySet(),
                     modifiedPropertyPaths = modifiedProperties,
                     modifiedNodePaths = modifiedNodePaths
                 )
@@ -458,40 +451,41 @@ class DtboPatchEngine(
         logSink("[OK] 完整镜像尾部与 AVB 摘要校验通过，全部 DTB 回读字节与预期一致")
 
         verifyMetadataPreserved(workspace, outputImage)
-        val timingVerificationEntries = (
-            stagedChanges.map { it.entryIndex } +
-                moduleStagedChanges
-                    .filter { it.module == FeatureModuleKind.RESOLUTION }
-                    .map { it.entryIndex }
-            ).toSet()
+        val timingVerificationEntries = transactions
+            .filter {
+                it.kind == DeviceTreeTransactionKind.REFRESH_RATE ||
+                    it.kind == DeviceTreeTransactionKind.RESOLUTION
+            }
+            .flatMap { it.entryIndices }
+            .toSet()
         verifyAllPatchedTimings(
             outputImage,
             timingVerificationEntries,
             workspace
         )
 
-        val allChanges = stagedChanges.map { it.summary } +
-            moduleStagedChanges.flatMap { change ->
-                change.changes.ifEmpty { listOf(change.summary) }
-            } +
-            deviceTreeChanges.map { it.summary }
-        val warnings = mutableListOf<String>()
+        val allChanges = transactions.flatMap { transaction ->
+            transaction.moduleChange
+                ?.changes
+                ?.takeIf { it.isNotEmpty() }
+                ?: listOf(transaction.summary)
+        }
+        val warnings = transactions.flatMap { it.warnings }.distinct().toMutableList()
         if (stagedChanges.any { it.strategy == PatchStrategy.FRAMERATE_ONLY }) {
             warnings += "包含仅 Framerate 策略的修改，存在时序不匹配风险，不建议直接刷写。"
         }
-        warnings += moduleStagedChanges
-            .flatMap { it.warnings }
-            .distinct()
         if (moduleStagedChanges.isNotEmpty()) {
             warnings += "包含功能模块设备树修改；其中分辨率模块当前阶段禁止 Root 直刷，请优先导出并离线验证。"
         }
-        if (deviceTreeChanges.isNotEmpty()) {
+        if (genericChanges.isNotEmpty()) {
             warnings += "包含通用设备树自由编辑；当前阶段禁止 Root 直刷，请优先导出并离线验证。"
         }
 
         val lastChange = stagedChanges.lastOrNull()
-        val totalChanges = stagedChanges.size + moduleStagedChanges.size + deviceTreeChanges.size
-        logSink("[OK] 集中打包镜像生成完成：${outputImage.absolutePath} (包含 $totalChanges 项修改)")
+        logSink(
+            "[OK] 集中打包镜像生成完成：${outputImage.absolutePath} " +
+                "(包含 ${transactions.size} 个事务 / ${allOperations.size} 个底层操作)"
+        )
 
         PatchReport(
             outputImage = outputImage,
@@ -502,7 +496,7 @@ class DtboPatchEngine(
             customParams = lastChange?.customParams,
             stagedChanges = stagedChanges,
             changes = allChanges,
-            warnings = warnings
+            warnings = warnings.distinct()
         )
     }
 
@@ -515,12 +509,15 @@ class DtboPatchEngine(
         customParams: CustomTimingParams? = null
     ): PatchReport {
         val applyResult = applyTimingChange(workspace, candidate, targetHz, strategy, mode, customParams)
+        val transaction = DeviceTreeTransaction.refreshRate(
+            stagedChange = applyResult.stagedChange,
+            operations = applyResult.operations,
+            warnings = applyResult.warnings,
+            directFlashAllowed = applyResult.stagedChange.strategy != PatchStrategy.FRAMERATE_ONLY
+        )
         return packageStaged(
             workspace = applyResult.updatedWorkspace,
-            stagedChanges = listOf(applyResult.stagedChange),
-            timingDeviceTreeChanges = applyResult.operations,
-            deviceTreeChanges = emptyList(),
-            modifiedEntryIndices = setOf(candidate.entryIndex)
+            transactions = listOf(transaction)
         )
     }
 
