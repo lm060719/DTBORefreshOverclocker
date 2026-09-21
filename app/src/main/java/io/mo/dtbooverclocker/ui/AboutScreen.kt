@@ -143,12 +143,12 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "DTBO Refresh Overclocker",
+                    text = "DTBO Studio",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Android DTBO 屏幕刷新率超频工具",
+                    text = "Android DTBO / Device Tree 分析、编辑与安全重构工具",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

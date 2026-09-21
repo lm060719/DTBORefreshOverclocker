@@ -123,7 +123,7 @@ internal fun ResolutionPanel(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        "Phase 7 · 导出验证",
+                        "保守模式 · 仅导出验证",
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
@@ -196,7 +196,7 @@ internal fun ResolutionPanel(
             if (targetWidth != null && targetHeight != null && !aspectValid)
             {
                 Text(
-                    "目标宽高比与原始 ${sourceWidth}×${sourceHeight} 不一致。Phase 7 为避免未知裁切/扫描行为会拒绝暂存。",
+                    "目标宽高比与原始 ${sourceWidth}×${sourceHeight} 不一致。为避免未知裁切/扫描行为，当前规划器会拒绝暂存。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )

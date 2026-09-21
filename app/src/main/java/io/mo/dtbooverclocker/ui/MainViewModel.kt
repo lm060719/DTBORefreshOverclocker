@@ -1088,6 +1088,8 @@ data class MainUiState(
     val customHfpText: String = "",
     val customHbpText: String = ""
 ) {
+    // 兼容现有 UI / 报告的数据视图：transactions 才是唯一暂存状态源。
+    // 这些列表禁止独立写入，后续迁移完成后可逐步删除兼容层。
     val stagedChanges: List<StagedChange>
         get() = transactions.mapNotNull { it.timingChange }
 

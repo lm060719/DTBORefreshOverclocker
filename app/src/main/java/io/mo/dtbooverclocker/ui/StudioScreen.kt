@@ -308,7 +308,7 @@ private fun ModulesTab(
     val workspace = state.workspace
     LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Spacer(Modifier.height(2.dp)) }
-        item { Column { Text("功能模块", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("专用模块负责常见硬件配置；通用修改最终统一落到设备树编辑器。", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+        item { Column { Text("功能模块", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("功能模块负责生成经过约束验证的设备树事务；能力扫描只负责发现，不会自动把检测结果变成写入。", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
         if (workspace != null) {
             item { CapabilityScanCard(state) }
         }

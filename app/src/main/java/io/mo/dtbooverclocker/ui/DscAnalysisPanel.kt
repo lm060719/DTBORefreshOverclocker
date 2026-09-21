@@ -117,7 +117,7 @@ internal fun DscAnalysisPanel(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        "只读分析 · Phase 8",
+                        "只读拓扑分析",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -252,7 +252,7 @@ internal fun DscAnalysisPanel(
                 ) {
                     Icon(Icons.Default.Warning, contentDescription = null)
                     Text(
-                        "Phase 8 只建立 DSC 拓扑和一致性检查，不修改 PPS、RC range、厂商 DSI command 或 DSC 参数。后续只有能由拓扑约束验证的字段才会开放写入。",
+                        "当前 DSC 模块只建立拓扑和一致性检查，不修改 PPS、RC range、厂商 DSI command 或 DSC 参数。后续只有能由拓扑约束验证的字段才会开放写入。",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
