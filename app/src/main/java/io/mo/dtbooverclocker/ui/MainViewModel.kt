@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.mo.dtbooverclocker.core.ActivePanelDetectionResult
 import io.mo.dtbooverclocker.core.ActivePanelDetector
+import io.mo.dtbooverclocker.core.CapabilityScanner
 import io.mo.dtbooverclocker.core.DtboPatchEngine
 import io.mo.dtbooverclocker.core.DtsTimingPatcher
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
@@ -19,6 +20,7 @@ import io.mo.dtbooverclocker.model.BackupRecord
 import io.mo.dtbooverclocker.model.BackupType
 import io.mo.dtbooverclocker.model.BackupVerificationState
 import io.mo.dtbooverclocker.model.BackupVerificationStatus
+import io.mo.dtbooverclocker.model.CapabilityReport
 import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.FlashResult
@@ -55,6 +57,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val slotDetector = SlotDetector(executor)
     private val patchEngine = DtboPatchEngine(application, executor, ::appendLog)
     private val safetyGuard = SafetyGuardManager(application, rootDetector, ::appendLog)
+    private var capabilityScanGeneration: Long = 0L
 
     companion object {
         private const val KEY_HAS_REQUESTED_ROOT = "has_requested_root"
@@ -286,6 +289,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode
                     )
                 }
+                refreshCapabilities(result.updatedWorkspace)
             }.onFailure(::showError)
         }
     }
@@ -370,6 +374,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "已暂存分辨率修改：${result.stagedChange.summary} (共 $total 项修改待打包)"
                     )
                 }
+                refreshCapabilities(result.updatedWorkspace)
             }.onFailure(::showError)
         }
     }
@@ -511,6 +516,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "已撤销通用设备树修改：${change.summary}"
                     )
                 }
+                refreshCapabilities(updatedWorkspace)
             }.onFailure(::showError)
         }
     }
@@ -546,6 +552,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "已暂存设备树修改：${change.summary} (共 $total 项修改待打包)"
                     )
                 }
+                refreshCapabilities(updatedWorkspace)
             }.onFailure(::showError)
         }
     }
@@ -572,6 +579,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "已重置所有修改，恢复原始工作区"
                     )
                 }
+                refreshCapabilities(restoredWorkspace)
             }.onFailure(::showError)
             setBusy(false)
         }
@@ -957,6 +965,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 activePanelIdentifier = activePanelId,
                 activePanelDisplayName = activePanelName,
                 activePanelSource = activePanelSource,
+                capabilityReport = null,
+                capabilityScanInProgress = true,
                 status = if (workspace.candidates.isEmpty()) {
                     "解析完成，但没有找到可识别的 DSI framerate 节点"
                 } else if (activePanelName != null) {
@@ -965,6 +975,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     "解析完成：${workspace.metadata.entries.size} 个 DTB 条目，${workspace.candidates.size} 个时序候选"
                 }
             )
+        }
+        refreshCapabilities(workspace)
+    }
+
+    private fun refreshCapabilities(workspace: DtboWorkspace)
+    {
+        val generation = ++capabilityScanGeneration
+        _state.update { it.copy(capabilityScanInProgress = true) }
+
+        viewModelScope.launch(Dispatchers.Default) {
+            val result = runCatching { CapabilityScanner.scan(workspace) }
+            withContext(Dispatchers.Main) {
+                if (generation != capabilityScanGeneration)
+                {
+                    return@withContext
+                }
+
+                result.onSuccess { report ->
+                    _state.update {
+                        it.copy(
+                            capabilityReport = report,
+                            capabilityScanInProgress = false
+                        )
+                    }
+                    appendLog(
+                        "[CAPABILITY] 扫描完成：${report.nodeCount} 节点 / ${report.propertyCount} 属性 / " +
+                            "${report.dscTopologies.size} 个 DSC timing"
+                    )
+                }.onFailure { throwable ->
+                    _state.update { it.copy(capabilityScanInProgress = false) }
+                    appendLog("[WARN][CAPABILITY] ${throwable.message ?: throwable::class.java.simpleName}")
+                }
+            }
         }
     }
 
@@ -1032,6 +1075,8 @@ data class MainUiState(
     val activePanelIdentifier: String? = null,
     val activePanelDisplayName: String? = null,
     val activePanelSource: String? = null,
+    val capabilityReport: CapabilityReport? = null,
+    val capabilityScanInProgress: Boolean = false,
     val cacheSizeBytes: Long = 0L,
     val logFilesCount: Int = 0,
     val logFilesSizeBytes: Long = 0L,
