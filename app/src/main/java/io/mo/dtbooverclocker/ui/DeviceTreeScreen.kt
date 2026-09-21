@@ -31,6 +31,11 @@ import io.mo.dtbooverclocker.core.devicetree.DeviceTreeDocument
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeNode
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParser
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeProperty
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReference
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceIndex
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceIndexer
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceKind
+import io.mo.dtbooverclocker.core.devicetree.allowedNodePaths
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeValueCodec
 import io.mo.dtbooverclocker.core.devicetree.NumberBase
 import io.mo.dtbooverclocker.core.devicetree.PropertyType
@@ -58,6 +63,16 @@ private enum class NodeEditMode
     RENAME
 }
 
+private enum class DeviceTreeSearchScope(val label: String)
+{
+    ALL("全部"),
+    NODE("节点"),
+    PROPERTY("属性"),
+    VALUE("值"),
+    REFERENCE("引用"),
+    MODIFIED("已修改")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceTreeScreen(
@@ -74,6 +89,9 @@ fun DeviceTreeScreen(
 ) {
     val workspace = state.workspace
     var query by rememberSaveable(workspace?.rootDir?.path) { mutableStateOf("") }
+    var searchScope by rememberSaveable(workspace?.rootDir?.path) {
+        mutableStateOf(DeviceTreeSearchScope.ALL)
+    }
     var selectedEntry by rememberSaveable(workspace?.rootDir?.path) { mutableIntStateOf(0) }
     var selectedNodePath by rememberSaveable(workspace?.rootDir?.path) { mutableStateOf<String?>(null) }
     var showNodeSheet by remember { mutableStateOf(false) }
@@ -140,16 +158,43 @@ fun DeviceTreeScreen(
     }
 
     val expandedSet = remember(expandedPaths) { expandedPaths.toSet() }
-    val visibleRows = remember(document, query, expandedSet)
+    val changesForEntry = state.deviceTreeChanges.filter { it.entryIndex == entry }
+    val modifiedNodePaths = remember(changesForEntry)
+    {
+        changesForEntry
+            .flatMap { change -> listOf(change.nodePath) + change.allowedNodePaths() }
+            .toSet()
+    }
+    val referenceIndex = remember(document)
+    {
+        document?.let(DeviceTreeReferenceIndexer::build)
+    }
+    val filteredMode = query.isNotBlank() || searchScope != DeviceTreeSearchScope.ALL
+    val visibleRows = remember(
+        document,
+        query,
+        searchScope,
+        expandedSet,
+        referenceIndex,
+        modifiedNodePaths
+    )
     {
         val search = query.trim()
         when
         {
             document == null -> emptyList()
-            search.isNotBlank() ->
+            filteredMode ->
             {
                 document.flatten()
-                    .filter { matchesSearch(it, search) }
+                    .filter { node ->
+                        matchesSearchScope(
+                            node = node,
+                            query = search,
+                            scope = searchScope,
+                            referenceIndex = referenceIndex,
+                            modifiedNodePaths = modifiedNodePaths
+                        )
+                    }
                     .map { TreeRow(it, depthOf(it.path)) }
             }
             else -> buildVisibleRows(document.root, expandedSet)
@@ -157,7 +202,6 @@ fun DeviceTreeScreen(
     }
 
     val selectedNode = document?.findNode(selectedNodePath ?: "/")
-    val changesForEntry = state.deviceTreeChanges.filter { it.entryIndex == entry }
 
     LazyColumn(
         modifier = Modifier
@@ -225,6 +269,18 @@ fun DeviceTreeScreen(
             }
 
             item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(DeviceTreeSearchScope.entries, key = { it.name }) { scope ->
+                        FilterChip(
+                            selected = searchScope == scope,
+                            onClick = { searchScope = scope },
+                            label = { Text(scope.label) }
+                        )
+                    }
+                }
+            }
+
+            item {
                 when
                 {
                     loaded.loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -235,11 +291,21 @@ fun DeviceTreeScreen(
                     document == null -> Text("该 Entry 无法反编译为可编辑 DTS。")
                     else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            "Entry $entry · ${document.flatten().size} 个节点 · 当前显示 ${visibleRows.size}",
+                            "Entry $entry · ${document.flatten().size} 个节点 · 当前显示 ${visibleRows.size} · " +
+                                "${referenceIndex?.references?.size ?: 0} 条引用",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (query.isBlank())
+                        val unresolvedCount = referenceIndex?.unresolved()?.size ?: 0
+                        if (unresolvedCount > 0)
+                        {
+                            Text(
+                                "存在 $unresolvedCount 条未解析的 Label / 路径引用，可在“引用”筛选中查看。",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                        if (!filteredMode)
                         {
                             Row(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -284,15 +350,15 @@ fun DeviceTreeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            if (query.isBlank()) "节点树" else "搜索结果",
+                            if (!filteredMode) "节点树" else "筛选结果",
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        if (query.isNotBlank())
+                        if (filteredMode)
                         {
                             Text(
-                                "搜索时忽略折叠状态",
+                                "筛选时忽略折叠状态",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -305,7 +371,7 @@ fun DeviceTreeScreen(
                         row = row,
                         expanded = row.node.path in expandedSet,
                         selected = selectedNodePath == row.node.path,
-                        searchMode = query.isNotBlank(),
+                        searchMode = filteredMode,
                         onToggle = {
                             if (row.node.children.isNotEmpty())
                             {
@@ -389,6 +455,14 @@ fun DeviceTreeScreen(
                 onDeleteNode = {
                     deleteNodePath = selectedNode.path
                     showNodeSheet = false
+                },
+                referenceIndex = referenceIndex,
+                onNavigateReference = { path ->
+                    selectedNodePath = path
+                    expandedPaths = (
+                        expandedPaths +
+                            ancestorPaths(path)
+                        ).distinct()
                 }
             )
         }
@@ -610,7 +684,9 @@ private fun NodeDetailSheet(
     onAddChild: () -> Unit,
     onClone: () -> Unit,
     onRename: () -> Unit,
-    onDeleteNode: () -> Unit
+    onDeleteNode: () -> Unit,
+    referenceIndex: DeviceTreeReferenceIndex?,
+    onNavigateReference: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -684,6 +760,12 @@ private fun NodeDetailSheet(
             }
         }
 
+        ReferenceSection(
+            node = node,
+            referenceIndex = referenceIndex,
+            onNavigate = onNavigateReference
+        )
+
         if (node.children.isNotEmpty())
         {
             Text(
@@ -745,6 +827,182 @@ private fun NodeDetailSheet(
     }
 }
 
+
+@Composable
+private fun ReferenceSection(
+    node: DeviceTreeNode,
+    referenceIndex: DeviceTreeReferenceIndex?,
+    onNavigate: (String) -> Unit
+)
+{
+    if (referenceIndex == null)
+    {
+        return
+    }
+
+    val aliases = referenceIndex.labels
+        .filterValues { it == node.path }
+        .keys
+        .sorted()
+    val phandles = referenceIndex.phandles
+        .filterValues { it == node.path }
+        .keys
+        .sorted()
+    val outgoing = referenceIndex.outgoing(node.path)
+    val incoming = referenceIndex.incoming(node.path)
+
+    if (aliases.isEmpty() && phandles.isEmpty() && outgoing.isEmpty() && incoming.isEmpty())
+    {
+        return
+    }
+
+    HorizontalDivider()
+    Text(
+        "引用关系",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold
+    )
+
+    if (aliases.isNotEmpty())
+    {
+        Text(
+            "Label · " + aliases.joinToString { "&$it" },
+            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+
+    if (phandles.isNotEmpty())
+    {
+        Text(
+            "Phandle · " + phandles.joinToString { "0x" + it.toString(16) },
+            fontFamily = FontFamily.Monospace,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    if (outgoing.isNotEmpty())
+    {
+        Text(
+            "引用出去 · ${outgoing.size}",
+            style = MaterialTheme.typography.labelLarge
+        )
+        outgoing.forEach { reference ->
+            ReferenceCard(
+                reference = reference,
+                incoming = false,
+                onNavigate = onNavigate
+            )
+        }
+    }
+
+    if (incoming.isNotEmpty())
+    {
+        Text(
+            "被引用 · ${incoming.size}",
+            style = MaterialTheme.typography.labelLarge
+        )
+        incoming.forEach { reference ->
+            ReferenceCard(
+                reference = reference,
+                incoming = true,
+                onNavigate = onNavigate
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReferenceCard(
+    reference: DeviceTreeReference,
+    incoming: Boolean,
+    onNavigate: (String) -> Unit
+)
+{
+    val target = if (incoming)
+    {
+        reference.sourceNodePath
+    }
+    else
+    {
+        reference.targetNodePath
+    }
+    val kind = when (reference.kind)
+    {
+        DeviceTreeReferenceKind.LABEL -> "Label 引用"
+        DeviceTreeReferenceKind.PATH -> "路径引用"
+        DeviceTreeReferenceKind.NUMERIC_CANDIDATE -> "数值 phandle 候选"
+    }
+
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (target != null)
+                {
+                    Modifier.clickable { onNavigate(target) }
+                }
+                else
+                {
+                    Modifier
+                }
+            )
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    if (incoming)
+                    {
+                        "${reference.sourceNodePath}/${reference.propertyName}"
+                    }
+                    else
+                    {
+                        "${reference.propertyName} · ${reference.token}"
+                    },
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    buildString {
+                        append(kind)
+                        append(" · ")
+                        append(
+                            if (reference.resolved)
+                            {
+                                reference.targetNodePath
+                            }
+                            else
+                            {
+                                "未解析"
+                            }
+                        )
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (reference.kind == DeviceTreeReferenceKind.NUMERIC_CANDIDATE)
+                    {
+                        MaterialTheme.colorScheme.tertiary
+                    }
+                    else
+                    {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+            if (target != null)
+            {
+                Icon(Icons.Default.KeyboardArrowRight, "跳转到引用节点")
+            }
+        }
+    }
+}
 
 @Composable
 private fun NodeNameDialog(
@@ -1281,16 +1539,72 @@ private fun ChangeCard(
     }
 }
 
-private fun matchesSearch(node: DeviceTreeNode, query: String): Boolean
+private fun matchesSearchScope(
+    node: DeviceTreeNode,
+    query: String,
+    scope: DeviceTreeSearchScope,
+    referenceIndex: DeviceTreeReferenceIndex?,
+    modifiedNodePaths: Set<String>
+): Boolean
 {
-    return node.path.contains(query, ignoreCase = true) ||
+    val nodeMatch = query.isBlank() ||
+        node.path.contains(query, ignoreCase = true) ||
         node.name.contains(query, ignoreCase = true) ||
-        node.label?.contains(query, ignoreCase = true) == true ||
-        node.properties.any { property ->
-            property.name.contains(query, ignoreCase = true) ||
-                property.rawValue?.contains(query, ignoreCase = true) == true ||
-                property.displayValue.contains(query, ignoreCase = true)
-        }
+        node.label?.contains(query, ignoreCase = true) == true
+
+    val propertyMatch = node.properties.any { property ->
+        query.isBlank() || property.name.contains(query, ignoreCase = true)
+    }
+
+    val valueMatch = node.properties.any { property ->
+        query.isBlank() ||
+            property.rawValue?.contains(query, ignoreCase = true) == true ||
+            property.displayValue.contains(query, ignoreCase = true)
+    }
+
+    val references = referenceIndex
+        ?.let { it.outgoing(node.path) + it.incoming(node.path) }
+        .orEmpty()
+    val referenceMatch = references.any { reference ->
+        query.isBlank() ||
+            reference.token.contains(query, ignoreCase = true) ||
+            reference.propertyName.contains(query, ignoreCase = true) ||
+            reference.sourceNodePath.contains(query, ignoreCase = true) ||
+            reference.targetNodePath?.contains(query, ignoreCase = true) == true
+    }
+
+    val modifiedMatch = modifiedNodePaths.any { modifiedPath ->
+        node.path == modifiedPath ||
+            node.path.startsWith("${modifiedPath.trimEnd('/')}/") ||
+            modifiedPath.startsWith("${node.path.trimEnd('/')}/")
+    } && (query.isBlank() || nodeMatch || propertyMatch || valueMatch)
+
+    return when (scope)
+    {
+        DeviceTreeSearchScope.ALL -> nodeMatch || propertyMatch || valueMatch || referenceMatch
+        DeviceTreeSearchScope.NODE -> nodeMatch
+        DeviceTreeSearchScope.PROPERTY -> propertyMatch
+        DeviceTreeSearchScope.VALUE -> valueMatch
+        DeviceTreeSearchScope.REFERENCE -> referenceMatch
+        DeviceTreeSearchScope.MODIFIED -> modifiedMatch
+    }
+}
+
+private fun ancestorPaths(path: String): List<String>
+{
+    if (path == "/")
+    {
+        return listOf("/")
+    }
+
+    val segments = path.trim('/').split('/')
+    val result = mutableListOf("/")
+    var current = ""
+    segments.dropLast(1).forEach { segment ->
+        current += "/$segment"
+        result += current
+    }
+    return result
 }
 
 private fun buildVisibleRows(
