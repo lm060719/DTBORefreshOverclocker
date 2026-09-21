@@ -184,7 +184,7 @@ object DscTopologyAnalyzer
         return property(node, name)
             ?.rawValue
             ?.trim()
-            ?.removeSurrounding(""")
+            ?.removeSurrounding("\"")
             ?.takeIf(String::isNotBlank)
     }
 
