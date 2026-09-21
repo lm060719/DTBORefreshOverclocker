@@ -9,13 +9,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import kotlin.io.path.createTempDirectory
 
 class CapabilityScannerTest
 {
     @Test
     fun classifiesDisplayAndHardwareRelatedCapabilities()
     {
-        val root = createTempDir(prefix = "capability_scanner_")
+        val root = createTempDirectory("capability_scanner_").toFile()
         val dts = File(root, "entry_0.dts").apply {
             writeText(
                 """
