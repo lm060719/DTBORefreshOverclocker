@@ -140,6 +140,30 @@ class DeviceTreeEditorTest
     }
 
     @Test
+    fun cloneRejectsSubtreeWithExplicitPhandle()
+    {
+        val phandled = """
+            /dts-v1/;
+            / {
+                panel@0 {
+                    phandle = <0x10>;
+                    rate = <0x78>;
+                };
+            };
+        """.trimIndent()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            DeviceTreeEditor.buildCloneNodeChange(
+                entryIndex = 0,
+                text = phandled,
+                sourceNodePath = "/panel@0",
+                newNodeName = "panel@1"
+            )
+        }
+    }
+
+
+    @Test
     fun rootCannotBeDeletedOrRenamed()
     {
         assertThrows(IllegalArgumentException::class.java) {
