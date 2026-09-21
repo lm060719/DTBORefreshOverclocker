@@ -297,6 +297,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 onRenameDeviceTreeNode = viewModel::renameDeviceTreeNode,
                 onDeleteDeviceTreeNode = viewModel::deleteDeviceTreeNode,
                 onUndoDeviceTreeChange = viewModel::undoDeviceTreeChange,
+                onUndoLastTransaction = viewModel::undoLastTransaction,
                 onPackage = viewModel::packageStagedChanges,
                 onReset = viewModel::resetStagedChanges,
                 onSavePatched = { file ->
@@ -1145,23 +1146,11 @@ internal fun OutputCard(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("输出", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            val modeTitle = when {
-                state.moduleStagedChanges.isNotEmpty() &&
-                    (report.stagedChanges.isNotEmpty() || state.deviceTreeChanges.isNotEmpty()) ->
-                    "集中打包完成：${report.stagedChanges.size} 项时序 + ${state.moduleStagedChanges.size} 项功能模块 + ${state.deviceTreeChanges.size} 项自由编辑"
-                state.moduleStagedChanges.isNotEmpty() ->
-                    "功能模块修改打包完成：共 ${state.moduleStagedChanges.size} 项"
-                state.deviceTreeChanges.isNotEmpty() && report.stagedChanges.isNotEmpty() ->
-                    "集中打包完成：${report.stagedChanges.size} 项时序修改 + ${state.deviceTreeChanges.size} 项通用设备树修改"
-                state.deviceTreeChanges.isNotEmpty() ->
-                    "通用设备树修改打包完成：共 ${state.deviceTreeChanges.size} 项属性修改"
-                report.stagedChanges.size > 1 ->
-                    "集中打包完成：共包含 ${report.stagedChanges.size} 项时序修改"
-                else -> when (report.mode) {
-                    PatchMode.APPEND_NEW -> "新增独立档位：${report.targetHz} Hz (基于原 ${report.originalHz} Hz 模板) · ${report.strategy.displayName}"
-                    PatchMode.DELETE_EXISTING -> "删除指定档位：已彻底移除 ${report.originalHz} Hz 时序档位"
-                    PatchMode.OVERWRITE_EXISTING -> "${report.originalHz} Hz → ${report.targetHz} Hz · ${report.strategy.displayName}"
-                }
+            val modeTitle = if (state.transactions.size == 1) {
+                val transaction = state.transactions.single()
+                "${transaction.kind.displayName}事务完成 · ${transaction.operationCount} 个底层操作 · ${transaction.risk.displayName}"
+            } else {
+                "事务打包完成：${state.transactions.size} 个事务 / ${state.transactions.sumOf { it.operationCount }} 个底层操作"
             }
             Text(modeTitle, fontWeight = FontWeight.Medium)
             report.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
@@ -1183,9 +1172,8 @@ internal fun OutputCard(
 
             val canFlash = state.rootState.granted &&
                 state.sourceMode == SourceMode.ROOT_PARTITION &&
-                state.deviceTreeChanges.isEmpty() &&
-                state.moduleStagedChanges.all { it.directFlashAllowed } &&
-                report.stagedChanges.none { it.strategy == PatchStrategy.FRAMERATE_ONLY } &&
+                state.transactions.isNotEmpty() &&
+                state.transactions.all { it.directFlashAllowed } &&
                 report.strategy != PatchStrategy.FRAMERATE_ONLY
             Button(
                 onClick = onFlash,
@@ -1199,12 +1187,10 @@ internal fun OutputCard(
             if (!canFlash) {
                 Text(
                     when {
-                        state.deviceTreeChanges.isNotEmpty() ->
-                            "检测到通用设备树自由编辑：当前阶段禁止 Root 直刷，请导出镜像或刷机包验证。"
-                        state.moduleStagedChanges.any { !it.directFlashAllowed } ->
-                            "检测到分辨率等仅允许导出验证的功能模块修改：当前阶段禁止 Root 直刷。"
+                        state.transactions.any { !it.directFlashAllowed } ->
+                            "事务队列包含仅允许导出验证的修改，当前阶段禁止 Root 直刷。"
                         else ->
-                            "直接刷写要求：Root 已授权、镜像来自当前手机分区、且不是“仅 Framerate”策略。"
+                            "直接刷写要求：Root 已授权、镜像来自当前手机分区，且所有事务均允许直刷。"
                     },
                     style = MaterialTheme.typography.labelSmall
                 )
