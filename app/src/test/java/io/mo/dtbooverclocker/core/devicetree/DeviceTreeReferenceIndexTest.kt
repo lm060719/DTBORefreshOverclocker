@@ -151,4 +151,28 @@ class DeviceTreeReferenceIndexTest
         assertEquals("&unknown_label", ref.token)
         assertTrue(index.unresolved().contains(ref))
     }
+    @Test
+    fun parsesMultipleExternalFixupDescriptorsWithoutStaticQuotedRegex()
+    {
+        val dts = """
+            /dts-v1/;
+            / {
+                consumer@0 {
+                    clocks = <0xffffffff 0xffffffff>;
+                };
+
+                __fixups__ {
+                    gcc = "/consumer@0:clocks:0", "/consumer@0:clocks:4";
+                };
+            };
+        """.trimIndent()
+
+        val index = DeviceTreeReferenceIndexer.build(DeviceTreeParser.parse(0, dts))
+        val refs = index.externalFixups()
+
+        assertEquals(2, refs.size)
+        assertEquals(listOf(0, 4), refs.mapNotNull { it.cellOffsetBytes }.sorted())
+        assertTrue(refs.all { it.sourceNodePath == "/consumer@0" })
+    }
+
 }
