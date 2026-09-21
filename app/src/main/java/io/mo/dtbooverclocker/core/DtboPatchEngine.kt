@@ -13,6 +13,8 @@ import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
+import io.mo.dtbooverclocker.core.devicetree.allowedNodePaths
+import io.mo.dtbooverclocker.core.devicetree.allowedPropertyPath
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 import io.mo.dtbooverclocker.util.HashUtils
 import kotlinx.coroutines.Dispatchers
@@ -310,16 +312,20 @@ class DtboPatchEngine(
                     .filter { it.entryIndex == index }
                     .map { it.nodePath }
                     .toSet()
-                val modifiedProperties = deviceTreeChanges
-                    .filter { it.entryIndex == index }
-                    .map { "${it.nodePath.trimEnd('/')}/${it.propertyName}" }
+                val genericChanges = deviceTreeChanges.filter { it.entryIndex == index }
+                val modifiedProperties = genericChanges
+                    .mapNotNull { it.allowedPropertyPath() }
+                    .toSet()
+                val modifiedNodePaths = genericChanges
+                    .flatMap { it.allowedNodePaths() }
                     .toSet()
                 verifyDtbIntegrity(
                     entryIndex = index,
                     originalDtbBytes = originalDecoded,
                     rebuiltDtbBytes = rebuiltDecoded,
                     modifiedTimingNodePaths = modifiedPaths,
-                    modifiedPropertyPaths = modifiedProperties
+                    modifiedPropertyPaths = modifiedProperties,
+                    modifiedNodePaths = modifiedNodePaths
                 )
 
                 replacementEntries[index] = rebuiltDecoded
@@ -458,7 +464,8 @@ class DtboPatchEngine(
         originalDtbBytes: ByteArray,
         rebuiltDtbBytes: ByteArray,
         modifiedTimingNodePaths: Set<String>,
-        modifiedPropertyPaths: Set<String>
+        modifiedPropertyPaths: Set<String>,
+        modifiedNodePaths: Set<String>
     ) {
         val origProps = FdtReader.readAllProperties(originalDtbBytes)
         val rebuiltProps = FdtReader.readAllProperties(rebuiltDtbBytes)
@@ -482,7 +489,10 @@ class DtboPatchEngine(
                 nodePath == modifiedPath || nodePath.startsWith("$modifiedPath/")
             }
             val isDeclaredProperty = path in modifiedPropertyPaths
-            if (!isModifiedTimingNode && !isDeclaredProperty) {
+            val isModifiedNode = modifiedNodePaths.any { modifiedPath ->
+                nodePath == modifiedPath || nodePath.startsWith("$modifiedPath/")
+            }
+            if (!isModifiedTimingNode && !isDeclaredProperty && !isModifiedNode) {
                 corrupted += "$path (原长度=${origVal?.size ?: 0}, 重建长度=${rebuiltVal?.size ?: 0})"
             }
         }
@@ -491,6 +501,6 @@ class DtboPatchEngine(
             val sample = corrupted.take(5).joinToString("; ")
             "DTB[$entryIndex] 完整性校验失败：检测到 ${corrupted.size} 个未声明属性发生变化（例如：$sample）。已阻断打包。"
         }
-        logSink("[OK] DTB[$entryIndex] 属性完整性校验通过：仅声明的设备树变更允许产生差异")
+        logSink("[OK] DTB[$entryIndex] 属性完整性校验通过：仅声明的属性或节点子树允许产生差异")
     }
 }
