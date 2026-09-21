@@ -812,10 +812,7 @@ private fun PropertyEditorDialog(
                                 selected = selectedType == type,
                                 onClick = {
                                     selectedType = type
-                                    if (!DeviceTreeValueCodec.supportsTypedEditor(type))
-                                    {
-                                        rawMode = true
-                                    }
+                                    rawMode = !DeviceTreeValueCodec.supportsTypedEditor(type)
                                 },
                                 label = { Text(DeviceTreeValueCodec.displayName(type)) }
                             )
