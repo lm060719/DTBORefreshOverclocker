@@ -12,6 +12,8 @@ import io.mo.dtbooverclocker.core.DtboPatchEngine
 import io.mo.dtbooverclocker.core.DtsTimingPatcher
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransactionKind
 import io.mo.dtbooverclocker.core.NativeToolExecutor
 import io.mo.dtbooverclocker.core.RootDetector
 import io.mo.dtbooverclocker.core.SafetyGuardManager
@@ -274,18 +276,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     customParams = customParams
                 )
             }.onSuccess { result ->
-                val newStaged = current.stagedChanges + result.stagedChange
-                val newTimingOperations = current.timingDeviceTreeChanges + result.operations
-                val newModifiedEntries = current.modifiedEntryIndices + candidate.entryIndex
+                val transaction = DeviceTreeTransaction.refreshRate(
+                    stagedChange = result.stagedChange,
+                    operations = result.operations,
+                    warnings = result.warnings,
+                    directFlashAllowed = result.stagedChange.strategy != PatchStrategy.FRAMERATE_ONLY
+                )
+                val newTransactions = current.transactions + transaction
                 _state.update {
                     it.copy(
                         workspace = result.updatedWorkspace,
                         selectedCandidateId = result.selectedCandidateId,
-                        stagedChanges = newStaged,
-                        timingDeviceTreeChanges = newTimingOperations,
-                        modifiedEntryIndices = newModifiedEntries,
+                        transactions = newTransactions,
                         patchReport = null,
-                        status = "已暂存修改：${result.stagedChange.summary} (共 ${newStaged.size} 项修改待打包)",
+                        status = "已暂存修改：${transaction.summary} (共 ${newTransactions.size} 个事务待打包)",
                         patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode
                     )
                 }
@@ -356,22 +360,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     scope = current.resolutionScope
                 )
             }.onSuccess { result ->
-                val newModuleChanges = current.moduleStagedChanges + result.stagedChange
-                val newModuleOperations = current.moduleDeviceTreeChanges + result.operations
-                val total = current.stagedChanges.size +
-                    newModuleChanges.size +
-                    current.deviceTreeChanges.size
+                val transaction = DeviceTreeTransaction.resolution(
+                    moduleChange = result.stagedChange,
+                    operations = result.operations
+                )
+                val newTransactions = current.transactions + transaction
 
                 _state.update {
                     it.copy(
                         workspace = result.updatedWorkspace,
                         selectedCandidateId = result.selectedCandidateId,
-                        moduleStagedChanges = newModuleChanges,
-                        moduleDeviceTreeChanges = newModuleOperations,
-                        modifiedEntryIndices = current.modifiedEntryIndices + candidate.entryIndex,
+                        transactions = newTransactions,
                         patchReport = null,
                         lastFlash = null,
-                        status = "已暂存分辨率修改：${result.stagedChange.summary} (共 $total 项修改待打包)"
+                        status = "已暂存分辨率修改：${transaction.summary} (共 ${newTransactions.size} 个事务待打包)"
                     )
                 }
                 refreshCapabilities(result.updatedWorkspace)
@@ -490,35 +492,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun undoDeviceTreeChange(changeId: String) {
         viewModelScope.launch {
-            val current = _state.value
-            val workspace = current.workspace ?: return@launch
-            val change = current.deviceTreeChanges.lastOrNull() ?: return@launch
-            requireOrReport(change.id == changeId) {
-                "为避免覆盖后续修改，当前阶段只允许撤销最近一项通用设备树修改。"
-            } ?: return@launch
-
-            runCatching {
-                patchEngine.applyDeviceTreeChange(workspace, change.inverse())
-            }.onSuccess { updatedWorkspace ->
-                val remaining = current.deviceTreeChanges.dropLast(1)
-                val modifiedEntries = (
-                    current.stagedChanges.map { it.entryIndex } +
-                        current.moduleStagedChanges.map { it.entryIndex } +
-                        remaining.map { it.entryIndex }
-                    ).toSet()
-                _state.update {
-                    it.copy(
-                        workspace = updatedWorkspace,
-                        deviceTreeChanges = remaining,
-                        modifiedEntryIndices = modifiedEntries,
-                        patchReport = null,
-                        lastFlash = null,
-                        status = "已撤销通用设备树修改：${change.summary}"
-                    )
-                }
-                refreshCapabilities(updatedWorkspace)
-            }.onFailure(::showError)
+            undoLastTransactionInternal(requiredGenericChangeId = changeId)
         }
+    }
+
+    fun undoLastTransaction()
+    {
+        viewModelScope.launch {
+            undoLastTransactionInternal(requiredGenericChangeId = null)
+        }
+    }
+
+    private suspend fun undoLastTransactionInternal(requiredGenericChangeId: String?)
+    {
+        val current = _state.value
+        val workspace = current.workspace ?: return
+        val transaction = current.transactions.lastOrNull() ?: return
+
+        if (requiredGenericChangeId != null)
+        {
+            val change = transaction.operations.singleOrNull { it.id == requiredGenericChangeId }
+            requireOrReport(
+                transaction.kind == DeviceTreeTransactionKind.GENERIC_EDIT && change != null
+            ) {
+                "为避免破坏事务顺序，设备树详情页只能撤销当前队列最后一个通用编辑事务。"
+            } ?: return
+        }
+
+        runCatching {
+            var updatedWorkspace = workspace
+            transaction.operations.asReversed().forEach { operation ->
+                updatedWorkspace = patchEngine.applyDeviceTreeChange(
+                    updatedWorkspace,
+                    operation.inverse()
+                )
+            }
+            updatedWorkspace
+        }.onSuccess { updatedWorkspace ->
+            val remaining = current.transactions.dropLast(1)
+            _state.update {
+                it.copy(
+                    workspace = updatedWorkspace,
+                    transactions = remaining,
+                    patchReport = null,
+                    lastFlash = null,
+                    status = "已原子撤销事务：${transaction.kind.displayName} · ${transaction.summary}"
+                )
+            }
+            refreshCapabilities(updatedWorkspace)
+        }.onFailure(::showError)
     }
 
     private fun stageDeviceTreeChange(
@@ -540,16 +562,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val updatedWorkspace = patchEngine.applyDeviceTreeChange(workspace, change)
                 change to updatedWorkspace
             }.onSuccess { (change, updatedWorkspace) ->
-                val newChanges = current.deviceTreeChanges + change
-                val total = current.stagedChanges.size + current.moduleStagedChanges.size + newChanges.size
+                val transaction = DeviceTreeTransaction.generic(change)
+                val newTransactions = current.transactions + transaction
                 _state.update {
                     it.copy(
                         workspace = updatedWorkspace,
-                        deviceTreeChanges = newChanges,
-                        modifiedEntryIndices = current.modifiedEntryIndices + entryIndex,
+                        transactions = newTransactions,
                         patchReport = null,
                         lastFlash = null,
-                        status = "已暂存设备树修改：${change.summary} (共 $total 项修改待打包)"
+                        status = "已暂存设备树修改：${transaction.summary} (共 ${newTransactions.size} 个事务待打包)"
                     )
                 }
                 refreshCapabilities(updatedWorkspace)
@@ -569,12 +590,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         workspace = restoredWorkspace,
                         selectedCandidateId = restoredWorkspace.candidates.firstOrNull()?.id,
-                        stagedChanges = emptyList(),
-                        timingDeviceTreeChanges = emptyList(),
-                        moduleStagedChanges = emptyList(),
-                        moduleDeviceTreeChanges = emptyList(),
-                        deviceTreeChanges = emptyList(),
-                        modifiedEntryIndices = emptySet(),
+                        transactions = emptyList(),
                         patchReport = null,
                         status = "已重置所有修改，恢复原始工作区"
                     )
@@ -591,11 +607,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val workspace = current.workspace ?: return@launch showError(
                 IllegalStateException("请先导入或提取 DTBO 镜像")
             )
-            requireOrReport(
-                current.stagedChanges.isNotEmpty() ||
-                    current.moduleStagedChanges.isNotEmpty() ||
-                    current.deviceTreeChanges.isNotEmpty()
-            ) {
+            requireOrReport(current.transactions.isNotEmpty()) {
                 "当前尚未暂存任何修改，请先修改功能模块、时序或设备树属性后再打包"
             } ?: return@launch
 
@@ -603,18 +615,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 patchEngine.packageStaged(
                     workspace = workspace,
-                    stagedChanges = current.stagedChanges,
-                    timingDeviceTreeChanges = current.timingDeviceTreeChanges,
-                    moduleStagedChanges = current.moduleStagedChanges,
-                    moduleDeviceTreeChanges = current.moduleDeviceTreeChanges,
-                    deviceTreeChanges = current.deviceTreeChanges,
-                    modifiedEntryIndices = current.modifiedEntryIndices
+                    transactions = current.transactions
                 )
             }.onSuccess { report ->
                 _state.update {
                     it.copy(
                         patchReport = report,
-                        status = "打包完成，成功生成 ${report.outputImage.name} (包含 ${current.stagedChanges.size + current.moduleStagedChanges.size + current.deviceTreeChanges.size} 项修改)"
+                        status = "打包完成，成功生成 ${report.outputImage.name} (包含 ${current.transactions.size} 个事务 / ${current.transactions.sumOf { transaction -> transaction.operationCount }} 个底层操作)"
                     )
                 }
                 refreshCacheSize()
@@ -637,11 +644,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             requireOrReport(current.sourceMode == SourceMode.ROOT_PARTITION) {
                 "直接刷写仅允许用于“从手机当前分区读取”的工作区，防止误刷入来自其他设备的导入镜像。"
             } ?: return@launch
-            requireOrReport(current.deviceTreeChanges.isEmpty()) {
-                "通用设备树自由编辑当前阶段禁止 Root 直刷。请先导出镜像或刷机包进行离线验证。"
+            requireOrReport(current.transactions.isNotEmpty()) {
+                "当前没有可刷写的设备树事务。"
             } ?: return@launch
-            requireOrReport(current.moduleStagedChanges.all { it.directFlashAllowed }) {
-                "当前包含尚未开放 Root 直刷的功能模块修改。分辨率模块请先导出镜像或刷机包离线验证。"
+            requireOrReport(current.transactions.all { it.directFlashAllowed }) {
+                "当前事务队列包含仅允许导出验证的修改（例如分辨率或通用设备树编辑），已禁止 Root 直刷。"
             } ?: return@launch
 
             setBusy(true, "正在执行备份、救援包生成与单槽位刷写…")
@@ -955,12 +962,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (height % 4 == 0) (height * 3 / 4).toString() else ""
                 } ?: "",
                 patchReport = null,
-                stagedChanges = emptyList(),
-                timingDeviceTreeChanges = emptyList(),
-                moduleStagedChanges = emptyList(),
-                moduleDeviceTreeChanges = emptyList(),
-                deviceTreeChanges = emptyList(),
-                modifiedEntryIndices = emptySet(),
+                transactions = emptyList(),
                 lastFlash = null,
                 activePanelIdentifier = activePanelId,
                 activePanelDisplayName = activePanelName,
@@ -1064,12 +1066,7 @@ data class MainUiState(
     val strategy: PatchStrategy = PatchStrategy.BALANCED_BLANKING_TIME,
     val patchMode: PatchMode = PatchMode.OVERWRITE_EXISTING,
     val patchReport: PatchReport? = null,
-    val stagedChanges: List<StagedChange> = emptyList(),
-    val timingDeviceTreeChanges: List<DeviceTreeChange> = emptyList(),
-    val moduleStagedChanges: List<ModuleStagedChange> = emptyList(),
-    val moduleDeviceTreeChanges: List<DeviceTreeChange> = emptyList(),
-    val deviceTreeChanges: List<DeviceTreeChange> = emptyList(),
-    val modifiedEntryIndices: Set<Int> = emptySet(),
+    val transactions: List<DeviceTreeTransaction> = emptyList(),
     val lastFlash: FlashResult? = null,
     val logs: List<String> = emptyList(),
     val activePanelIdentifier: String? = null,
@@ -1091,6 +1088,30 @@ data class MainUiState(
     val customHfpText: String = "",
     val customHbpText: String = ""
 ) {
+    val stagedChanges: List<StagedChange>
+        get() = transactions.mapNotNull { it.timingChange }
+
+    val timingDeviceTreeChanges: List<DeviceTreeChange>
+        get() = transactions
+            .filter { it.kind == DeviceTreeTransactionKind.REFRESH_RATE }
+            .flatMap { it.operations }
+
+    val moduleStagedChanges: List<ModuleStagedChange>
+        get() = transactions.mapNotNull { it.moduleChange }
+
+    val moduleDeviceTreeChanges: List<DeviceTreeChange>
+        get() = transactions
+            .filter { it.kind == DeviceTreeTransactionKind.RESOLUTION }
+            .flatMap { it.operations }
+
+    val deviceTreeChanges: List<DeviceTreeChange>
+        get() = transactions
+            .filter { it.kind == DeviceTreeTransactionKind.GENERIC_EDIT }
+            .flatMap { it.operations }
+
+    val modifiedEntryIndices: Set<Int>
+        get() = transactions.flatMap { it.entryIndices }.toSet()
+
     val customTimingParams: CustomTimingParams?
         get() = if (strategy == PatchStrategy.CUSTOM) {
             CustomTimingParams(
