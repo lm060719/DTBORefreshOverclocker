@@ -51,6 +51,13 @@ private data class TreeRow(
     val depth: Int
 )
 
+private enum class NodeEditMode
+{
+    ADD_CHILD,
+    CLONE,
+    RENAME
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeviceTreeScreen(
@@ -59,6 +66,10 @@ fun DeviceTreeScreen(
     onSetProperty: (Int, String, String, String?) -> Unit,
     onAddProperty: (Int, String, String, String?) -> Unit,
     onDeleteProperty: (Int, String, String) -> Unit,
+    onAddNode: (Int, String, String) -> Unit,
+    onCloneNode: (Int, String, String) -> Unit,
+    onRenameNode: (Int, String, String) -> Unit,
+    onDeleteNode: (Int, String) -> Unit,
     onUndoChange: (String) -> Unit
 ) {
     val workspace = state.workspace
@@ -69,6 +80,8 @@ fun DeviceTreeScreen(
     var editorProperty by remember { mutableStateOf<DeviceTreeProperty?>(null) }
     var addingProperty by remember { mutableStateOf(false) }
     var deleteProperty by remember { mutableStateOf<DeviceTreeProperty?>(null) }
+    var nodeEditMode by remember { mutableStateOf<NodeEditMode?>(null) }
+    var deleteNodePath by remember { mutableStateOf<String?>(null) }
 
     val entry = selectedEntry.coerceIn(
         0,
@@ -360,6 +373,22 @@ fun DeviceTreeScreen(
                     editorProperty = null
                     addingProperty = true
                     showNodeSheet = false
+                },
+                onAddChild = {
+                    nodeEditMode = NodeEditMode.ADD_CHILD
+                    showNodeSheet = false
+                },
+                onClone = {
+                    nodeEditMode = NodeEditMode.CLONE
+                    showNodeSheet = false
+                },
+                onRename = {
+                    nodeEditMode = NodeEditMode.RENAME
+                    showNodeSheet = false
+                },
+                onDeleteNode = {
+                    deleteNodePath = selectedNode.path
+                    showNodeSheet = false
                 }
             )
         }
@@ -413,6 +442,67 @@ fun DeviceTreeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { deleteProperty = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+
+    if (selectedNode != null && nodeEditMode != null)
+    {
+        NodeNameDialog(
+            mode = nodeEditMode!!,
+            node = selectedNode,
+            onDismiss = { nodeEditMode = null },
+            onConfirm = { name ->
+                when (nodeEditMode)
+                {
+                    NodeEditMode.ADD_CHILD ->
+                    {
+                        expandedPaths = (expandedPaths + selectedNode.path).distinct()
+                        onAddNode(entry, selectedNode.path, name)
+                    }
+                    NodeEditMode.CLONE ->
+                    {
+                        val parent = parentPathForUi(selectedNode.path)
+                        expandedPaths = (expandedPaths + parent).distinct()
+                        onCloneNode(entry, selectedNode.path, name)
+                    }
+                    NodeEditMode.RENAME ->
+                    {
+                        onRenameNode(entry, selectedNode.path, name)
+                    }
+                    null -> Unit
+                }
+                nodeEditMode = null
+            }
+        )
+    }
+
+    if (deleteNodePath != null)
+    {
+        val targetPath = deleteNodePath!!
+        AlertDialog(
+            onDismissRequest = { deleteNodePath = null },
+            title = { Text("删除节点") },
+            text = {
+                Text(
+                    "$targetPath\n\n将删除该节点及其全部子节点和属性。修改会进入暂存区，且仅最近一项修改可直接撤销。"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteNode(entry, targetPath)
+                        deleteNodePath = null
+                    }
+                ) {
+                    Text("删除整个节点")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteNodePath = null }) {
                     Text("取消")
                 }
             }
@@ -516,7 +606,11 @@ private fun NodeDetailSheet(
     onOpenChild: (DeviceTreeNode) -> Unit,
     onEdit: (DeviceTreeProperty) -> Unit,
     onDelete: (DeviceTreeProperty) -> Unit,
-    onAdd: () -> Unit
+    onAdd: () -> Unit,
+    onAddChild: () -> Unit,
+    onClone: () -> Unit,
+    onRename: () -> Unit,
+    onDeleteNode: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -556,6 +650,38 @@ private fun NodeDetailSheet(
             Icon(Icons.Default.Add, null)
             Spacer(Modifier.width(8.dp))
             Text("新增属性")
+        }
+
+        Text(
+            "节点操作",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AssistChip(
+                onClick = onAddChild,
+                label = { Text("新增子节点") }
+            )
+            if (node.path != "/")
+            {
+                AssistChip(
+                    onClick = onClone,
+                    label = { Text("克隆节点") }
+                )
+                AssistChip(
+                    onClick = onRename,
+                    label = { Text("重命名") }
+                )
+                AssistChip(
+                    onClick = onDeleteNode,
+                    label = { Text("删除节点") }
+                )
+            }
         }
 
         if (node.children.isNotEmpty())
@@ -617,6 +743,90 @@ private fun NodeDetailSheet(
             }
         }
     }
+}
+
+
+@Composable
+private fun NodeNameDialog(
+    mode: NodeEditMode,
+    node: DeviceTreeNode,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+)
+{
+    val initial = when (mode)
+    {
+        NodeEditMode.ADD_CHILD -> ""
+        NodeEditMode.CLONE -> node.name + "_copy"
+        NodeEditMode.RENAME -> node.name
+    }
+    var name by remember(mode, node.path) { mutableStateOf(initial) }
+    val valid = name.isNotBlank() &&
+        name != "/" &&
+        Regex("^[A-Za-z0-9,._@+#-]+$").matches(name) &&
+        (mode != NodeEditMode.RENAME || name != node.name)
+
+    val title = when (mode)
+    {
+        NodeEditMode.ADD_CHILD -> "新增子节点"
+        NodeEditMode.CLONE -> "克隆节点"
+        NodeEditMode.RENAME -> "重命名节点"
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    node.path,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall
+                )
+                if (mode == NodeEditMode.CLONE)
+                {
+                    Text(
+                        "克隆会复制整个节点子树。当前阶段包含 label 的子树会被安全阻止，避免重复 phandle。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.trim() },
+                    label = { Text("节点名") },
+                    supportingText = {
+                        Text("支持 unit-address，例如 timing@3、panel@ae94000")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(name) },
+                enabled = valid
+            ) {
+                Text("暂存修改")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+private fun parentPathForUi(path: String): String
+{
+    if (path == "/")
+    {
+        return "/"
+    }
+    val parent = path.substringBeforeLast('/')
+    return parent.ifEmpty { "/" }
 }
 
 @Composable
