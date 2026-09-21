@@ -55,10 +55,11 @@ data class DeviceTreeReferenceIndex(
 
 object DeviceTreeReferenceIndexer
 {
-    // 正则在 build 调用期创建，避免 Android ART 因静态初始化异常将整个 object 标记为不可加载。
-    private fun labelReferenceRegex(): Regex = Regex("""&([A-Za-z_][A-Za-z0-9_.-]*)""")
-
-    private fun pathReferenceRegex(): Regex = Regex("""&\{([^}]+)}""")
+    private data class SymbolicReferenceToken(
+        val token: String,
+        val value: String,
+        val kind: DeviceTreeReferenceKind
+    )
 
     fun build(document: DeviceTreeDocument): DeviceTreeReferenceIndex
     {
@@ -129,33 +130,105 @@ object DeviceTreeReferenceIndexer
                 node.properties.forEach propertyLoop@ { property ->
                     val raw = property.rawValue ?: return@propertyLoop
 
-                    pathReferenceRegex().findAll(raw).forEach { match ->
-                        val path = normalizePath(match.groupValues[1])
+                    scanSymbolicReferences(raw).forEach { reference ->
+                        val targetNodePath = when (reference.kind)
+                        {
+                            DeviceTreeReferenceKind.PATH ->
+                            {
+                                nodesByPath[normalizePath(reference.value)]?.path
+                            }
+                            DeviceTreeReferenceKind.LABEL ->
+                            {
+                                labels[reference.value]
+                            }
+                            else -> null
+                        }
 
                         output += DeviceTreeReference(
                             sourceNodePath = node.path,
                             propertyName = property.name,
-                            token = match.value,
-                            targetNodePath = nodesByPath[path]?.path,
-                            kind = DeviceTreeReferenceKind.PATH
-                        )
-                    }
-
-                    val rawWithoutPathReferences = pathReferenceRegex().replace(raw, "")
-
-                    labelReferenceRegex().findAll(rawWithoutPathReferences).forEach { match ->
-                        val label = match.groupValues[1]
-
-                        output += DeviceTreeReference(
-                            sourceNodePath = node.path,
-                            propertyName = property.name,
-                            token = match.value,
-                            targetNodePath = labels[label],
-                            kind = DeviceTreeReferenceKind.LABEL
+                            token = reference.token,
+                            targetNodePath = targetNodePath,
+                            kind = reference.kind
                         )
                     }
                 }
             }
+    }
+
+    private fun scanSymbolicReferences(raw: String): List<SymbolicReferenceToken>
+    {
+        val result = mutableListOf<SymbolicReferenceToken>()
+        var index = 0
+
+        while (index < raw.length)
+        {
+            if (raw[index] != '&')
+            {
+                index++
+                continue
+            }
+
+            val start = index
+            val next = index + 1
+            if (next >= raw.length)
+            {
+                break
+            }
+
+            if (raw[next] == '{')
+            {
+                val valueStart = next + 1
+                val end = raw.indexOf('}', valueStart)
+                if (end > valueStart)
+                {
+                    val value = raw.substring(valueStart, end)
+                    result += SymbolicReferenceToken(
+                        token = raw.substring(start, end + 1),
+                        value = value,
+                        kind = DeviceTreeReferenceKind.PATH
+                    )
+                    index = end + 1
+                    continue
+                }
+
+                index++
+                continue
+            }
+
+            val first = raw[next]
+            if (!isLabelStart(first))
+            {
+                index++
+                continue
+            }
+
+            var end = next + 1
+            while (end < raw.length && isLabelPart(raw[end]))
+            {
+                end++
+            }
+
+            val value = raw.substring(next, end)
+            result += SymbolicReferenceToken(
+                token = raw.substring(start, end),
+                value = value,
+                kind = DeviceTreeReferenceKind.LABEL
+            )
+            index = end
+        }
+
+        return result
+    }
+
+    private fun isLabelStart(char: Char): Boolean
+    {
+        return char == '_' || char in 'A'..'Z' || char in 'a'..'z'
+    }
+
+    private fun isLabelPart(char: Char): Boolean
+    {
+        return isLabelStart(char) || char in '0'..'9' || char == '.' || char == '-'
     }
 
     private fun appendLocalFixupReferences(
