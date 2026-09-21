@@ -382,6 +382,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
 
+    fun stageDscChange(entryIndex: Int, nodePath: String, parameters: io.mo.dtbooverclocker.model.DscParameters)
+    {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            val current = _state.value
+            val workspace = current.workspace ?: return@launch
+            setBusy(true, "正在暂存 DSC 修改…")
+            try {
+                val (updatedWorkspace, transaction) = patchEngine.applyDscChange(workspace, entryIndex, nodePath, parameters)
+                _state.update {
+                    it.copy(
+                        workspace = updatedWorkspace,
+                        transactions = current.transactions + transaction,
+                        patchReport = null,
+                        lastFlash = null,
+                        status = "已暂存 DSC 修改：${transaction.summary}"
+                    )
+                }
+                refreshCapabilities(updatedWorkspace)
+            } catch (failure: Exception) {
+                showError(failure)
+            } finally {
+                setBusy(false)
+            }
+        }
+    }
+
     fun setDeviceTreeProperty(
         entryIndex: Int,
         nodePath: String,
@@ -1103,7 +1130,7 @@ data class MainUiState(
 
     val moduleDeviceTreeChanges: List<DeviceTreeChange>
         get() = transactions
-            .filter { it.kind == DeviceTreeTransactionKind.RESOLUTION }
+            .filter { it.kind == DeviceTreeTransactionKind.RESOLUTION || it.kind == DeviceTreeTransactionKind.DSC }
             .flatMap { it.operations }
 
     val deviceTreeChanges: List<DeviceTreeChange>

@@ -289,6 +289,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 onResolutionScope = viewModel::setResolutionScope,
                 onResolutionPreset = viewModel::applyResolutionPreset,
                 onStageResolution = viewModel::stageResolutionChange,
+                onStageDsc = viewModel::stageDscChange,
                 onSetDeviceTreeProperty = viewModel::setDeviceTreeProperty,
                 onAddDeviceTreeProperty = viewModel::addDeviceTreeProperty,
                 onDeleteDeviceTreeProperty = viewModel::deleteDeviceTreeProperty,

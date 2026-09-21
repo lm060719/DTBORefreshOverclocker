@@ -80,11 +80,11 @@ object CapabilityScanner
             add(
                 CapabilityFinding(
                     kind = CapabilityKind.DSC,
-                    status = if (dscTopologies.isNotEmpty()) CapabilityStatus.ANALYSIS_ONLY else CapabilityStatus.NOT_FOUND,
+                    status = if (dscTopologies.isNotEmpty()) CapabilityStatus.AVAILABLE else CapabilityStatus.NOT_FOUND,
                     matchCount = dscTopologies.size,
-                    summary = if (dscTopologies.isNotEmpty()) "${dscTopologies.size} 个 DSC timing 可建立拓扑" else "当前 DTBO 未发现可识别 DSC timing",
+                    summary = if (dscTopologies.isNotEmpty()) "${dscTopologies.size} 个 DSC 节点可分析和编辑参数" else "当前 DTBO 未发现可识别 DSC timing",
                     examplePaths = dscTopologies.take(3).map { it.nodePath },
-                    sourceHint = "当前 DSC 模块仅分析，不直接修改 PPS/RC 或厂商命令字节。"
+                    sourceHint = "支持 DSC 参数编辑、暂存与导出；不自动同步 PPS/RC 或厂商命令字节。"
                 )
             )
 

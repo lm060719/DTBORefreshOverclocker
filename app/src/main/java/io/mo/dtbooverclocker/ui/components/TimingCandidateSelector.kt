@@ -78,7 +78,9 @@ fun TimingCandidateSelector(
     modifier: Modifier = Modifier,
     activePanelIdentifier: String? = null,
     activePanelDisplayName: String? = null,
-    activePanelSource: String? = null
+    activePanelSource: String? = null,
+    selectionLabel: String = "选择待超频的原始时序档位：",
+    selectFallback: Boolean = true
 ) {
     val groups = remember(candidates) {
         TimingUtils.groupCandidates(candidates)
@@ -130,7 +132,6 @@ fun TimingCandidateSelector(
         val found = candidates.firstOrNull { it.id == selectedCandidateId }
         if (found != null) {
             filteredGroups.keys.firstOrNull { it.entryIndex == found.entryIndex && it.panelIdentifier == TimingUtils.parsePanelIdentifier(found.nodePath) }
-                ?: groups.keys.firstOrNull { it.entryIndex == found.entryIndex && it.panelIdentifier == TimingUtils.parsePanelIdentifier(found.nodePath) }
                 ?: filteredGroups.keys.firstOrNull()
                 ?: groups.keys.first()
         } else if (activePanelIdentifier != null) {
@@ -142,19 +143,19 @@ fun TimingCandidateSelector(
         }
     }
 
-    var activeGroupKey by remember(groups.keys) {
+    var activeGroupKey by remember(groups.keys, initialKey) {
         mutableStateOf(initialKey)
     }
 
     // 确保 activeGroupKey 始终有效
-    if (activeGroupKey !in groups.keys) {
+    if (activeGroupKey !in filteredGroups.keys) {
         activeGroupKey = filteredGroups.keys.firstOrNull() ?: groups.keys.first()
     }
 
     // 如果当前选中的候选不在 activeGroupKey 列表中，允许自动联动
-    val currentGroupCandidates = groups[activeGroupKey] ?: candidates
-    val activeCandidate = candidates.firstOrNull { it.id == selectedCandidateId }
-        ?: currentGroupCandidates.firstOrNull()
+    val currentGroupCandidates = filteredGroups[activeGroupKey].orEmpty()
+    val activeCandidate = currentGroupCandidates.firstOrNull { it.id == selectedCandidateId }
+        ?: currentGroupCandidates.firstOrNull().takeIf { selectFallback }
 
     var showRawDetails by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
@@ -213,10 +214,6 @@ fun TimingCandidateSelector(
                         selected = filterScope == PanelFilterScope.DEVICE_ONLY,
                         onClick = {
                             filterScope = PanelFilterScope.DEVICE_ONLY
-                            filteredGroups.keys.firstOrNull()?.let { k ->
-                                activeGroupKey = k
-                                groups[k]?.firstOrNull()?.let { onSelect(it.id) }
-                            }
                         },
                         label = { Text("机型专属 ($deviceSpecificCount)") },
                         leadingIcon = {
@@ -237,10 +234,6 @@ fun TimingCandidateSelector(
                         selected = filterScope == PanelFilterScope.REFERENCE,
                         onClick = {
                             filterScope = PanelFilterScope.REFERENCE
-                            filteredGroups.keys.firstOrNull()?.let { k ->
-                                activeGroupKey = k
-                                groups[k]?.firstOrNull()?.let { onSelect(it.id) }
-                            }
                         },
                         label = { Text("公版/仿真 (${groups.size - deviceSpecificCount})") }
                     )
@@ -379,12 +372,15 @@ fun TimingCandidateSelector(
 
         // 刷新率档位卡片列表
         Text(
-            "选择待超频的原始时序档位：",
+            selectionLabel,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Medium
         )
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (currentGroupCandidates.isEmpty()) {
+            Text("没有符合筛选条件的时序档位", style = MaterialTheme.typography.bodySmall)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             currentGroupCandidates.forEach { candidate ->
                 val isSelected = candidate.id == (activeCandidate?.id ?: selectedCandidateId)
                 TimingCandidateCard(

@@ -78,7 +78,7 @@ class CapabilityScannerTest
         assertEquals(1, report.scannedEntryCount)
         assertEquals(CapabilityStatus.AVAILABLE, report.finding(CapabilityKind.REFRESH_RATE)?.status)
         assertEquals(CapabilityStatus.AVAILABLE, report.finding(CapabilityKind.RESOLUTION)?.status)
-        assertEquals(CapabilityStatus.ANALYSIS_ONLY, report.finding(CapabilityKind.DSC)?.status)
+        assertEquals(CapabilityStatus.AVAILABLE, report.finding(CapabilityKind.DSC)?.status)
         assertEquals(CapabilityStatus.DETECTED, report.finding(CapabilityKind.BRIGHTNESS_HBM)?.status)
         assertEquals(CapabilityStatus.DETECTED, report.finding(CapabilityKind.THERMAL)?.status)
         assertEquals(CapabilityStatus.DETECTED, report.finding(CapabilityKind.TOUCH)?.status)

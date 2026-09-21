@@ -46,7 +46,7 @@ The app currently exposes four main tabs:
 | --- | --- | --- |
 | Refresh rate | ✅ Writable | ✅ Subject to safety policy |
 | Resolution | ✅ Aspect-ratio-preserving downscale | ❌ Export-only |
-| DSC | ✅ Topology analysis | ❌ Read-only |
+| DSC | ✅ Topology analysis | ✅ Parameter editing (export only) |
 | Generic Device Tree editor | ✅ Node/property editing | ❌ Export-only |
 | Capability Scanner | ✅ Automatic scan | N/A |
 | Reference index | ✅ label/path/local/external fixups | N/A |
@@ -145,9 +145,11 @@ Resolution transactions are marked `EXPORT_ONLY` and cannot be flashed directly 
 
 ---
 
-## DSC Topology Analyzer
+## DSC Parameter Editor and Topology Analyzer
 
-The current DSC module is read-only.
+The DSC module edits version, BPC, BPP, slice width/height, slices per packet, and block prediction on the selected node. Changes are staged as one transaction for undo, packaging, and export.
+
+Staging validates positive dimensions, parameter ranges, panel divisibility, and slices-per-packet divisibility. Missing version and BPC/BPP properties may remain blank. DSC edits are export-only; topology checks do not establish device compatibility.
 
 It extracts and checks:
 
@@ -352,7 +354,7 @@ Artifacts:
 ## Known boundaries
 
 1. Timing-candidate discovery still relies on `DtsTimingPatcher.analyzeEntry()`.
-2. DSC is analysis-only.
+2. DSC supports core parameter editing for export; PPS, RC ranges, and vendor commands are not synchronized automatically.
 3. Resolution editing is limited to topology-validated proportional downscaling.
 4. Thermal / Charging / Touch / HBM are detection-only.
 5. Generic Device Tree edits and resolution transactions are not eligible for direct Root flashing.

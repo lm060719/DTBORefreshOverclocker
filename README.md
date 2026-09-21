@@ -46,7 +46,7 @@ DTBO 重建 / 导出 / 受控刷写
 | --- | --- | --- |
 | 刷新率 | ✅ 可修改 | ✅ 受安全策略约束 |
 | 分辨率 | ✅ 等比例降分辨率 | ❌ 仅导出验证 |
-| DSC | ✅ 拓扑分析 | ❌ 当前不写入 |
+| DSC | ✅ 拓扑分析 | ✅ 参数编辑（仅导出验证） |
 | 通用设备树编辑 | ✅ 节点 / 属性级编辑 | ❌ 仅导出验证 |
 | Capability Scanner | ✅ 自动扫描 | 不适用 |
 | 引用索引 | ✅ label / path / local fixup / external fixup | 不适用 |
@@ -208,9 +208,11 @@ horizontal slices = 2
 
 ---
 
-## 5. DSC Topology Analyzer
+## 5. DSC 参数编辑与拓扑分析
 
-Phase 8 起已经加入只读 DSC 拓扑分析。
+DSC 模块支持编辑所选节点的 version、BPC、BPP、slice width/height、slice-per-packet 和 block prediction。修改会作为单个事务暂存，可在概览中撤销、集中打包和导出。
+
+暂存前检查正数、参数范围、面板宽高整除关系和每包 slice 数整除关系。未定义的 version、BPC/BPP 可以留空；其他字段需要填写有效整数。
 
 当前解析：
 
@@ -235,7 +237,7 @@ Phase 8 起已经加入只读 DSC 拓扑分析。
 - BPC / BPP 是否落在常见范围
 - ROI 是否符合当前已验证结构
 
-**当前 DSC 模块只分析，不修改 PPS、RC range 或厂商 DSI command。**
+**DSC 修改仅支持导出验证，不自动同步 PPS、RC range 或厂商 DSI command。拓扑校验不代表设备兼容性验证。**
 
 ---
 
@@ -495,7 +497,7 @@ Repository
 当前主要边界：
 
 1. 刷新率候选发现仍依赖 `DtsTimingPatcher.analyzeEntry()`，后续会继续迁移到结构化语义扫描器。
-2. DSC 当前只分析，不开放完整参数写入。
+2. DSC 支持核心参数编辑并导出验证，暂不自动同步 PPS、RC range 或厂商命令。
 3. 分辨率只开放能通过现有拓扑约束证明的等比例降分辨率。
 4. Thermal / Charging / Touch / HBM 当前只做能力发现，尚未进入通用 Planner 写入阶段。
 5. 通用设备树自由编辑和分辨率事务禁止 Root 直刷。

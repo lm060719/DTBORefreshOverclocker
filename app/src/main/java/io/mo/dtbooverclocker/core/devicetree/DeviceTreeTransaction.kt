@@ -8,6 +8,7 @@ enum class DeviceTreeTransactionKind(val displayName: String)
 {
     REFRESH_RATE("刷新率"),
     RESOLUTION("分辨率"),
+    DSC("DSC"),
     GENERIC_EDIT("设备树编辑")
 }
 
@@ -87,6 +88,19 @@ data class DeviceTreeTransaction(
                 operations = operations,
                 risk = DeviceTreeTransactionRisk.EXPORT_ONLY,
                 directFlashAllowed = moduleChange.directFlashAllowed,
+                warnings = moduleChange.warnings,
+                moduleChange = moduleChange
+            )
+        }
+
+        fun dsc(moduleChange: ModuleStagedChange, operations: List<DeviceTreeChange>): DeviceTreeTransaction
+        {
+            return DeviceTreeTransaction(
+                kind = DeviceTreeTransactionKind.DSC,
+                summary = moduleChange.summary,
+                operations = operations,
+                risk = DeviceTreeTransactionRisk.EXPORT_ONLY,
+                directFlashAllowed = false,
                 warnings = moduleChange.warnings,
                 moduleChange = moduleChange
             )

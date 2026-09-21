@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.mo.dtbooverclocker.model.DscParameters
 import io.mo.dtbooverclocker.model.CapabilityFinding
 import io.mo.dtbooverclocker.model.CapabilityKind
 import io.mo.dtbooverclocker.model.CapabilityStatus
@@ -50,6 +51,7 @@ fun StudioScreen(
     onResolutionWidth: (String) -> Unit, onResolutionHeight: (String) -> Unit,
     onResolutionScope: (ResolutionScope) -> Unit, onResolutionPreset: (Int, Int) -> Unit,
     onStageResolution: () -> Unit,
+    onStageDsc: (Int, String, DscParameters) -> Unit,
     onSetDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onAddDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onDeleteDeviceTreeProperty: (Int, String, String) -> Unit,
@@ -71,7 +73,7 @@ fun StudioScreen(
                 state, padding, onSelect, onTarget, onStrategy, onPatchMode,
                 onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp,
                 onApplySuggestedCustom, onStageChange, onResolutionWidth, onResolutionHeight,
-                onResolutionScope, onResolutionPreset, onStageResolution
+                onResolutionScope, onResolutionPreset, onStageResolution, onStageDsc
             )
             StudioTab.DEVICE_TREE -> DeviceTreeScreen(
                 state = state,
@@ -302,7 +304,8 @@ private fun ModulesTab(
     onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit, onApplySuggestedCustom: () -> Unit,
     onStageChange: () -> Unit, onResolutionWidth: (String) -> Unit, onResolutionHeight: (String) -> Unit,
     onResolutionScope: (ResolutionScope) -> Unit, onResolutionPreset: (Int, Int) -> Unit,
-    onStageResolution: () -> Unit
+    onStageResolution: () -> Unit,
+    onStageDsc: (Int, String, DscParameters) -> Unit
 ) {
     var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
     val workspace = state.workspace
@@ -353,7 +356,7 @@ private fun ModulesTab(
             }
             if (activeModule == StudioModule.DSC) {
                 item { HorizontalDivider() }
-                item { DscAnalysisPanel(state = state, onSelect = onSelect) }
+                item { DscAnalysisPanel(state = state, onSelect = onSelect, onStage = onStageDsc) }
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
