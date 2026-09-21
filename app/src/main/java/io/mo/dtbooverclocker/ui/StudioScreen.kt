@@ -46,6 +46,10 @@ fun StudioScreen(
     onSetDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onAddDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onDeleteDeviceTreeProperty: (Int, String, String) -> Unit,
+    onAddDeviceTreeNode: (Int, String, String) -> Unit,
+    onCloneDeviceTreeNode: (Int, String, String) -> Unit,
+    onRenameDeviceTreeNode: (Int, String, String) -> Unit,
+    onDeleteDeviceTreeNode: (Int, String) -> Unit,
     onUndoDeviceTreeChange: (String) -> Unit,
     onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit,
     onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onFlash: () -> Unit,
@@ -62,6 +66,10 @@ fun StudioScreen(
                 onSetProperty = onSetDeviceTreeProperty,
                 onAddProperty = onAddDeviceTreeProperty,
                 onDeleteProperty = onDeleteDeviceTreeProperty,
+                onAddNode = onAddDeviceTreeNode,
+                onCloneNode = onCloneDeviceTreeNode,
+                onRenameNode = onRenameDeviceTreeNode,
+                onDeleteNode = onDeleteDeviceTreeNode,
                 onUndoChange = onUndoDeviceTreeChange
             )
             StudioTab.SETTINGS -> SettingsHubTab(state, padding, onRequestRoot, onRefreshEnvironment, onOpenRollback, onOpenAdvancedSettings, onOpenAbout)
