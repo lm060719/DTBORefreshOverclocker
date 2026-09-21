@@ -127,8 +127,8 @@ object DeviceTreeEditor
         val source = requireNotNull(document.findNode(sourceNodePath)) {
             "源节点不存在：$sourceNodePath"
         }
-        require(!containsLabel(source)) {
-            "当前阶段不能克隆包含 label 的节点或子树，避免产生重复 label / phandle。"
+        require(!containsCloneIdentity(source)) {
+            "当前阶段不能克隆包含 label、phandle 或 linux,phandle 的节点子树，避免产生重复节点身份。"
         }
 
         val parentPath = parentPathOf(sourceNodePath)
@@ -455,9 +455,14 @@ object DeviceTreeEditor
         }
     }
 
-    private fun containsLabel(node: DeviceTreeNode): Boolean
+    private fun containsCloneIdentity(node: DeviceTreeNode): Boolean
     {
-        return node.label != null || node.children.any(::containsLabel)
+        val hasExplicitPhandle = node.properties.any {
+            it.name == "phandle" || it.name == "linux,phandle"
+        }
+        return node.label != null ||
+            hasExplicitPhandle ||
+            node.children.any(::containsCloneIdentity)
     }
 
     private fun statement(
