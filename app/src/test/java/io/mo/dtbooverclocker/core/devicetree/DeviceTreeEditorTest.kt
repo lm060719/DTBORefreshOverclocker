@@ -139,6 +139,8 @@ class DeviceTreeEditorTest
         }
     }
 
+
+
     @Test
     fun cloneCanStripOnlyRootLabelForControlledFeatureModules()
     {
