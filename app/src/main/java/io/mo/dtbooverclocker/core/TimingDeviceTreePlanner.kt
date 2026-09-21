@@ -17,15 +17,16 @@ import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.TimingCandidate
 
 /**
- * 刷新率功能模块到通用 Device Tree Core 的规划层。
+ * 刷新率功能模块到通用 Device Tree Core 的生产规划层。
  *
- * Phase 6 起正常执行路径不再调用 DtsTimingPatcher.patch() 生成参考文本：
+ * 当前执行路径：
  * 1. TimingParameterCalculator 只负责纯参数计算；
  * 2. 本类把目标参数转换成精确 DeviceTreeChange；
- * 3. DeviceTreeEditor 回放低层操作；
- * 4. 回放后重新解析并验证目标参数、克隆隔离与删除安全条件。
+ * 3. DeviceTreeEditor 回放底层操作；
+ * 4. 回放后重新解析并验证目标参数、克隆隔离、节点集合和删除安全条件；
+ * 5. 上层再把这些操作封装进 DeviceTreeTransaction 参与统一打包和风险控制。
  *
- * DtsTimingPatcher 仍保留 analyzeEntry() 供候选发现，同时旧 patch() 仅用于单元测试回归对照。
+ * DtsTimingPatcher.analyzeEntry() 仍用于候选发现；旧 patch() 只保留为回归测试对照。
  */
 object TimingDeviceTreePlanner
 {

@@ -14,9 +14,11 @@ import io.mo.dtbooverclocker.model.TimingCandidate
 /**
  * 分辨率功能模块规划器。
  *
- * Phase 7 只允许“等比例降分辨率”，并且只修改能从 DTS 中明确证明耦合关系的字段：
+ * 当前版本只允许“等比例降分辨率”，并且只修改能从 DTS 中明确证明耦合关系的字段：
  * panel width/height、DSC slice width，以及特征完全匹配的 full-width ROI alignment。
- * 不自动猜测 porch、PHY、PPS、命令序列或未知厂商属性。
+ *
+ * 无法证明关系的 porch、PHY、PPS、厂商命令序列和私有属性不会被猜测修改；
+ * 规划结果统一作为 EXPORT_ONLY 事务处理，禁止应用内 Root 直刷。
  */
 object ResolutionPlanner
 {
@@ -149,7 +151,7 @@ object ResolutionPlanner
         }
 
         val warnings = buildList {
-            add("Phase 7 分辨率模块仅支持等比例降分辨率；不会猜测或自动重写未知厂商属性。")
+            add("当前分辨率模块仅支持等比例降分辨率；不会猜测或自动重写未知厂商属性。")
             add("DSC 模式仅在 slice 拓扑和 ROI 结构可证明时同步；否则规划器会直接拒绝。")
             add("本版本分辨率修改禁止 Root 直刷，请先导出 dtbo.img / Recovery ZIP / Fastboot 包离线验证。")
             add("节点名称中的 wqhd/fhd 等语义标签暂不重命名，避免破坏潜在引用。")

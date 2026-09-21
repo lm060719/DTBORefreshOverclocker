@@ -9,6 +9,13 @@ import io.mo.dtbooverclocker.model.CapabilityReport
 import io.mo.dtbooverclocker.model.CapabilityStatus
 import io.mo.dtbooverclocker.model.DtboWorkspace
 
+/**
+ * 当前工作区的设备树能力扫描器。
+ *
+ * 扫描结果只回答“当前 DTBO 中是否发现相关结构”，并不自动意味着该能力可安全修改。
+ * Refresh / Resolution / DSC 使用结构化数据判断；Brightness/HBM、Thermal、Charging、Touch
+ * 目前采用保守关键字发现，只作为后续模块开发和人工定位的线索。
+ */
 object CapabilityScanner
 {
     private data class Signature(
@@ -77,7 +84,7 @@ object CapabilityScanner
                     matchCount = dscTopologies.size,
                     summary = if (dscTopologies.isNotEmpty()) "${dscTopologies.size} 个 DSC timing 可建立拓扑" else "当前 DTBO 未发现可识别 DSC timing",
                     examplePaths = dscTopologies.take(3).map { it.nodePath },
-                    sourceHint = "Phase 8 DSC 仅分析，不直接修改 PPS/RC 或厂商命令字节。"
+                    sourceHint = "当前 DSC 模块仅分析，不直接修改 PPS/RC 或厂商命令字节。"
                 )
             )
 

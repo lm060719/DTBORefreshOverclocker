@@ -10,6 +10,14 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+/**
+ * 旧版文本时序分析/修补器。
+ *
+ * 当前生产链只继续使用 analyzeEntry() 做时序候选发现；真正的刷新率写入已经迁移到
+ * TimingParameterCalculator + TimingDeviceTreePlanner + DeviceTreeChange。
+ *
+ * patch() 保留用于历史行为回归测试和结果对照，不应在新的功能模块中作为生产写入入口。
+ */
 object DtsTimingPatcher {
     private val refreshAliases = listOf(
         "qcom,mdss-dsi-panel-framerate",

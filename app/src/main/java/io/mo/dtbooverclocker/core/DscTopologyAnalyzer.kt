@@ -8,6 +8,14 @@ import io.mo.dtbooverclocker.model.DscIssue
 import io.mo.dtbooverclocker.model.DscIssueSeverity
 import io.mo.dtbooverclocker.model.DscTopology
 
+/**
+ * DSC 只读拓扑分析器。
+ *
+ * 负责把面板尺寸、DSC slice、BPC/BPP、block prediction、ROI 等属性整理成可验证的
+ * DscTopology，并报告不整除、缺字段和 packet 拓扑异常。
+ *
+ * 这里不生成 DeviceTreeChange，也不修改 PPS、RC range 或厂商 DSI command。
+ */
 object DscTopologyAnalyzer
 {
     private val refreshAliases = listOf(
