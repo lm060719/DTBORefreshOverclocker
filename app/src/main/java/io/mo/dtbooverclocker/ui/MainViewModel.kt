@@ -264,12 +264,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }.onSuccess { result ->
                 val newStaged = current.stagedChanges + result.stagedChange
+                val newTimingOperations = current.timingDeviceTreeChanges + result.operations
                 val newModifiedEntries = current.modifiedEntryIndices + candidate.entryIndex
                 _state.update {
                     it.copy(
                         workspace = result.updatedWorkspace,
                         selectedCandidateId = result.selectedCandidateId,
                         stagedChanges = newStaged,
+                        timingDeviceTreeChanges = newTimingOperations,
                         modifiedEntryIndices = newModifiedEntries,
                         patchReport = null,
                         status = "已暂存修改：${result.stagedChange.summary} (共 ${newStaged.size} 项修改待打包)",
@@ -468,6 +470,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         workspace = restoredWorkspace,
                         selectedCandidateId = restoredWorkspace.candidates.firstOrNull()?.id,
                         stagedChanges = emptyList(),
+                        timingDeviceTreeChanges = emptyList(),
                         deviceTreeChanges = emptyList(),
                         modifiedEntryIndices = emptySet(),
                         patchReport = null,
@@ -494,6 +497,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 patchEngine.packageStaged(
                     workspace = workspace,
                     stagedChanges = current.stagedChanges,
+                    timingDeviceTreeChanges = current.timingDeviceTreeChanges,
                     deviceTreeChanges = current.deviceTreeChanges,
                     modifiedEntryIndices = current.modifiedEntryIndices
                 )
@@ -834,6 +838,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 targetHz = suggestedTarget(selectedCandidate?.currentHz ?: 60),
                 patchReport = null,
                 stagedChanges = emptyList(),
+                timingDeviceTreeChanges = emptyList(),
                 deviceTreeChanges = emptyList(),
                 modifiedEntryIndices = emptySet(),
                 lastFlash = null,
@@ -905,6 +910,7 @@ data class MainUiState(
     val patchMode: PatchMode = PatchMode.OVERWRITE_EXISTING,
     val patchReport: PatchReport? = null,
     val stagedChanges: List<StagedChange> = emptyList(),
+    val timingDeviceTreeChanges: List<DeviceTreeChange> = emptyList(),
     val deviceTreeChanges: List<DeviceTreeChange> = emptyList(),
     val modifiedEntryIndices: Set<Int> = emptySet(),
     val lastFlash: FlashResult? = null,
