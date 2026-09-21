@@ -330,6 +330,65 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+
+    fun addDeviceTreeNode(
+        entryIndex: Int,
+        parentNodePath: String,
+        nodeName: String
+    ) {
+        stageDeviceTreeChange(entryIndex) { text ->
+            DeviceTreeEditor.buildAddNodeChange(
+                entryIndex = entryIndex,
+                text = text,
+                parentNodePath = parentNodePath,
+                nodeName = nodeName
+            )
+        }
+    }
+
+    fun cloneDeviceTreeNode(
+        entryIndex: Int,
+        sourceNodePath: String,
+        newNodeName: String
+    ) {
+        stageDeviceTreeChange(entryIndex) { text ->
+            DeviceTreeEditor.buildCloneNodeChange(
+                entryIndex = entryIndex,
+                text = text,
+                sourceNodePath = sourceNodePath,
+                newNodeName = newNodeName
+            )
+        }
+    }
+
+    fun renameDeviceTreeNode(
+        entryIndex: Int,
+        nodePath: String,
+        newNodeName: String
+    ) {
+        stageDeviceTreeChange(entryIndex) { text ->
+            DeviceTreeEditor.buildRenameNodeChange(
+                entryIndex = entryIndex,
+                text = text,
+                nodePath = nodePath,
+                newNodeName = newNodeName
+            )
+        }
+    }
+
+    fun deleteDeviceTreeNode(
+        entryIndex: Int,
+        nodePath: String
+    ) {
+        stageDeviceTreeChange(entryIndex) { text ->
+            DeviceTreeEditor.buildDeleteNodeChange(
+                entryIndex = entryIndex,
+                text = text,
+                nodePath = nodePath
+            )
+        }
+    }
+
     fun undoDeviceTreeChange(changeId: String) {
         viewModelScope.launch {
             val current = _state.value
