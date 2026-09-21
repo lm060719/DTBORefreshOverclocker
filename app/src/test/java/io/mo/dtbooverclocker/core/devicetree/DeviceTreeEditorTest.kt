@@ -140,6 +140,80 @@ class DeviceTreeEditorTest
     }
 
     @Test
+    fun cloneCanStripOnlyRootLabelForControlledFeatureModules()
+    {
+        val labeled = """
+            /dts-v1/;
+            / {
+                timing0: timing@0 {
+                    rate = <0x78>;
+                };
+            };
+        """.trimIndent()
+
+        val clone = DeviceTreeEditor.buildCloneNodeChange(
+            entryIndex = 0,
+            text = labeled,
+            sourceNodePath = "/timing@0",
+            newNodeName = "timing@1",
+            stripRootLabel = true
+        )
+        val changed = DeviceTreeEditor.apply(labeled, clone)
+        val document = DeviceTreeParser.parse(0, changed)
+        val original = requireNotNull(document.findNode("/timing@0"))
+        val cloned = requireNotNull(document.findNode("/timing@1"))
+
+        assertEquals("timing0", original.label)
+        assertEquals(null, cloned.label)
+        assertEquals("<0x78>", cloned.properties.first { it.name == "rate" }.rawValue)
+    }
+
+    @Test
+    fun stripRootLabelStillRejectsPhandleOrChildIdentity()
+    {
+        val phandled = """
+            /dts-v1/;
+            / {
+                timing0: timing@0 {
+                    phandle = <0x10>;
+                    rate = <0x78>;
+                };
+            };
+        """.trimIndent()
+        assertThrows(IllegalArgumentException::class.java) {
+            DeviceTreeEditor.buildCloneNodeChange(
+                entryIndex = 0,
+                text = phandled,
+                sourceNodePath = "/timing@0",
+                newNodeName = "timing@1",
+                stripRootLabel = true
+            )
+        }
+
+        val childLabel = """
+            /dts-v1/;
+            / {
+                timing0: timing@0 {
+                    rate = <0x78>;
+                    child0: child@0 {
+                        value = <1>;
+                    };
+                };
+            };
+        """.trimIndent()
+        assertThrows(IllegalArgumentException::class.java) {
+            DeviceTreeEditor.buildCloneNodeChange(
+                entryIndex = 0,
+                text = childLabel,
+                sourceNodePath = "/timing@0",
+                newNodeName = "timing@1",
+                stripRootLabel = true
+            )
+        }
+    }
+
+
+    @Test
     fun cloneRejectsSubtreeWithExplicitPhandle()
     {
         val phandled = """
