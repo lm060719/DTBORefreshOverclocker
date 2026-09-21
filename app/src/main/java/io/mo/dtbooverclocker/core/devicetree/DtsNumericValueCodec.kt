@@ -51,7 +51,7 @@ object DtsNumericValueCodec
                 .removePrefix("<")
                 .removeSuffix(">")
                 .trim()
-                .split(Regex("\s+"))
+                .split(Regex("\\s+"))
                 .filter { it.isNotBlank() }
 
             return when (originalTokens.size)
@@ -139,7 +139,7 @@ object DtsNumericValueCodec
             .removePrefix("<")
             .removeSuffix(">")
             .trim()
-            .split(Regex("\s+"))
+            .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
 
         if (tokens.isEmpty() || tokens.size > 2)
@@ -163,7 +163,7 @@ object DtsNumericValueCodec
             .removePrefix("[")
             .removeSuffix("]")
             .trim()
-            .split(Regex("\s+"))
+            .split(Regex("\\s+"))
             .filter { it.isNotBlank() }
 
         if (tokens.size !in setOf(4, 8))
@@ -184,7 +184,7 @@ object DtsNumericValueCodec
 
     private fun parseSingleString(raw: String): String?
     {
-        val match = Regex("^\"((?:\\.|[^\"\\])*)\"$").matchEntire(raw)
+        val match = Regex("^\\\"((?:\\\\.|[^\\\"\\\\])*)\\\"$").matchEntire(raw)
             ?: return null
         return match.groupValues[1]
     }
