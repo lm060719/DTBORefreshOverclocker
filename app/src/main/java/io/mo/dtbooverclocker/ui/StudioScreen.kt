@@ -58,6 +58,7 @@ fun StudioScreen(
     onRenameDeviceTreeNode: (Int, String, String) -> Unit,
     onDeleteDeviceTreeNode: (Int, String) -> Unit,
     onUndoDeviceTreeChange: (String) -> Unit,
+    onUndoLastTransaction: () -> Unit,
     onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit,
     onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onFlash: () -> Unit,
     onExportBackup: (File) -> Unit, onExportRescue: (File) -> Unit, onScreenshot: () -> Unit,
@@ -65,7 +66,7 @@ fun StudioScreen(
 ) {
     StudioNavigation(pagerState, pageStateHolder, !state.busy, onOpenRollback, onRefreshEnvironment) { tab, padding ->
         when (tab) {
-            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onSavePatched, onRecoveryZip, onFastbootBundle, onFlash, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
+            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onUndoLastTransaction, onSavePatched, onRecoveryZip, onFastbootBundle, onFlash, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
             StudioTab.MODULES -> ModulesTab(
                 state, padding, onSelect, onTarget, onStrategy, onPatchMode,
                 onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp,
@@ -146,7 +147,8 @@ internal fun StudioNavigation(
 @Composable
 private fun OverviewTab(
     state: MainUiState, padding: PaddingValues, onImport: () -> Unit, onExtract: () -> Unit,
-    onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit, onRecoveryZip: () -> Unit,
+    onPackage: () -> Unit, onReset: () -> Unit, onUndoLastTransaction: () -> Unit,
+    onSavePatched: (File) -> Unit, onRecoveryZip: () -> Unit,
     onFastbootBundle: () -> Unit, onFlash: () -> Unit, onExportBackup: (File) -> Unit,
     onExportRescue: (File) -> Unit, onScreenshot: () -> Unit, onCopy: (String) -> Unit, onClearLogs: () -> Unit
 ) {
@@ -156,12 +158,8 @@ private fun OverviewTab(
         item(key = "source") { SourceCard(state, onImport, onExtract) }
         if (state.workspace != null) {
             item(key = "summary") { ImageSummaryCard(state) }
-            if (state.stagedChanges.isNotEmpty()) item(key = "staged") { StagedChangesCard(state.stagedChanges, onPackage, onReset, state.busy) }
-            if (state.moduleStagedChanges.isNotEmpty()) item(key = "module-staged") {
-                ModuleStagedChangesCard(state, onPackage, onReset)
-            }
-            if (state.deviceTreeChanges.isNotEmpty()) item(key = "device-tree-staged") {
-                DeviceTreeStagedChangesCard(state, onPackage, onReset)
+            if (state.transactions.isNotEmpty()) item(key = "transactions") {
+                TransactionQueueCard(state, onPackage, onReset, onUndoLastTransaction)
             }
         }
         state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onFlash) } }
@@ -171,6 +169,44 @@ private fun OverviewTab(
     }
 }
 
+
+@Composable
+private fun TransactionQueueCard(
+    state: MainUiState,
+    onPackage: () -> Unit,
+    onReset: () -> Unit,
+    onUndoLastTransaction: () -> Unit
+)
+{
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "设备树事务 · ${state.transactions.size} 个 / ${state.transactions.sumOf { it.operationCount }} 个底层操作",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            state.transactions.takeLast(5).forEach { transaction ->
+                Text(
+                    "• ${transaction.kind.displayName} · ${transaction.risk.displayName} · ${transaction.operationCount} ops\n  ${transaction.summary}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (state.transactions.any { !it.directFlashAllowed }) {
+                Text(
+                    "事务队列包含仅允许导出验证的修改，因此 Root 直刷已禁用。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
+                OutlinedButton(onClick = onUndoLastTransaction, enabled = !state.busy) { Text("撤销最近事务") }
+                OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ModuleStagedChangesCard(
