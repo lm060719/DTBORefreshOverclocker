@@ -55,9 +55,10 @@ data class DeviceTreeReferenceIndex(
 
 object DeviceTreeReferenceIndexer
 {
-    private val labelReferenceRegex = Regex("""&([A-Za-z_][A-Za-z0-9_.-]*)""")
-    private val pathReferenceRegex = Regex("""&\{([^}]+)}""")
-    private val quotedStringRegex = Regex("""\"((?:\\.|[^\"\\])*)\"""")
+    // 正则在 build 调用期创建，避免 Android ART 因静态初始化异常将整个 object 标记为不可加载。
+    private fun labelReferenceRegex(): Regex = Regex("""&([A-Za-z_][A-Za-z0-9_.-]*)""")
+
+    private fun pathReferenceRegex(): Regex = Regex("""&\{([^}]+)}""")
 
     fun build(document: DeviceTreeDocument): DeviceTreeReferenceIndex
     {
@@ -128,7 +129,7 @@ object DeviceTreeReferenceIndexer
                 node.properties.forEach propertyLoop@ { property ->
                     val raw = property.rawValue ?: return@propertyLoop
 
-                    pathReferenceRegex.findAll(raw).forEach { match ->
+                    pathReferenceRegex().findAll(raw).forEach { match ->
                         val path = normalizePath(match.groupValues[1])
 
                         output += DeviceTreeReference(
@@ -140,9 +141,9 @@ object DeviceTreeReferenceIndexer
                         )
                     }
 
-                    val rawWithoutPathReferences = pathReferenceRegex.replace(raw, "")
+                    val rawWithoutPathReferences = pathReferenceRegex().replace(raw, "")
 
-                    labelReferenceRegex.findAll(rawWithoutPathReferences).forEach { match ->
+                    labelReferenceRegex().findAll(rawWithoutPathReferences).forEach { match ->
                         val label = match.groupValues[1]
 
                         output += DeviceTreeReference(
@@ -305,33 +306,52 @@ object DeviceTreeReferenceIndexer
 
     private fun parseQuotedStrings(raw: String): List<String>
     {
-        return quotedStringRegex.findAll(raw)
-            .map { unescapeString(it.groupValues[1]) }
-            .toList()
-    }
-
-    private fun unescapeString(value: String): String
-    {
-        val output = StringBuilder(value.length)
+        val result = mutableListOf<String>()
         var index = 0
 
-        while (index < value.length)
+        while (index < raw.length)
         {
-            val char = value[index]
-
-            if (char == '\\' && index + 1 < value.length)
+            if (raw[index] != '"')
             {
-                output.append(value[index + 1])
-                index += 2
-            }
-            else
-            {
-                output.append(char)
                 index++
+                continue
+            }
+
+            index++
+            val value = StringBuilder()
+            var closed = false
+
+            while (index < raw.length)
+            {
+                val char = raw[index]
+                when
+                {
+                    char == '\\' && index + 1 < raw.length ->
+                    {
+                        value.append(raw[index + 1])
+                        index += 2
+                    }
+                    char == '"' ->
+                    {
+                        index++
+                        closed = true
+                        break
+                    }
+                    else ->
+                    {
+                        value.append(char)
+                        index++
+                    }
+                }
+            }
+
+            if (closed)
+            {
+                result += value.toString()
             }
         }
 
-        return output.toString()
+        return result
     }
 
     private fun parseSingleCell(rawValue: String?): Long?
