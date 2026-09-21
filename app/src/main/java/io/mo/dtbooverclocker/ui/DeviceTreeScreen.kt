@@ -155,7 +155,7 @@ fun DeviceTreeScreen(
                     document = document,
                     referenceIndex = referenceResult.getOrNull(),
                     loading = false,
-                    referenceError = referenceResult.exceptionOrNull()?.message
+                    referenceError = referenceResult.exceptionOrNull()?.let(::formatReferenceIndexError)
                 )
             }
         }
@@ -1589,6 +1589,21 @@ private fun ChangeCard(
             }
         }
     }
+}
+
+private fun formatReferenceIndexError(error: Throwable): String
+{
+    val chain = generateSequence(error) { it.cause }
+        .take(4)
+        .map { throwable ->
+            val type = throwable::class.java.simpleName.ifBlank { throwable::class.java.name }
+            val message = throwable.message?.trim().orEmpty()
+            if (message.isBlank()) type else "$type: $message"
+        }
+        .distinct()
+        .toList()
+
+    return chain.joinToString(" ← ").ifBlank { error::class.java.name }
 }
 
 private fun matchesSearchScope(
