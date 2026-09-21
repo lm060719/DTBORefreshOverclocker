@@ -334,8 +334,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val current = _state.value
             val workspace = current.workspace ?: return@launch
-            val change = current.deviceTreeChanges.lastOrNull()
-            requireOrReport(change != null && change.id == changeId) {
+            val change = current.deviceTreeChanges.lastOrNull() ?: return@launch
+            requireOrReport(change.id == changeId) {
                 "为避免覆盖后续修改，当前阶段只允许撤销最近一项通用设备树修改。"
             } ?: return@launch
 
