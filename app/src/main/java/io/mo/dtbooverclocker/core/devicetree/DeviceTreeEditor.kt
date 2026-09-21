@@ -115,7 +115,8 @@ object DeviceTreeEditor
         entryIndex: Int,
         text: String,
         sourceNodePath: String,
-        newNodeName: String
+        newNodeName: String,
+        stripRootLabel: Boolean = false
     ): CloneNodeChange
     {
         require(sourceNodePath != "/") {
@@ -127,8 +128,20 @@ object DeviceTreeEditor
         val source = requireNotNull(document.findNode(sourceNodePath)) {
             "源节点不存在：$sourceNodePath"
         }
-        require(!containsCloneIdentity(source)) {
-            "当前阶段不能克隆包含 label、phandle 或 linux,phandle 的节点子树，避免产生重复节点身份。"
+        if (stripRootLabel)
+        {
+            require(!hasExplicitPhandle(source)) {
+                "源节点包含 phandle 或 linux,phandle，不能通过剥离 Label 的方式安全克隆。"
+            }
+            require(source.children.none(::containsCloneIdentity)) {
+                "源节点子树包含子节点 Label 或 phandle，不能安全克隆。"
+            }
+        }
+        else
+        {
+            require(!containsCloneIdentity(source)) {
+                "当前阶段不能克隆包含 label、phandle 或 linux,phandle 的节点子树，避免产生重复节点身份。"
+            }
         }
 
         val parentPath = parentPathOf(sourceNodePath)
@@ -138,7 +151,12 @@ object DeviceTreeEditor
         }
 
         val rawSource = extractNodeSource(text, source)
-        val renamed = renameRootNodeSource(rawSource, source.name, newNodeName)
+        val renamed = renameRootNodeSource(
+            source = rawSource,
+            oldName = source.name,
+            newName = newNodeName,
+            stripRootLabel = stripRootLabel
+        )
         return CloneNodeChange(
             entryIndex = entryIndex,
             sourceNodePath = sourceNodePath,
@@ -387,7 +405,8 @@ object DeviceTreeEditor
     private fun renameRootNodeSource(
         source: String,
         oldName: String,
-        newName: String
+        newName: String,
+        stripRootLabel: Boolean
     ): String
     {
         val headerEnd = source.indexOf('{')
@@ -399,7 +418,16 @@ object DeviceTreeEditor
         require(index >= 0) {
             "无法在克隆节点头中定位名称：$oldName"
         }
-        return source.replaceRange(index, index + oldName.length, newName)
+
+        if (!stripRootLabel)
+        {
+            return source.replaceRange(index, index + oldName.length, newName)
+        }
+
+        val prefix = header.substring(0, index)
+        val indent = prefix.takeWhile(Char::isWhitespace)
+        val suffix = source.substring(index + oldName.length)
+        return indent + newName + suffix
     }
 
     private fun removeSourceRangeWithLineBreak(
@@ -457,12 +485,16 @@ object DeviceTreeEditor
 
     private fun containsCloneIdentity(node: DeviceTreeNode): Boolean
     {
-        val hasExplicitPhandle = node.properties.any {
+        return node.label != null ||
+            hasExplicitPhandle(node) ||
+            node.children.any(::containsCloneIdentity)
+    }
+
+    private fun hasExplicitPhandle(node: DeviceTreeNode): Boolean
+    {
+        return node.properties.any {
             it.name == "phandle" || it.name == "linux,phandle"
         }
-        return node.label != null ||
-            hasExplicitPhandle ||
-            node.children.any(::containsCloneIdentity)
     }
 
     private fun statement(
