@@ -47,8 +47,10 @@ import java.io.File
 
 private data class DocumentLoadResult(
     val document: DeviceTreeDocument? = null,
+    val referenceIndex: DeviceTreeReferenceIndex? = null,
     val loading: Boolean = true,
-    val error: String? = null
+    val error: String? = null,
+    val referenceError: String? = null
 )
 
 private data class TreeRow(
@@ -130,7 +132,26 @@ fun DeviceTreeScreen(
                     DeviceTreeParser.parse(entry, text) { ensureActive() }
                 }
             }
-            DocumentLoadResult(document = document, loading = false)
+
+            if (document == null)
+            {
+                DocumentLoadResult(document = null, loading = false)
+            }
+            else
+            {
+                val referenceResult = withContext(Dispatchers.Default) {
+                    runCatching {
+                        DeviceTreeReferenceIndexer.build(document)
+                    }
+                }
+
+                DocumentLoadResult(
+                    document = document,
+                    referenceIndex = referenceResult.getOrNull(),
+                    loading = false,
+                    referenceError = referenceResult.exceptionOrNull()?.message
+                )
+            }
         }
         catch (cancelled: CancellationException)
         {
@@ -165,10 +186,7 @@ fun DeviceTreeScreen(
             .flatMap { change -> listOf(change.nodePath) + change.allowedNodePaths() }
             .toSet()
     }
-    val referenceIndex = remember(document)
-    {
-        document?.let(DeviceTreeReferenceIndexer::build)
-    }
+    val referenceIndex = loaded.referenceIndex
     val filteredMode = query.isNotBlank() || searchScope != DeviceTreeSearchScope.ALL
     val visibleRows = remember(
         document,
@@ -296,11 +314,29 @@ fun DeviceTreeScreen(
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        loaded.referenceError?.let { referenceError ->
+                            Text(
+                                "引用索引已降级：$referenceError。节点浏览和属性编辑仍可继续使用。",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        val externalFixupCount = referenceIndex?.externalFixups()?.size ?: 0
+                        if (externalFixupCount > 0)
+                        {
+                            Text(
+                                "$externalFixupCount 条外部 Fixup 指向基础设备树，属于 DTBO 正常外部依赖。",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
                         val unresolvedCount = referenceIndex?.unresolved()?.size ?: 0
                         if (unresolvedCount > 0)
                         {
                             Text(
-                                "存在 $unresolvedCount 条未解析的 Label / 路径引用，可在“引用”筛选中查看。",
+                                "存在 $unresolvedCount 条真正未解析的内部引用，可在“引用”筛选中查看。",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.tertiary
                             )
@@ -933,6 +969,8 @@ private fun ReferenceCard(
     {
         DeviceTreeReferenceKind.LABEL -> "Label 引用"
         DeviceTreeReferenceKind.PATH -> "路径引用"
+        DeviceTreeReferenceKind.LOCAL_FIXUP -> "本地 Fixup 引用"
+        DeviceTreeReferenceKind.EXTERNAL_FIXUP -> "外部 Fixup"
         DeviceTreeReferenceKind.NUMERIC_CANDIDATE -> "数值 phandle 候选"
     }
 
@@ -978,6 +1016,10 @@ private fun ReferenceCard(
                             if (reference.resolved)
                             {
                                 reference.targetNodePath
+                            }
+                            else if (reference.kind == DeviceTreeReferenceKind.EXTERNAL_FIXUP)
+                            {
+                                "基础设备树外部符号"
                             }
                             else
                             {
