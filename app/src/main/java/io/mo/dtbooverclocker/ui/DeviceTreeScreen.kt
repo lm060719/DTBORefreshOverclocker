@@ -786,7 +786,7 @@ private fun NodeNameDialog(
                 if (mode == NodeEditMode.CLONE)
                 {
                     Text(
-                        "克隆会复制整个节点子树。当前阶段包含 label 的子树会被安全阻止，避免重复 phandle。",
+                        "克隆会复制整个节点子树。当前阶段包含 label、phandle 或 linux,phandle 的子树会被安全阻止，避免重复节点身份。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
