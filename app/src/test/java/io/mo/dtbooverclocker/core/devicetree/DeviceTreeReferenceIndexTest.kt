@@ -175,4 +175,40 @@ class DeviceTreeReferenceIndexTest
         assertTrue(refs.all { it.sourceNodePath == "/consumer@0" })
     }
 
+    @Test
+    fun scansMixedLabelAndPathReferencesWithoutRegex()
+    {
+        val dts = """
+            /dts-v1/;
+            / {
+                panel_a: panel@0 {
+                };
+
+                panel@1 {
+                };
+
+                consumer@0 {
+                    mixed = <&panel_a &{/panel@1}>;
+                    malformed = <&{missing>;
+                };
+            };
+        """.trimIndent()
+
+        val index = DeviceTreeReferenceIndexer.build(DeviceTreeParser.parse(0, dts))
+        val refs = index.outgoing("/consumer@0")
+
+        assertEquals(2, refs.size)
+        assertTrue(refs.any {
+            it.kind == DeviceTreeReferenceKind.LABEL &&
+                it.token == "&panel_a" &&
+                it.targetNodePath == "/panel@0"
+        })
+        assertTrue(refs.any {
+            it.kind == DeviceTreeReferenceKind.PATH &&
+                it.token == "&{/panel@1}" &&
+                it.targetNodePath == "/panel@1"
+        })
+        assertTrue(index.unresolved().isEmpty())
+    }
+
 }
