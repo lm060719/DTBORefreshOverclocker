@@ -568,7 +568,6 @@ object TimingDeviceTreePlanner
             {
                 requireNumericValue(targetNode, vFrontPorchAliases, expected.toLong(), "VFP")
             }
-            }
         }
         result.vBackPorch?.let { expected ->
             if (findProperty(targetNode, vBackPorchAliases) != null || result.effectiveStrategy == PatchStrategy.BALANCED_BLANKING_TIME)
