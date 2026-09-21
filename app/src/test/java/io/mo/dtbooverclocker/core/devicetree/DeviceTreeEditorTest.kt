@@ -214,7 +214,6 @@ class DeviceTreeEditorTest
         }
     }
 
-
     @Test
     fun cloneRejectsSubtreeWithExplicitPhandle()
     {
