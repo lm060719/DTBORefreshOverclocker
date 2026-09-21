@@ -75,7 +75,7 @@ class DeviceTreeReferenceIndexTest
     }
 
     @Test
-    fun indexesSingleCellPhandleOnlyAsCandidate()
+    fun resolvesLocalFixupAndIgnoresPlainNumericCollision()
     {
         val dts = """
             /dts-v1/;
@@ -85,8 +85,14 @@ class DeviceTreeReferenceIndexTest
                 };
 
                 consumer@0 {
-                    maybe-ref = <0x33>;
-                    unrelated-cells = <0x33 0x1>;
+                    real-ref = <0x33 0x1>;
+                    plain-number = <0x33>;
+                };
+
+                __local_fixups__ {
+                    consumer@0 {
+                        real-ref = <0x0>;
+                    };
                 };
             };
         """.trimIndent()
@@ -95,8 +101,35 @@ class DeviceTreeReferenceIndexTest
         val refs = index.outgoing("/consumer@0")
 
         assertEquals(1, refs.size)
-        assertEquals(DeviceTreeReferenceKind.NUMERIC_CANDIDATE, refs.single().kind)
+        assertEquals(DeviceTreeReferenceKind.LOCAL_FIXUP, refs.single().kind)
         assertEquals("/target@0", refs.single().targetNodePath)
+        assertEquals(0, refs.single().cellOffsetBytes)
+    }
+
+    @Test
+    fun recordsExternalFixupWithoutTreatingItAsInternalFailure()
+    {
+        val dts = """
+            /dts-v1/;
+            / {
+                consumer@0 {
+                    clocks = <0xffffffff>;
+                };
+
+                __fixups__ {
+                    gcc = "/consumer@0:clocks:0";
+                };
+            };
+        """.trimIndent()
+
+        val index = DeviceTreeReferenceIndexer.build(DeviceTreeParser.parse(0, dts))
+        val ref = index.outgoing("/consumer@0").single()
+
+        assertEquals(DeviceTreeReferenceKind.EXTERNAL_FIXUP, ref.kind)
+        assertEquals("&gcc", ref.token)
+        assertFalse(ref.resolved)
+        assertEquals(1, index.externalFixups().size)
+        assertTrue(index.unresolved().isEmpty())
     }
 
     @Test
