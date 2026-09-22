@@ -27,10 +27,38 @@ object DeviceTreeParser
         var pendingIndent = ""
         val pending = StringBuilder()
 
-        Regex("[^\\r\\n]*(?:\\r\\n|\\r|\\n|$)").findAll(text).forEach { match ->
+        // DTS 往往是数 MB 的大文本。旧实现用正则 findAll() 拆行，会为每一行创建
+        // MatchResult；在 OPlus/Qualcomm 大型 overlay 上能力扫描会被明显放大。
+        // 这里直接按 CR/LF 单次线性遍历，同时保持原始字符偏移不变。
+        while (offset < text.length)
+        {
             checkCancellation()
-            val line = match.value.trimEnd('\r', '\n')
-            val lineWithBreakLength = match.value.length
+
+            val lineStart = offset
+            var lineEnd = lineStart
+            while (lineEnd < text.length && text[lineEnd] != '\r' && text[lineEnd] != '\n')
+            {
+                lineEnd++
+            }
+
+            var nextOffset = lineEnd
+            if (nextOffset < text.length)
+            {
+                nextOffset = if (
+                    text[nextOffset] == '\r' &&
+                    nextOffset + 1 < text.length &&
+                    text[nextOffset + 1] == '\n'
+                )
+                {
+                    nextOffset + 2
+                }
+                else
+                {
+                    nextOffset + 1
+                }
+            }
+
+            val line = text.substring(lineStart, lineEnd)
             val trimmed = line.trim()
 
             if (pending.isNotEmpty())
@@ -39,7 +67,7 @@ object DeviceTreeParser
                 if (trimmed.endsWith(';'))
                 {
                     stack.lastOrNull()?.let { node ->
-                        parseProperty(pending.toString(), pendingStart, offset + line.length, pendingIndent)?.let {
+                        parseProperty(pending.toString(), pendingStart, lineStart + line.length, pendingIndent)?.let {
                             node.properties += it
                         }
                     }
@@ -47,8 +75,8 @@ object DeviceTreeParser
                     pendingStart = -1
                     pendingIndent = ""
                 }
-                offset += lineWithBreakLength
-                return@forEach
+                offset = nextOffset
+                continue
             }
 
             val nodeMatch = nodeStartRegex.matchEntire(line)
@@ -67,11 +95,11 @@ object DeviceTreeParser
                     name = name,
                     path = path,
                     label = label,
-                    startOffset = offset,
+                    startOffset = lineStart,
                     indent = nodeMatch.groupValues[1]
                 )
-                offset += lineWithBreakLength
-                return@forEach
+                offset = nextOffset
+                continue
             }
 
             if (trimmed == "};" || trimmed == "}")
@@ -86,8 +114,8 @@ object DeviceTreeParser
                         properties = mutable.properties.toList(),
                         children = mutable.children.toList(),
                         startOffset = mutable.startOffset,
-                        closeStartOffset = offset,
-                        endOffsetExclusive = offset + line.length,
+                        closeStartOffset = lineStart,
+                        endOffsetExclusive = lineStart + line.length,
                         indent = mutable.indent
                     )
                     if (stack.isEmpty())
@@ -99,27 +127,27 @@ object DeviceTreeParser
                         stack.last().children += node
                     }
                 }
-                offset += lineWithBreakLength
-                return@forEach
+                offset = nextOffset
+                continue
             }
 
             if (stack.isNotEmpty() && trimmed.isNotEmpty() && !trimmed.startsWith("/") && !trimmed.startsWith("//"))
             {
                 if (trimmed.endsWith(';'))
                 {
-                    parseProperty(line, offset, offset + line.length, line.takeWhile(Char::isWhitespace))?.let {
+                    parseProperty(line, lineStart, lineStart + line.length, line.takeWhile(Char::isWhitespace))?.let {
                         stack.last().properties += it
                     }
                 }
                 else if ("=" in trimmed)
                 {
-                    pendingStart = offset
+                    pendingStart = lineStart
                     pendingIndent = line.takeWhile(Char::isWhitespace)
                     pending.append(line)
                 }
             }
 
-            offset += lineWithBreakLength
+            offset = nextOffset
         }
 
         val parsedRoot = requireNotNull(root) { "DTS 中没有找到根节点" }
