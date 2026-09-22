@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.core
 
+import io.mo.dtbooverclocker.model.AvbProtectionState
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
@@ -42,6 +43,55 @@ class AvbImageEnvelopeTest {
         return bytes
     }
 
+    private fun signedFixture(): ByteArray {
+        val bytes = fixture()
+        val b = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
+        val vbmeta = 4096
+        val authenticationSize = 576
+        val auxiliarySize = 256
+        val vbmetaSize = 256 + authenticationSize + auxiliarySize
+
+        bytes.fill(0, vbmeta, vbmeta + vbmetaSize)
+        b.putInt(vbmeta, 0x41564230)
+        b.putInt(vbmeta + 4, 1)
+        b.putInt(vbmeta + 8, 0)
+        b.putLong(vbmeta + 12, authenticationSize.toLong())
+        b.putLong(vbmeta + 20, auxiliarySize.toLong())
+        b.putInt(vbmeta + 28, 2)
+        b.putLong(vbmeta + 32, 0)
+        b.putLong(vbmeta + 40, 32)
+        b.putLong(vbmeta + 48, 32)
+        b.putLong(vbmeta + 56, 512)
+        b.putLong(vbmeta + 96, 0)
+        b.putLong(vbmeta + 104, 200)
+
+        val descriptor = vbmeta + 256 + authenticationSize
+        b.putLong(descriptor, 2)
+        b.putLong(descriptor + 8, 184)
+        b.putLong(descriptor + 16, 128)
+        "sha256".toByteArray().copyInto(bytes, descriptor + 24)
+        b.putInt(descriptor + 56, 4)
+        b.putInt(descriptor + 60, 32)
+        b.putInt(descriptor + 64, 32)
+        "dtbo".toByteArray().copyInto(bytes, descriptor + 132)
+        val salt = ByteArray(32) { (it + 3).toByte() }
+        salt.copyInto(bytes, descriptor + 136)
+        MessageDigest.getInstance("SHA-256")
+            .digest(salt + bytes.copyOf(128))
+            .copyInto(bytes, descriptor + 168)
+
+        bytes.fill(0x5a.toByte(), vbmeta + 256 + 32, vbmeta + 256 + 32 + 512)
+        val auxiliary = bytes.copyOfRange(
+            vbmeta + 256 + authenticationSize,
+            vbmeta + vbmetaSize
+        )
+        MessageDigest.getInstance("SHA-256")
+            .digest(bytes.copyOfRange(vbmeta, vbmeta + 256) + auxiliary)
+            .copyInto(bytes, vbmeta + 256)
+
+        b.putLong(footer + 28, vbmetaSize.toLong())
+        return bytes
+    }
     @Test fun rebuildMovesVbmetaAndUpdatesDigestWithoutMovingEmbeddedFooter() {
         val original = fixture()
         val payload = original.copyOf(6000).apply { fill(0, 128); this[100] = 7 }
@@ -316,6 +366,47 @@ class AvbImageEnvelopeTest {
         }.message!!.contains("不支持的 AVB footer 版本"))
     }
 
+    @Test fun signedAvbMayEnterAnalysisWorkspaceButRebuildRemainsBlocked() {
+        val raw = signedFixture()
+        val logs = mutableListOf<String>()
+        val inspection = AvbImageEnvelope.validateForAnalysis(raw, 128, logs::add, "STAGED_INPUT")
+
+        assertEquals(AvbProtectionState.SIGNED, inspection.protectionState)
+        assertEquals("SHA256_RSA4096", inspection.algorithm)
+        assertEquals(1, inspection.validFooters)
+        assertTrue(logs.any { it.contains("允许进入设备树工作区") })
+
+        val strictError = assertThrows(IllegalArgumentException::class.java) {
+            AvbImageEnvelope.validate(raw, 128)
+        }
+        assertTrue(strictError.message!!.contains("AVB 签名"))
+
+        val rebuildError = assertThrows(IllegalArgumentException::class.java) {
+            AvbImageEnvelope.rebuild(raw, 128, raw.copyOf(128).apply { this[100] = 7 })
+        }
+        assertTrue(rebuildError.message!!.contains("AVB 签名"))
+    }
+
+    /** Opt in with -Ddtbo.signedSampleImage=<path to the signed OPlus/OnePlus dtbo_a.img>. */
+    @Test fun reportedSignedOplusImageAnalyzesWithoutWeakeningRebuildSafety() {
+        val sample = System.getProperty("dtbo.signedSampleImage", "") ?: ""
+        org.junit.Assume.assumeTrue("Local signed OPlus AVB sample was not configured", sample.isNotBlank())
+        val raw = File(sample).readBytes()
+        assertEquals(
+            "338afe90eee2e24448303a851ed7d67a435c44848f9aaaff6ed4a2ffa90c4684",
+            io.mo.dtbooverclocker.util.HashUtils.sha256(raw)
+        )
+        val original = DtboImageCodec.parse(raw)
+        val inspection = AvbImageEnvelope.validateForAnalysis(raw, original.metadata.totalSize)
+        assertEquals(AvbProtectionState.SIGNED, inspection.protectionState)
+        assertEquals("SHA256_RSA4096", inspection.algorithm)
+        assertEquals(25165760, inspection.layout?.footer)
+        assertEquals(raw.size, inspection.logicalImageSize)
+
+        assertTrue(assertThrows(IllegalArgumentException::class.java) {
+            AvbImageEnvelope.validate(raw, original.metadata.totalSize)
+        }.message!!.contains("AVB 签名"))
+    }
     @Test fun invalidMagicInPaddingIsNotPermissionToDiscardUnknownBytes() {
         for (offset in listOf(256, 5000, footer + 128)) {
             val raw = fixture().apply { "AVBf".toByteArray().copyInto(this, offset) }
