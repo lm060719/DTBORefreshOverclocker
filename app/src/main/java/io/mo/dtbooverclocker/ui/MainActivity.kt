@@ -119,6 +119,7 @@ import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.model.AvbProtectionState
 import io.mo.dtbooverclocker.ui.components.DisclaimerDialog
 import io.mo.dtbooverclocker.ui.components.OverclockPreviewCard
+import io.mo.dtbooverclocker.ui.components.PanelClassification
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
 import io.mo.dtbooverclocker.ui.components.TimingGeometryChart
 import io.mo.dtbooverclocker.ui.components.TimingUtils
@@ -436,8 +437,25 @@ internal fun ImageSummaryCard(state: MainUiState) {
     val groups = remember(workspace.candidates) {
         TimingUtils.groupCandidates(workspace.candidates)
     }
-    val devCount = remember(groups) { groups.keys.count { it.isDeviceSpecific } }
+    val vendorCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.VENDOR }
+    }
+    val referenceCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.QCOM_REFERENCE }
+    }
+    val simulationCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.SIMULATION }
+    }
+    val unknownCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.UNKNOWN }
+    }
     val panelCount = groups.size
+    val panelInstanceCount = remember(workspace.candidates) {
+        workspace.candidates
+            .map { it.entryIndex to TimingUtils.parsePanelIdentifier(it.nodePath) }
+            .distinct()
+            .size
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -470,10 +488,18 @@ internal fun ImageSummaryCard(state: MainUiState) {
                 )
                 AssistChip(
                     onClick = {},
-                    label = {
-                        Text(if (devCount > 0) "屏幕面板: $panelCount (机型专属: $devCount)" else "屏幕面板: $panelCount")
-                    }
+                    label = { Text("唯一面板: $panelCount") }
                 )
+                AssistChip(
+                    onClick = {},
+                    label = { Text("面板 DTB 实例: $panelInstanceCount") }
+                )
+                if (vendorCount > 0) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("厂商面板: $vendorCount") }
+                    )
+                }
                 AssistChip(
                     onClick = {},
                     label = { Text("时序候选: ${workspace.candidates.size}") }
@@ -520,14 +546,20 @@ internal fun ImageSummaryCard(state: MainUiState) {
                 }
             }
 
-            if (devCount > 0) {
+            Text(
+                "面板统计按唯一 panel identifier 去重；同一面板出现在多个 DTB entry 时只算 1 个唯一面板。" +
+                    " 当前分类：厂商 $vendorCount / 高通参考 $referenceCount / 仿真 $simulationCount / 未分类 $unknownCount。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            if (state.activePanelDisplayName != null) {
                 Text(
-                    "检测到 $devCount 个机型专属面板（如 O1-38 / O1-42），其余 ${panelCount - devCount} 个为高通公版/仿真测试屏节点，已优先为您展示机型屏幕。",
+                    "已通过设备运行信息优先标记当前在用面板；“厂商面板”只做正向识别，未知标识不会再自动算作机型专属。",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
             if (workspace.sourceImage?.avbProtectionState == AvbProtectionState.SIGNED) {
                 Text(
                     "检测到原厂签名 AVB。当前可正常浏览、搜索和编辑设备树；生成修改镜像时会保持安全拦截，避免输出签名失效的可刷写镜像。",
