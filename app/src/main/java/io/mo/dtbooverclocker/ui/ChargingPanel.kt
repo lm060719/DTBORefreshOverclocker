@@ -22,8 +22,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.core.ChargingAnalyzer
-import io.mo.dtbooverclocker.core.ChargingGuideRisk
-import io.mo.dtbooverclocker.core.ChargingGuidanceResolver
 import io.mo.dtbooverclocker.core.ChargingPlanner
 import io.mo.dtbooverclocker.model.ChargingNode
 import io.mo.dtbooverclocker.model.FeatureModuleKind
@@ -73,29 +71,6 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     style = MaterialTheme.typography.labelSmall
                 )
             }
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-                )
-            ) {
-                Column(
-                    Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text("新手怎么改", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "如果目标只是降低充电温度：优先降低“输入电流 / 电池电流 / 温控限流”类参数；" +
-                            "不要提高原厂电流或电压上限。电池电压、浮充电压、回差和快充进入/退出门槛看不懂时保持原厂。",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Text(
-                        "每个参数下方会显示调整方向和风险说明；修改后还会显示相对原厂变化百分比。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
             if (readOnlyNodeCount > 0) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -127,13 +102,6 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     Text(node.nodePath, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                     node.compatible?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        ChargingGuidanceResolver.nodeAdvice(it)?.let { advice ->
-                            Text(
-                                advice,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
                         if ("oplus," in it)
                         {
                             Text(
@@ -201,7 +169,6 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
     }
     var showOther by rememberSaveable { mutableStateOf(false) }
     var showInvalid by rememberSaveable { mutableStateOf(false) }
-    var expandedGuideKey by rememberSaveable(node) { mutableStateOf<String?>(null) }
     val inputs = fields.mapIndexed { index, field -> field.inputKey to values[index] }.toMap()
     val result = remember(node, values) { runCatching { ChargingPlanner.preview(node, inputs) } }
     val preview = result.getOrNull()
@@ -242,99 +209,55 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
         groupIndices.drop(page * 16).take(16).forEach { index ->
             val field = fields[index]
             val parameter = field.parameter
-            val guidance = remember(field) { ChargingGuidanceResolver.resolve(field) }
             val error = if (values[index] == original[index]) null else runCatching {
                 ChargingAnalyzer.parseInput(parameter, values[index])
             }.exceptionOrNull()?.message
-            val changePercent = remember(values[index], original[index]) {
-                val before = original[index].toDoubleOrNull()
-                val after = values[index].toDoubleOrNull()
-                if (before != null && after != null && before != 0.0 && values[index] != original[index]) {
-                    (after - before) / before * 100.0
-                } else {
-                    null
-                }
-            }
-            val guideExpanded = expandedGuideKey == field.inputKey
 
             if (parameter.boolean) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(parameter.label, style = MaterialTheme.typography.bodyMedium)
                         Text(parameter.name, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
-                        Text(if (field.exists) "当前：开启" else "当前：关闭（属性未声明）", style = MaterialTheme.typography.labelSmall)
                         Text(
-                            "建议：${guidance.beginnerAdvice}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                            if (field.exists) "当前：开启" else "当前：关闭（属性未声明）",
+                            style = MaterialTheme.typography.labelSmall
                         )
                     }
-                    Switch(checked = values[index] == "true", enabled = enabled, onCheckedChange = { checked ->
-                        values = values.mapIndexed { position, previous -> if (position == index) checked.toString() else previous }
-                    })
+                    Switch(
+                        checked = values[index] == "true",
+                        enabled = enabled,
+                        onCheckedChange = { checked ->
+                            values = values.mapIndexed { position, previous ->
+                                if (position == index) checked.toString() else previous
+                            }
+                        }
+                    )
                 }
             } else {
                 OutlinedTextField(
-                    value = values[index], onValueChange = { value -> values = values.mapIndexed { position, previous -> if (position == index) value else previous } },
-                    enabled = enabled, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    value = values[index],
+                    onValueChange = { value ->
+                        values = values.mapIndexed { position, previous ->
+                            if (position == index) value else previous
+                        }
+                    },
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     label = { Text("${parameter.label}（${parameter.unit}）") },
-                    isError = error != null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = error != null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     supportingText = {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Column {
                             Text(error ?: "当前：${original[index]} ${parameter.unit} · 原始：${field.value} ${parameter.rawUnit}")
-                            changePercent?.let { percent ->
-                                Text(
-                                    "相对原厂：${if (percent >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", percent)}%",
-                                    color = if (percent > 0 && guidance.risk != ChargingGuideRisk.LOW) {
-                                        MaterialTheme.colorScheme.error
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    }
-                                )
-                            }
-                            Text(
-                                "建议：${guidance.beginnerAdvice}",
-                                color = when (guidance.risk) {
-                                    ChargingGuideRisk.HIGH -> MaterialTheme.colorScheme.error
-                                    ChargingGuideRisk.MEDIUM -> MaterialTheme.colorScheme.tertiary
-                                    ChargingGuideRisk.LOW -> MaterialTheme.colorScheme.primary
-                                }
-                            )
                             Text(field.inputKey, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 )
-            }
-
-            TextButton(
-                onClick = { expandedGuideKey = if (guideExpanded) null else field.inputKey },
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-            ) {
-                Text(if (guideExpanded) "收起“怎么调”" else "查看“调小 / 调大分别会怎样”")
-            }
-
-            if (guideExpanded) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = when (guidance.risk) {
-                            ChargingGuideRisk.HIGH -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
-                            ChargingGuideRisk.MEDIUM -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
-                            ChargingGuideRisk.LOW -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                        }
-                    )
-                ) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Text("它是什么", fontWeight = FontWeight.SemiBold)
-                        Text(guidance.plainMeaning, style = MaterialTheme.typography.bodySmall)
-                        Text("↓ 调小：${guidance.lowerEffect}", style = MaterialTheme.typography.bodySmall)
-                        Text("↑ 调大：${guidance.higherEffect}", style = MaterialTheme.typography.bodySmall)
-                        Text(
-                            "新手建议：${guidance.beginnerAdvice}",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
             }
         }
     }
@@ -374,8 +297,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.Info, null, modifier = Modifier.size(20.dp))
                 Text(
-                    "参数合法不代表硬件支持。默认不要超过原厂电流/电压；如果只是想降温，优先小幅降低限流类参数。" +
-                        "修改沿用导出验证流程，暂存后到概览打包。",
+                    "请按电池和充电芯片规格设置电流、电压。参数合法不代表硬件支持；修改沿用分辨率模块的导出验证流程，暂存后到概览打包。",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
