@@ -11,15 +11,28 @@ import kotlin.math.roundToLong
 /**
  * 屏幕面板分组键，用于将分散在各个 DTB / 片段中的时序候选归类到具体的屏幕面板。
  */
+enum class PanelClassification
+{
+    VENDOR,
+    QCOM_REFERENCE,
+    SIMULATION,
+    UNKNOWN
+}
+
 data class PanelGroupKey(
-    val entryIndex: Int,
     val panelIdentifier: String,
     val panelDisplayName: String,
-    val isDeviceSpecific: Boolean = false,
-    val isSimulation: Boolean = false
-) {
+    val classification: PanelClassification
+)
+{
+    val isDeviceSpecific: Boolean
+        get() = classification == PanelClassification.VENDOR
+
+    val isSimulation: Boolean
+        get() = classification == PanelClassification.SIMULATION
+
     val title: String
-        get() = "$panelDisplayName · DTB[$entryIndex]"
+        get() = panelDisplayName
 }
 
 /**
@@ -157,11 +170,49 @@ object TimingUtils {
     }
 
     /**
-     * 判断是否为手机机型专属定制面板（非仿真测试、非高通公版样例，如 o1_38 / o1_42）
+     * 厂商面板只做正向识别，未知标识保持 UNKNOWN。
+     * 旧实现使用“不是仿真且不是少数高通参考屏 = 机型专属”，会把大量未知面板误报为机型专属。
      */
-    fun isDeviceSpecific(identifier: String): Boolean {
-        return !isSimulation(identifier) && !isQcomReference(identifier)
+    fun isVendorPanel(identifier: String): Boolean
+    {
+        val clean = identifier.lowercase(Locale.ROOT)
+            .removePrefix("qcom,mdss_dsi_")
+            .removePrefix("qcom,mdss-dsi-")
+            .removePrefix("qcom,")
+            .removePrefix("mdss_dsi_")
+            .removePrefix("dsi_")
+
+        return Regex("""^o\d+_\d{2,}(?:_|$)""").containsMatchIn(clean) ||
+            listOf(
+                "oplus_",
+                "oneplus_",
+                "oppo_",
+                "realme_",
+                "xiaomi_",
+                "redmi_",
+                "poco_",
+                "mi_",
+                "samsung_",
+                "boe_",
+                "tianma_",
+                "visionox_",
+                "csot_"
+            ).any(clean::startsWith)
     }
+
+    fun classifyPanel(identifier: String): PanelClassification
+    {
+        return when
+        {
+            isSimulation(identifier) -> PanelClassification.SIMULATION
+            isQcomReference(identifier) -> PanelClassification.QCOM_REFERENCE
+            isVendorPanel(identifier) -> PanelClassification.VENDOR
+            else -> PanelClassification.UNKNOWN
+        }
+    }
+
+    /** 兼容旧调用；语义现为“明确识别到的厂商面板”，不再把未知面板算作机型专属。 */
+    fun isDeviceSpecific(identifier: String): Boolean = isVendorPanel(identifier)
 
     /**
      * 提取时序节点名称（如 "timing@0" 或 "timing@1"）
@@ -193,27 +244,31 @@ object TimingUtils {
     }
 
     /**
-     * 将候选列表按面板与 DTB 条目归类，并优先按「机型专属 > 公版样例 > 仿真测试」排序
+     * 按唯一 panel identifier 分组，不把同一面板在多个 DTB entry 中的重复实例重复计算成多块屏幕。
+     * 候选自身仍保留 entryIndex，实际编辑时仍能精确定位到原始 DTB。
      */
-    fun groupCandidates(candidates: List<TimingCandidate>): Map<PanelGroupKey, List<TimingCandidate>> {
+    fun groupCandidates(candidates: List<TimingCandidate>): Map<PanelGroupKey, List<TimingCandidate>>
+    {
         val rawGroups = candidates.groupBy { candidate ->
             val identifier = parsePanelIdentifier(candidate.nodePath)
-            val displayName = formatPanelDisplayName(identifier)
-            val isSim = isSimulation(identifier)
-            val isDev = isDeviceSpecific(identifier)
             PanelGroupKey(
-                entryIndex = candidate.entryIndex,
                 panelIdentifier = identifier,
-                panelDisplayName = displayName,
-                isDeviceSpecific = isDev,
-                isSimulation = isSim
+                panelDisplayName = formatPanelDisplayName(identifier),
+                classification = classifyPanel(identifier)
             )
+        }
+
+        fun rank(classification: PanelClassification): Int = when (classification)
+        {
+            PanelClassification.VENDOR -> 0
+            PanelClassification.QCOM_REFERENCE -> 1
+            PanelClassification.UNKNOWN -> 2
+            PanelClassification.SIMULATION -> 3
         }
 
         return rawGroups.toList()
             .sortedWith(
-                compareByDescending<Pair<PanelGroupKey, List<TimingCandidate>>> { it.first.isDeviceSpecific }
-                    .thenBy { it.first.isSimulation }
+                compareBy<Pair<PanelGroupKey, List<TimingCandidate>>> { rank(it.first.classification) }
                     .thenBy { it.first.panelDisplayName }
             )
             .toMap()
