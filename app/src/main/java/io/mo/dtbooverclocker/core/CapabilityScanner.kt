@@ -42,14 +42,39 @@ object CapabilityScanner
         )
     )
 
-    fun scan(workspace: DtboWorkspace): CapabilityReport
+    fun scan(
+        workspace: DtboWorkspace,
+        progress: (String) -> Unit = {},
+        checkCancellation: () -> Unit = {}
+    ): CapabilityReport
     {
+        val totalStarted = System.nanoTime()
         val documents = workspace.dtsFiles.mapIndexed { index, file ->
-            DeviceTreeParser.parse(index, file.readText())
+            checkCancellation()
+            val started = System.nanoTime()
+            val text = file.readText()
+            val document = DeviceTreeParser.parse(index, text, checkCancellation)
+            progress(
+                "[CAPABILITY] DTB[$index] 结构解析完成：${document.flatten().size} 节点，" +
+                    "${elapsedMs(started)} ms"
+            )
+            document
         }
+
+        checkCancellation()
+        val flattenStarted = System.nanoTime()
         val allNodes = documents.flatMap(DeviceTreeDocument::flatten)
+        progress("[CAPABILITY] 节点索引汇总完成：${allNodes.size} 节点，${elapsedMs(flattenStarted)} ms")
+
+        checkCancellation()
+        val dscStarted = System.nanoTime()
         val dscTopologies = DscTopologyAnalyzer.analyze(documents)
+        progress("[CAPABILITY] DSC 扫描完成：${dscTopologies.size} 个 timing，${elapsedMs(dscStarted)} ms")
+
+        checkCancellation()
+        val chargingStarted = System.nanoTime()
         val chargingNodes = ChargingAnalyzer.analyze(documents)
+        progress("[CAPABILITY] 充电扫描完成：${chargingNodes.size} 个节点，${elapsedMs(chargingStarted)} ms")
         val editableChargingNodes = chargingNodes.filter { it.editableCount > 0 }
 
         val refreshCount = workspace.candidates.size
@@ -102,8 +127,10 @@ object CapabilityScanner
                 sourceHint = "充电配置也可能位于基础 DTB、vendor_boot 或驱动中；支持已识别参数的暂存、撤销和导出验证。"
             ))
 
+            val signatureStarted = System.nanoTime()
+            val relatedPaths = findRelatedPaths(allNodes, signatures, checkCancellation)
             signatures.forEach { signature ->
-                val matchedPaths = findRelatedPaths(allNodes, signature.tokens)
+                val matchedPaths = relatedPaths[signature.kind].orEmpty()
                 add(
                     CapabilityFinding(
                         kind = signature.kind,
@@ -115,9 +142,10 @@ object CapabilityScanner
                     )
                 )
             }
+            progress("[CAPABILITY] 关键字能力扫描完成：${elapsedMs(signatureStarted)} ms")
         }
 
-        return CapabilityReport(
+        val report = CapabilityReport(
             scannedEntryCount = documents.size,
             nodeCount = allNodes.size,
             propertyCount = allNodes.sumOf { it.properties.size },
@@ -125,24 +153,45 @@ object CapabilityScanner
             dscTopologies = dscTopologies,
             chargingNodes = chargingNodes
         )
+        progress(
+            "[CAPABILITY] 全部扫描完成：${report.nodeCount} 节点 / ${report.propertyCount} 属性，" +
+                "总耗时 ${elapsedMs(totalStarted)} ms"
+        )
+        return report
     }
 
     private fun findRelatedPaths(
         nodes: List<DeviceTreeNode>,
-        tokens: Set<String>
-    ): List<String>
+        signatures: List<Signature>,
+        checkCancellation: () -> Unit
+    ): Map<CapabilityKind, List<String>>
     {
-        return nodes.mapNotNull { node ->
-            val searchable = buildString {
-                append(node.name.lowercase())
-                append(' ')
-                append(node.path.lowercase())
-                node.properties.forEach { property ->
-                    append(' ')
-                    append(property.name.lowercase())
+        val matches = signatures.associate { it.kind to LinkedHashSet<String>() }
+
+        nodes.forEachIndexed { index, node ->
+            if (index and 0x7f == 0)
+            {
+                checkCancellation()
+            }
+
+            signatures.forEach { signature ->
+                val matched = signature.tokens.any { token ->
+                    node.name.contains(token, ignoreCase = true) ||
+                        node.path.contains(token, ignoreCase = true) ||
+                        node.properties.any { property ->
+                            property.name.contains(token, ignoreCase = true)
+                        }
+                }
+                if (matched)
+                {
+                    matches.getValue(signature.kind) += node.path
                 }
             }
-            if (tokens.any(searchable::contains)) node.path else null
-        }.distinct()
+        }
+
+        return matches.mapValues { (_, paths) -> paths.toList() }
     }
+
+    private fun elapsedMs(startedNanos: Long): Long =
+        (System.nanoTime() - startedNanos) / 1_000_000L
 }
