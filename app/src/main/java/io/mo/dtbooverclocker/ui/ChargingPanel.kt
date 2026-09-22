@@ -127,6 +127,13 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     Text(node.nodePath, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                     node.compatible?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ChargingGuidanceResolver.nodeAdvice(it)?.let { advice ->
+                            Text(
+                                advice,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                         if ("oplus," in it)
                         {
                             Text(
