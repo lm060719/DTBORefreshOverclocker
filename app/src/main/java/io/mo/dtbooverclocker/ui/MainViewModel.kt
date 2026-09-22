@@ -409,6 +409,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun stageChargingChange(snapshot: io.mo.dtbooverclocker.model.ChargingNode, inputs: Map<String, String>)
+    {
+        if (_state.value.busy || _state.value.capabilityScanInProgress) return
+        viewModelScope.launch {
+            val current = _state.value
+            val workspace = current.workspace ?: return@launch
+            setBusy(true, "正在暂存 Charging 修改…")
+            try {
+                val (updatedWorkspace, transaction) = patchEngine.applyChargingChange(workspace, snapshot, inputs)
+                _state.update {
+                    it.copy(
+                        workspace = updatedWorkspace,
+                        transactions = current.transactions + transaction,
+                        patchReport = null,
+                        lastFlash = null,
+                        status = "已暂存充电修改：${transaction.summary}；到概览集中打包"
+                    )
+                }
+                refreshCapabilities(updatedWorkspace)
+            } catch (failure: Exception) {
+                showError(failure)
+            } finally {
+                setBusy(false)
+            }
+        }
+    }
+
     fun setDeviceTreeProperty(
         entryIndex: Int,
         nodePath: String,
@@ -1130,7 +1157,7 @@ data class MainUiState(
 
     val moduleDeviceTreeChanges: List<DeviceTreeChange>
         get() = transactions
-            .filter { it.kind == DeviceTreeTransactionKind.RESOLUTION || it.kind == DeviceTreeTransactionKind.DSC }
+            .filter { it.moduleChange != null }
             .flatMap { it.operations }
 
     val deviceTreeChanges: List<DeviceTreeChange>

@@ -78,7 +78,8 @@ data class CapabilityReport(
     val nodeCount: Int,
     val propertyCount: Int,
     val findings: List<CapabilityFinding>,
-    val dscTopologies: List<DscTopology>
+    val dscTopologies: List<DscTopology>,
+    val chargingNodes: List<ChargingNode> = emptyList()
 )
 {
     fun finding(kind: CapabilityKind): CapabilityFinding?

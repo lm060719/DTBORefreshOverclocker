@@ -13,7 +13,7 @@ import io.mo.dtbooverclocker.model.DtboWorkspace
  * 当前工作区的设备树能力扫描器。
  *
  * 扫描结果只回答“当前 DTBO 中是否发现相关结构”，并不自动意味着该能力可安全修改。
- * Refresh / Resolution / DSC 使用结构化数据判断；Brightness/HBM、Thermal、Charging、Touch
+ * Refresh / Resolution / DSC / Charging 使用结构化数据判断；Brightness/HBM、Thermal、Touch
  * 目前采用保守关键字发现，只作为后续模块开发和人工定位的线索。
  */
 object CapabilityScanner
@@ -36,11 +36,6 @@ object CapabilityScanner
             sourceHint = "如果当前 DTBO 未发现 Thermal，相关配置可能位于 vendor_boot、vendor_dlkm 或基础 DTB。"
         ),
         Signature(
-            kind = CapabilityKind.CHARGING,
-            tokens = setOf("charger", "charging", "fastchg", "battery", "float-voltage", "fcc-max"),
-            sourceHint = "充电配置经常位于基础 DTB、vendor_boot 或电源管理驱动，而不是面板 DTBO。"
-        ),
-        Signature(
             kind = CapabilityKind.TOUCH,
             tokens = setOf("touchscreen", "touchpanel", "goodix", "focaltech", "synaptics", "novatek", "xiaomi-touch"),
             sourceHint = "触控节点可能位于独立 overlay、vendor_boot 或基础 DTB；未发现不代表设备没有触控配置。"
@@ -54,6 +49,8 @@ object CapabilityScanner
         }
         val allNodes = documents.flatMap(DeviceTreeDocument::flatten)
         val dscTopologies = DscTopologyAnalyzer.analyze(documents)
+        val chargingNodes = ChargingAnalyzer.analyze(documents)
+        val editableChargingNodes = chargingNodes.filter { it.editableCount > 0 }
 
         val refreshCount = workspace.candidates.size
         val resolutionCount = workspace.candidates.count { it.hActive != null && it.vActive != null }
@@ -88,6 +85,23 @@ object CapabilityScanner
                 )
             )
 
+            add(CapabilityFinding(
+                kind = CapabilityKind.CHARGING,
+                status = when {
+                    editableChargingNodes.isNotEmpty() -> CapabilityStatus.AVAILABLE
+                    chargingNodes.isNotEmpty() -> CapabilityStatus.ANALYSIS_ONLY
+                    else -> CapabilityStatus.NOT_FOUND
+                },
+                matchCount = if (editableChargingNodes.isNotEmpty()) editableChargingNodes.size else chargingNodes.size,
+                summary = when {
+                    editableChargingNodes.isNotEmpty() -> "${editableChargingNodes.size} 个充电节点可编辑，${editableChargingNodes.sumOf { it.editableCount }} 个参数"
+                    chargingNodes.isNotEmpty() -> "发现 ${chargingNodes.size} 个相关节点，未识别到支持的充电参数"
+                    else -> "当前 DTBO 未发现充电节点"
+                },
+                examplePaths = chargingNodes.take(3).map { "DTB ${it.entryIndex}: ${it.nodePath}" },
+                sourceHint = "充电配置也可能位于基础 DTB、vendor_boot 或驱动中；支持已识别参数的暂存、撤销和导出验证。"
+            ))
+
             signatures.forEach { signature ->
                 val matchedPaths = findRelatedPaths(allNodes, signature.tokens)
                 add(
@@ -108,7 +122,8 @@ object CapabilityScanner
             nodeCount = allNodes.size,
             propertyCount = allNodes.sumOf { it.properties.size },
             findings = findings,
-            dscTopologies = dscTopologies
+            dscTopologies = dscTopologies,
+            chargingNodes = chargingNodes
         )
     }
 

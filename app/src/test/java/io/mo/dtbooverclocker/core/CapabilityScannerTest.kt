@@ -13,6 +13,46 @@ import kotlin.io.path.createTempDirectory
 
 class CapabilityScannerTest
 {
+    @org.junit.Rule @JvmField val chargingTemp = org.junit.rules.TemporaryFolder()
+
+    private fun scanCharging(vararg contents: String): io.mo.dtbooverclocker.model.CapabilityReport {
+        val root = chargingTemp.newFolder()
+        val files = contents.mapIndexed { index, content -> File(root, "entry_$index.dts").apply { writeText(content) } }
+        val metadata = DtboMetadata("0xd7b7ab1e", 0, 32, 32, 32, 4096, 0, emptyList())
+        return CapabilityScanner.scan(DtboWorkspace(root, File(root, "input.img"), File(root, "metadata"), metadata,
+            DtboBinaryImage(metadata, byteArrayOf(), emptyList()), emptyList(), files, emptyList()))
+    }
+
+    @Test fun chargingIsAvailableWithoutAnyDisplayCandidatesAndCountsEntriesSeparately() {
+        val source = """
+            /dts-v1/;
+            / {
+                charger {
+                    qcom,fcc-max-ua = <2000000>;
+                };
+            };
+        """.trimIndent()
+        val report = scanCharging(source, source)
+        assertEquals(CapabilityStatus.AVAILABLE, report.finding(CapabilityKind.CHARGING)?.status)
+        assertEquals(2, report.finding(CapabilityKind.CHARGING)?.matchCount)
+        assertEquals(2, report.chargingNodes.size)
+        assertEquals(CapabilityStatus.NOT_FOUND, report.finding(CapabilityKind.REFRESH_RATE)?.status)
+    }
+
+    @Test fun chargingWithOnlyUnrecognizedPropertiesIsAnalysisOnly() {
+        val report = scanCharging("""
+            /dts-v1/;
+            / {
+                power@0 {
+                    compatible = "vendor,battery-charger";
+                    vendor,current-table = <1 2 3>;
+                };
+            };
+        """.trimIndent())
+        assertEquals(CapabilityStatus.ANALYSIS_ONLY, report.finding(CapabilityKind.CHARGING)?.status)
+        assertEquals(0, report.chargingNodes.single().editableCount)
+    }
+
     @Test
     fun classifiesDisplayAndHardwareRelatedCapabilities()
     {

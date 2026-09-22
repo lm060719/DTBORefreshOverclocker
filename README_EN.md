@@ -34,7 +34,7 @@ DTBO rebuild / export / controlled flashing
 The app currently exposes four main tabs:
 
 - **Overview** — image import / Root extraction, transaction queue, packaging and deployment.
-- **Modules** — refresh rate, resolution, DSC and capability scanning.
+- **Modules** — refresh rate, resolution, DSC, Charging and capability scanning.
 - **Device Tree** — hierarchical browsing, search, references and generic editing.
 - **Settings** — environment, logs, cache, backups and advanced tools.
 
@@ -52,7 +52,7 @@ The app currently exposes four main tabs:
 | Reference index | ✅ label/path/local/external fixups | N/A |
 | Brightness / HBM | 🔎 Detection only | Not writable yet |
 | Thermal | 🔎 Detection only | Not writable yet |
-| Charging | 🔎 Detection only | Not writable yet |
+| Charging | ✅ Parameter detection and validation | ✅ Parameter editing (export only) |
 | Touch | 🔎 Detection only | Not writable yet |
 
 A capability being detected does **not** mean that DTBO Studio considers it safe to modify.
@@ -167,6 +167,14 @@ It extracts and checks:
 Full PPS, RC-range, and vendor DSI-command rewriting is not enabled.
 
 ---
+
+## Charging editor
+
+Select a DTB entry and charging node, edit recognized current/voltage limits and recharge thresholds, preview changes, and stage one undoable transaction. Existing Qualcomm charger/battery-profile and standard battery parameters are supported, together with SMB5 HVDCP/USB PD disable flags. Inputs in mA/mV preserve µA/µV precision; validation rejects invalid values, conflicting limits and stale snapshots.
+
+Xiaomi MCA buck, quick, wireless and reverse charging configurations are also supported. Wired/wireless thermal matrices are grouped by channel, with descending limits checked within each channel. Large forms use groups and pages while preserving drafts; charge-pump ratio arrays are edited independently of thermal ordering.
+
+Anonymous QTI battery charger overlays are resolved through external fixups. Recognized thermal-current tables support per-level editing in mA, preserving array length and validating descending order. Changes use the shared packaging and export workflow, with direct Root flashing disabled. Unknown vendor properties, other thermal/JEITA tables and references are preserved. See [supported bindings and scope](docs/charging.md).
 
 ## Capability Scanner
 
@@ -356,7 +364,7 @@ Artifacts:
 1. Timing-candidate discovery still relies on `DtsTimingPatcher.analyzeEntry()`.
 2. DSC supports core parameter editing for export; PPS, RC ranges, and vendor commands are not synchronized automatically.
 3. Resolution editing is limited to topology-validated proportional downscaling.
-4. Thermal / Charging / Touch / HBM are detection-only.
+4. Charging supports recognized parameter editing for export; Thermal / Touch / HBM are detection-only.
 5. Generic Device Tree edits and resolution transactions are not eligible for direct Root flashing.
 6. Successful compile/rebuild validation does not replace real-device boot and stability testing.
 

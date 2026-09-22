@@ -81,6 +81,18 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         systemProperty("dtbo.avbSampleImage", it)
         inputs.file(it)
     }
+    providers.gradleProperty("chargingSampleImage").orNull?.let {
+        systemProperty("dtbo.chargingSampleImage", it)
+        inputs.file(it)
+    }
+    providers.gradleProperty("chargingSampleDts").orNull?.let {
+        systemProperty("dtbo.chargingSampleDts", it)
+        inputs.file(it)
+    }
+    providers.gradleProperty("chargingDeviceImage").orNull?.let {
+        systemProperty("dtbo.chargingDeviceImage", it)
+        inputs.file(it)
+    }
 }
 
 dependencies {

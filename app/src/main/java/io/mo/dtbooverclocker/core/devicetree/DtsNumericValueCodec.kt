@@ -10,6 +10,17 @@ package io.mo.dtbooverclocker.core.devicetree
  */
 object DtsNumericValueCodec
 {
+    /** Unlike decode(), this rejects 64-bit values even if their high cell is zero. */
+    fun decodeU32(rawValue: String?): Long?
+    {
+        val raw = rawValue?.trim() ?: return null
+        parseCells(raw)?.let { return it.singleOrNull() }
+        val bytes = parseByteArray(raw)
+            ?: parseSingleString(raw)?.let { unescapeDtsString(it) + byteArrayOf(0) }
+            ?: return null
+        return if (bytes.size == 4) bytesToLong(bytes) else null
+    }
+
     fun decode(rawValue: String?): Long?
     {
         val raw = rawValue?.trim() ?: return null

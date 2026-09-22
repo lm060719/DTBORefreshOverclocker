@@ -345,6 +345,29 @@ class DtboPatchEngine(
         updatedWorkspace to plan.transaction
     }
 
+    suspend fun applyChargingChange(
+        workspace: DtboWorkspace,
+        snapshot: io.mo.dtbooverclocker.model.ChargingNode,
+        inputs: Map<String, String>
+    ): Pair<DtboWorkspace, DeviceTreeTransaction> = withContext(Dispatchers.IO) {
+        val entryIndex = snapshot.entryIndex
+        require(entryIndex in workspace.extractedEntries.indices) { "Charging 对应的 DTB 索引无效" }
+        val dtsFile = File(workspace.rootDir, "dts/entry_$entryIndex.dts")
+        require(dtsFile.isFile) { "Entry $entryIndex 没有可编辑的 DTS 文件" }
+        val originalText = dtsFile.readText()
+        val plan = ChargingPlanner.plan(originalText, snapshot, inputs)
+        val updatedWorkspace = try {
+            dtsFile.writeText(plan.replayedText)
+            workspace.copy(candidates = workspace.candidates.filterNot { it.entryIndex == entryIndex } +
+                DtsTimingPatcher.analyzeEntry(entryIndex, dtsFile))
+        } catch (failure: Exception) {
+            dtsFile.writeText(originalText)
+            throw failure
+        }
+        plan.transaction.moduleChange?.changes?.forEach { logSink("[CHARGING] $it") }
+        updatedWorkspace to plan.transaction
+    }
+
     suspend fun applyDeviceTreeChange(
         workspace: DtboWorkspace,
         change: DeviceTreeChange
@@ -498,7 +521,7 @@ class DtboPatchEngine(
             warnings += "包含仅 Framerate 策略的修改，存在时序不匹配风险，不建议直接刷写。"
         }
         if (moduleStagedChanges.isNotEmpty()) {
-            warnings += "包含功能模块设备树修改；分辨率和 DSC 模块当前阶段禁止 Root 直刷，请优先导出并离线验证。"
+            warnings += "包含功能模块设备树修改；分辨率、DSC 和 Charging 模块当前阶段禁止 Root 直刷，请优先导出并离线验证。"
         }
         if (genericChanges.isNotEmpty()) {
             warnings += "包含通用设备树自由编辑；当前阶段禁止 Root 直刷，请优先导出并离线验证。"

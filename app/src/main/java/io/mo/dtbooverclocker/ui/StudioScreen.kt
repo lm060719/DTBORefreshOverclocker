@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.model.DscParameters
+import io.mo.dtbooverclocker.model.ChargingNode
 import io.mo.dtbooverclocker.model.CapabilityFinding
 import io.mo.dtbooverclocker.model.CapabilityKind
 import io.mo.dtbooverclocker.model.CapabilityStatus
@@ -35,7 +36,7 @@ enum class StudioTab(val label: String, val icon: ImageVector) {
     SETTINGS("设置", Icons.Default.Settings)
 }
 
-private enum class StudioModule { REFRESH_RATE, RESOLUTION, DSC }
+private enum class StudioModule { REFRESH_RATE, RESOLUTION, DSC, CHARGING }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,6 +53,7 @@ fun StudioScreen(
     onResolutionScope: (ResolutionScope) -> Unit, onResolutionPreset: (Int, Int) -> Unit,
     onStageResolution: () -> Unit,
     onStageDsc: (Int, String, DscParameters) -> Unit,
+    onStageCharging: (ChargingNode, Map<String, String>) -> Unit,
     onSetDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onAddDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onDeleteDeviceTreeProperty: (Int, String, String) -> Unit,
@@ -73,7 +75,7 @@ fun StudioScreen(
                 state, padding, onSelect, onTarget, onStrategy, onPatchMode,
                 onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp,
                 onApplySuggestedCustom, onStageChange, onResolutionWidth, onResolutionHeight,
-                onResolutionScope, onResolutionPreset, onStageResolution, onStageDsc
+                onResolutionScope, onResolutionPreset, onStageResolution, onStageDsc, onStageCharging
             )
             StudioTab.DEVICE_TREE -> DeviceTreeScreen(
                 state = state,
@@ -305,7 +307,8 @@ private fun ModulesTab(
     onStageChange: () -> Unit, onResolutionWidth: (String) -> Unit, onResolutionHeight: (String) -> Unit,
     onResolutionScope: (ResolutionScope) -> Unit, onResolutionPreset: (Int, Int) -> Unit,
     onStageResolution: () -> Unit,
-    onStageDsc: (Int, String, DscParameters) -> Unit
+    onStageDsc: (Int, String, DscParameters) -> Unit,
+    onStageCharging: (ChargingNode, Map<String, String>) -> Unit
 ) {
     var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
     val workspace = state.workspace
@@ -332,7 +335,7 @@ private fun ModulesTab(
             item { Text("硬件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             item { FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ModuleCard("Thermal", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.THERMAL), 0), Icons.Default.Thermostat, false)
-                ModuleCard("Charging", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, false)
+                ModuleCard("Charging", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING) { activeModule = if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING }
                 ModuleCard("Touch", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.TOUCH), 0), Icons.Default.TouchApp, false)
                 ModuleCard("高级属性", "设备树编辑器 · 始终可用", Icons.Default.Code, false)
             } }
@@ -357,6 +360,10 @@ private fun ModulesTab(
             if (activeModule == StudioModule.DSC) {
                 item { HorizontalDivider() }
                 item { DscAnalysisPanel(state = state, onSelect = onSelect, onStage = onStageDsc) }
+            }
+            if (activeModule == StudioModule.CHARGING) {
+                item { HorizontalDivider() }
+                item(key = "charging_panel") { ChargingPanel(state, onStageCharging) }
             }
         }
         item { Spacer(Modifier.height(24.dp)) }

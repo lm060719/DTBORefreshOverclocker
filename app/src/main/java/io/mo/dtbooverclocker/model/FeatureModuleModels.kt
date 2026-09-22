@@ -5,7 +5,8 @@ import java.util.UUID
 enum class FeatureModuleKind(val displayName: String)
 {
     RESOLUTION("分辨率"),
-    DSC("DSC")
+    DSC("DSC"),
+    CHARGING("Charging")
 }
 
 enum class ResolutionScope(val displayName: String, val description: String)
