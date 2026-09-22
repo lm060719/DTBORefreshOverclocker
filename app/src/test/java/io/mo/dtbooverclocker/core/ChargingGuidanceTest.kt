@@ -54,9 +54,8 @@ class ChargingGuidanceTest
     @Test
     fun nodeAdviceHighlightsMcaQuickChargePriorities()
     {
-        val advice = ChargingGuidanceResolver.nodeAdvice(""mca,quick_charger"")
+        val advice = requireNotNull(ChargingGuidanceResolver.nodeAdvice("mca,quick_charger"))
 
-        requireNotNull(advice)
         assertTrue(advice.contains("div_single_curr"))
         assertTrue(advice.contains("max_vbat"))
     }
