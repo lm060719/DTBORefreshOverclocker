@@ -63,10 +63,12 @@ import androidx.compose.ui.graphics.Color
 import io.mo.dtbooverclocker.core.ActivePanelDetector
 import io.mo.dtbooverclocker.model.TimingCandidate
 
-enum class PanelFilterScope(val label: String) {
-    DEVICE_ONLY("机型专属"),
+enum class PanelFilterScope(val label: String)
+{
+    ACTIVE("本机在用"),
+    VENDOR("厂商面板"),
     ALL("全部面板"),
-    REFERENCE("公版/仿真")
+    OTHER("其他面板")
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -91,21 +93,36 @@ fun TimingCandidateSelector(
         return
     }
 
-    val deviceSpecificCount = remember(groups) {
-        groups.keys.count { it.isDeviceSpecific }
+    val vendorCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.VENDOR }
     }
-    val hasDeviceSpecific = deviceSpecificCount > 0
+    val activeCount = remember(groups, activePanelIdentifier) {
+        if (activePanelIdentifier == null) 0
+        else groups.keys.count { ActivePanelDetector.matchPanel(it.panelIdentifier, activePanelIdentifier) }
+    }
+    val hasVendorPanels = vendorCount > 0
 
-    var filterScope by remember(hasDeviceSpecific) {
-        mutableStateOf(if (hasDeviceSpecific) PanelFilterScope.DEVICE_ONLY else PanelFilterScope.ALL)
+    var filterScope by remember(hasVendorPanels, activeCount) {
+        mutableStateOf(
+            when
+            {
+                activeCount > 0 -> PanelFilterScope.ACTIVE
+                hasVendorPanels -> PanelFilterScope.VENDOR
+                else -> PanelFilterScope.ALL
+            }
+        )
     }
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredGroups = remember(groups, filterScope, searchQuery, activePanelIdentifier) {
         val baseFiltered = groups.filter { (key, list) ->
-            val scopeMatch = when (filterScope) {
-                PanelFilterScope.DEVICE_ONLY -> key.isDeviceSpecific
-                PanelFilterScope.REFERENCE -> !key.isDeviceSpecific
+            val scopeMatch = when (filterScope)
+            {
+                PanelFilterScope.ACTIVE ->
+                    activePanelIdentifier != null &&
+                        ActivePanelDetector.matchPanel(key.panelIdentifier, activePanelIdentifier)
+                PanelFilterScope.VENDOR -> key.classification == PanelClassification.VENDOR
+                PanelFilterScope.OTHER -> key.classification != PanelClassification.VENDOR
                 PanelFilterScope.ALL -> true
             }
             val queryMatch = searchQuery.isBlank() ||
@@ -131,8 +148,9 @@ fun TimingCandidateSelector(
     val initialKey = remember(candidates, selectedCandidateId, filteredGroups, activePanelIdentifier) {
         val found = candidates.firstOrNull { it.id == selectedCandidateId }
         if (found != null) {
-            filteredGroups.keys.firstOrNull { it.entryIndex == found.entryIndex && it.panelIdentifier == TimingUtils.parsePanelIdentifier(found.nodePath) }
-                ?: filteredGroups.keys.firstOrNull()
+            filteredGroups.keys.firstOrNull {
+                it.panelIdentifier == TimingUtils.parsePanelIdentifier(found.nodePath)
+            } ?: filteredGroups.keys.firstOrNull()
                 ?: groups.keys.first()
         } else if (activePanelIdentifier != null) {
             filteredGroups.keys.firstOrNull { ActivePanelDetector.matchPanel(it.panelIdentifier, activePanelIdentifier) }
@@ -203,43 +221,51 @@ fun TimingCandidateSelector(
         }
         // 面板选择区（若存在多个屏幕/DTB 分组时展示切换与过滤）
         if (groups.size > 1) {
-            // 过滤维度切换（如果有专属面板，默认仅显示机型专属）
-            if (hasDeviceSpecific) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+            // 过滤维度按唯一 panel identifier 统计，不再把多个 DTB entry 的重复实例重复计数。
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (activeCount > 0)
+                {
                     FilterChip(
-                        selected = filterScope == PanelFilterScope.DEVICE_ONLY,
-                        onClick = {
-                            filterScope = PanelFilterScope.DEVICE_ONLY
-                        },
-                        label = { Text("机型专属 ($deviceSpecificCount)") },
+                        selected = filterScope == PanelFilterScope.ACTIVE,
+                        onClick = { filterScope = PanelFilterScope.ACTIVE },
+                        label = { Text("本机在用 ($activeCount)") },
                         leadingIcon = {
-                            Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
                         )
                     )
+                }
 
+                if (hasVendorPanels)
+                {
                     FilterChip(
-                        selected = filterScope == PanelFilterScope.ALL,
-                        onClick = { filterScope = PanelFilterScope.ALL },
-                        label = { Text("全部 (${groups.size})") }
-                    )
-
-                    FilterChip(
-                        selected = filterScope == PanelFilterScope.REFERENCE,
-                        onClick = {
-                            filterScope = PanelFilterScope.REFERENCE
-                        },
-                        label = { Text("公版/仿真 (${groups.size - deviceSpecificCount})") }
+                        selected = filterScope == PanelFilterScope.VENDOR,
+                        onClick = { filterScope = PanelFilterScope.VENDOR },
+                        label = { Text("厂商面板 ($vendorCount)") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
                     )
                 }
-            }
 
+                FilterChip(
+                    selected = filterScope == PanelFilterScope.ALL,
+                    onClick = { filterScope = PanelFilterScope.ALL },
+                    label = { Text("全部唯一面板 (${groups.size})") }
+                )
+
+                FilterChip(
+                    selected = filterScope == PanelFilterScope.OTHER,
+                    onClick = { filterScope = PanelFilterScope.OTHER },
+                    label = { Text("其他 (${groups.size - vendorCount})") }
+                )
+            }
             // 搜索框（支持搜索 o1, 38, 42, 144 等）
             OutlinedTextField(
                 value = searchQuery,
@@ -286,10 +312,10 @@ fun TimingCandidateSelector(
                                             tint = Color(0xFF2E7D32)
                                         )
                                         Spacer(Modifier.width(4.dp))
-                                    } else if (key.isDeviceSpecific) {
+                                    } else if (key.classification == PanelClassification.VENDOR) {
                                         Icon(
                                             Icons.Default.Star,
-                                            contentDescription = "机型专属",
+                                            contentDescription = "厂商面板",
                                             modifier = Modifier.size(14.dp),
                                             tint = if (isGroupActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -346,7 +372,7 @@ fun TimingCandidateSelector(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "DTB[${singleKey.entryIndex}]",
+                                "${currentGroupCandidates.map { it.entryIndex }.distinct().size} 个 DTB 实例",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -560,7 +586,7 @@ private fun TimingCandidateCard(
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
-                            nodeName,
+                            "DTB[${candidate.entryIndex}] · $nodeName",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
