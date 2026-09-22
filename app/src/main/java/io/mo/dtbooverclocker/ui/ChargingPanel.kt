@@ -30,6 +30,9 @@ import io.mo.dtbooverclocker.model.FeatureModuleKind
 internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<String, String>) -> Unit) {
     val workspace = state.workspace ?: return
     val nodes = state.capabilityReport?.chargingNodes.orEmpty()
+    val uniquePathCount = remember(nodes) { nodes.map { it.nodePath }.distinct().size }
+    val editableNodeCount = remember(nodes) { nodes.count { it.editableCount > 0 } }
+    val editableParameterCount = remember(nodes) { nodes.sumOf { it.editableCount } }
     val enabled = !state.busy && !state.capabilityScanInProgress
     if (nodes.isEmpty()) {
         Card(Modifier.fillMaxWidth()) {
@@ -50,15 +53,29 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Charging 参数编辑", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp)) {
-                Text("${nodes.sumOf { it.editableCount }} 个可编辑参数 · ${nodes.count { it.editableCount > 0 }} / ${nodes.size} 个节点 · 仅导出验证", Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelSmall)
+                Text(
+                    "${editableParameterCount} 个可编辑参数 · ${editableNodeCount} 个可编辑节点 · " +
+                        "${uniquePathCount} 个唯一路径 / ${nodes.size} 个 DTB 实例 · 仅导出验证",
+                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
             Text("选择充电节点", style = MaterialTheme.typography.labelLarge)
             OutlinedCard(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("DTB ${node.entryIndex} · ${node.nodePath.substringAfterLast('/').ifBlank { "/" }}", fontWeight = FontWeight.Medium)
                     Text(node.nodePath, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-                    node.compatible?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    node.compatible?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if ("oplus," in it)
+                        {
+                            Text(
+                                "已启用 OPlus 保守绑定：仅开放已验证的单值 mA / mV 参数，复杂策略表保持只读。",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     node.targetLabel?.let { Text("Overlay 目标：&$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                     Text("${node.editableCount} 个可编辑参数 · status: ${node.status ?: "未声明"}", style = MaterialTheme.typography.labelSmall)
                 }
