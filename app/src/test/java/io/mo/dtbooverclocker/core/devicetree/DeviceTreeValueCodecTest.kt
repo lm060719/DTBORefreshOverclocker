@@ -1,12 +1,34 @@
 package io.mo.dtbooverclocker.core.devicetree
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DeviceTreeValueCodecTest
 {
+    @Test
+    fun unsafeStringRepresentationsRemainRaw() {
+        listOf("\"\\x41\"", "\"\\101\"", "\"\\0\"", "\"\\a\"", "\"prefix\", <1>").forEach { raw ->
+            assertFalse(DeviceTreeValueCodec.supportsTypedEditor(PropertyType.STRING, raw))
+            assertEquals(raw, DeviceTreeValueCodec.editableText(PropertyType.STRING, raw))
+        }
+        listOf("\"\", \"a\"", "\" a \", \"b\"", "\"a\\nb\", \"c\"").forEach { raw ->
+            assertFalse(DeviceTreeValueCodec.supportsTypedEditor(PropertyType.STRING_LIST, raw))
+            assertEquals(raw, DeviceTreeValueCodec.editableText(PropertyType.STRING_LIST, raw))
+        }
+    }
+
+    @Test
+    fun ordinaryEscapesRoundTripAndLiteralBackslashesStayLiteral() {
+        listOf("hello\nworld", "quote: \" and tab:\t", "literal \\x41", "").forEach { value ->
+            val raw = DeviceTreeValueCodec.encode(PropertyType.STRING, value)!!
+            assertTrue(DeviceTreeValueCodec.supportsTypedEditor(PropertyType.STRING, raw))
+            assertEquals(value, DeviceTreeValueCodec.editableText(PropertyType.STRING, raw))
+        }
+    }
+
     @Test
     fun encodesStringAndStringList()
     {

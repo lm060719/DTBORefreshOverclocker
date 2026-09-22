@@ -27,9 +27,10 @@ object DeviceTreeParser
         var pendingIndent = ""
         val pending = StringBuilder()
 
-        text.lineSequence().forEach { line ->
+        Regex("[^\\r\\n]*(?:\\r\\n|\\r|\\n|$)").findAll(text).forEach { match ->
             checkCancellation()
-            val lineWithBreakLength = line.length + 1
+            val line = match.value.trimEnd('\r', '\n')
+            val lineWithBreakLength = match.value.length
             val trimmed = line.trim()
 
             if (pending.isNotEmpty())

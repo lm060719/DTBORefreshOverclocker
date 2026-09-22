@@ -242,7 +242,9 @@ object DeviceTreeEditor
         validatePropertyName(change.propertyName)
         val indent = childIndent(node)
         val insertion = statement(indent, change.propertyName, change.newRawValue) + "\n"
-        return text.replaceRange(node.closeStartOffset, node.closeStartOffset, insertion)
+        // DTC requires properties before the first child node, including on undo.
+        val insertionOffset = node.children.firstOrNull()?.startOffset ?: node.closeStartOffset
+        return text.replaceRange(insertionOffset, insertionOffset, insertion)
     }
 
     private fun deleteProperty(

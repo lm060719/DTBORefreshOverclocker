@@ -8,6 +8,36 @@ import org.junit.Test
 
 class DeviceTreeEditorTest
 {
+    @Test
+    fun addAndUndoDeletedPropertyKeepPropertiesBeforeChildren() {
+        val source = """
+            / {
+                value = <1>;
+                child {
+                    enabled;
+                };
+            };
+        """.trimIndent()
+        val added = DeviceTreeEditor.apply(source, DeviceTreeEditor.buildAddChange(0, source, "/", "other", "<2>"))
+        assertTrue(added.indexOf("other =") < added.indexOf("child {"))
+        val deletion = DeviceTreeEditor.buildDeleteChange(0, source, "/", "value")
+        val restored = DeviceTreeEditor.apply(DeviceTreeEditor.apply(source, deletion), deletion.inverse())
+        assertEquals(source, restored)
+    }
+
+    @Test
+    fun editsPreserveOffsetsForAllLineEndings() {
+        val source = "/ {\n    value = <1>;\n    child {\n        enabled;\n    };\n};"
+        listOf("\n", "\r\n", "\r").forEach { newline ->
+            val text = source.replace("\n", newline)
+            val change = DeviceTreeEditor.buildSetChange(0, text, "/", "value", "<2>")
+            assertEquals(text.replace("<1>", "<2>"), DeviceTreeEditor.apply(text, change))
+            val delete = DeviceTreeEditor.buildDeleteNodeChange(0, text, "/child")
+            val result = DeviceTreeEditor.apply(text, delete)
+            assertEquals("/ {${newline}    value = <1>;${newline}};", result)
+        }
+    }
+
     private val sample = """
         /dts-v1/;
         / {

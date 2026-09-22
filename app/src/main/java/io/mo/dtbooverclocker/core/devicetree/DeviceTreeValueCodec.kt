@@ -18,9 +18,18 @@ object DeviceTreeValueCodec
         PropertyType.BYTE_ARRAY
     )
 
-    fun supportsTypedEditor(type: PropertyType): Boolean
+    fun supportsTypedEditor(type: PropertyType, rawValue: String? = null): Boolean
     {
-        return type in supportedTypedTypes
+        if (type !in supportedTypedTypes) return false
+        if (rawValue == null || type !in setOf(PropertyType.STRING, PropertyType.STRING_LIST)) return true
+        // Only offer a typed editor when its representation can preserve every item.
+        // Mixed DTS values, byte escapes and empty/multiline list items stay raw.
+        val literal = "\"(?:\\\\.|[^\"\\\\])*\""
+        if (!Regex("\\s*$literal(?:\\s*,\\s*$literal)*\\s*").matches(rawValue)) return false
+        val strings = runCatching { parseQuotedStrings(rawValue) }.getOrNull() ?: return false
+        return if (type == PropertyType.STRING) strings.size == 1 else strings.all {
+            it.isNotEmpty() && it == it.trim() && '\n' !in it && '\r' !in it
+        }
     }
 
     fun preferredNumberBase(property: DeviceTreeProperty?): NumberBase
@@ -43,6 +52,7 @@ object DeviceTreeValueCodec
     ): String
     {
         val raw = rawValue?.trim().orEmpty()
+        if (!supportsTypedEditor(type, rawValue)) return raw
         return when (type)
         {
             PropertyType.BOOLEAN -> ""
@@ -268,7 +278,7 @@ object DeviceTreeValueCodec
                     't' -> output.append('\t')
                     '\\' -> output.append('\\')
                     '"' -> output.append('"')
-                    else -> output.append(next)
+                    else -> error("该字符串包含需要保留的 DTS 转义，请使用 Raw 模式")
                 }
                 index += 2
             }

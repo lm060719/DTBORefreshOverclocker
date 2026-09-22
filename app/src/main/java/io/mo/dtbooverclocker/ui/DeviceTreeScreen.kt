@@ -41,12 +41,15 @@ import io.mo.dtbooverclocker.core.devicetree.NumberBase
 import io.mo.dtbooverclocker.core.devicetree.PropertyType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
 private data class DocumentLoadResult(
     val document: DeviceTreeDocument? = null,
+    val nodes: List<DeviceTreeNode> = emptyList(),
+    val nodesByPath: Map<String, DeviceTreeNode> = emptyMap(),
     val referenceIndex: DeviceTreeReferenceIndex? = null,
     val loading: Boolean = true,
     val error: String? = null,
@@ -95,13 +98,13 @@ fun DeviceTreeScreen(
         mutableStateOf(DeviceTreeSearchScope.ALL)
     }
     var selectedEntry by rememberSaveable(workspace?.rootDir?.path) { mutableIntStateOf(0) }
-    var selectedNodePath by rememberSaveable(workspace?.rootDir?.path) { mutableStateOf<String?>(null) }
-    var showNodeSheet by remember { mutableStateOf(false) }
-    var editorProperty by remember { mutableStateOf<DeviceTreeProperty?>(null) }
-    var addingProperty by remember { mutableStateOf(false) }
-    var deleteProperty by remember { mutableStateOf<DeviceTreeProperty?>(null) }
-    var nodeEditMode by remember { mutableStateOf<NodeEditMode?>(null) }
-    var deleteNodePath by remember { mutableStateOf<String?>(null) }
+    var selectedNodePath by rememberSaveable(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<String?>(null) }
+    var showNodeSheet by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf(false) }
+    var editorProperty by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<DeviceTreeProperty?>(null) }
+    var addingProperty by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf(false) }
+    var deleteProperty by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<DeviceTreeProperty?>(null) }
+    var nodeEditMode by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<NodeEditMode?>(null) }
+    var deleteNodePath by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<String?>(null) }
 
     val entry = selectedEntry.coerceIn(
         0,
@@ -112,84 +115,76 @@ fun DeviceTreeScreen(
     }
 
     val file = workspace?.let { File(it.rootDir, "dts/entry_$entry.dts") }?.takeIf { it.isFile }
-    val invalidation = listOf(
-        state.stagedChanges.size,
-        state.timingDeviceTreeChanges.size,
-        state.moduleStagedChanges.size,
-        state.moduleDeviceTreeChanges.size,
-        state.deviceTreeChanges.size
-    )
-
-    val loaded by produceState(
-        initialValue = DocumentLoadResult(),
-        file,
-        invalidation
-    ) {
-        value = try
-        {
-            val text = withContext(Dispatchers.IO) { file?.readText() }
-            val document = withContext(Dispatchers.Default) {
-                if (text == null)
-                {
-                    null
-                }
-                else
-                {
-                    DeviceTreeParser.parse(entry, text) { ensureActive() }
-                }
-            }
-
-            if (document == null)
+    val invalidation = state.workspaceRevision to state.transactions.map { it.id }
+    val loaded by key(file, invalidation, state.workspaceOperationInProgress) {
+        produceState(initialValue = DocumentLoadResult()) {
+            if (state.workspaceOperationInProgress) return@produceState
+            value = try
             {
-                DocumentLoadResult(document = null, loading = false)
-            }
-            else
-            {
-                val referenceResult = withContext(Dispatchers.Default) {
-                    runCatching {
-                        DeviceTreeReferenceIndexer.build(document)
+                val text = withContext(Dispatchers.IO) { file?.readText() }
+                val document = withContext(Dispatchers.Default) {
+                    if (text == null)
+                    {
+                        null
+                    }
+                    else
+                    {
+                        DeviceTreeParser.parse(entry, text) { ensureActive() }
                     }
                 }
 
-                DocumentLoadResult(
-                    document = document,
-                    referenceIndex = referenceResult.getOrNull(),
-                    loading = false,
-                    referenceError = referenceResult.exceptionOrNull()?.let(::formatReferenceIndexError)
-                )
+                if (document == null)
+                {
+                    DocumentLoadResult(document = null, loading = false)
+                }
+                else
+                {
+                    val referenceResult = withContext(Dispatchers.Default) {
+                        runCatching {
+                            DeviceTreeReferenceIndexer.build(document)
+                        }
+                    }
+
+                    val nodes = withContext(Dispatchers.Default) { document.flatten() }
+                    DocumentLoadResult(
+                        document = document,
+                        nodes = nodes,
+                        nodesByPath = withContext(Dispatchers.Default) { nodes.associateBy { it.path } },
+                        referenceIndex = referenceResult.getOrNull(),
+                        loading = false,
+                        referenceError = referenceResult.exceptionOrNull()?.let(::formatReferenceIndexError)
+                    )
+                }
             }
-        }
-        catch (cancelled: CancellationException)
-        {
-            throw cancelled
-        }
-        catch (error: Exception)
-        {
-            DocumentLoadResult(loading = false, error = error.message ?: "读取失败")
+            catch (cancelled: CancellationException)
+            {
+                throw cancelled
+            }
+            catch (error: Exception)
+            {
+                DocumentLoadResult(loading = false, error = error.message ?: "读取失败")
+            }
         }
     }
 
     val document = loaded.document
-    LaunchedEffect(document?.entryIndex, invalidation)
+    LaunchedEffect(document)
     {
         val currentPath = selectedNodePath
         if (document == null)
         {
-            selectedNodePath = null
             showNodeSheet = false
         }
-        else if (currentPath == null || document.findNode(currentPath) == null)
+        else if (currentPath == null || loaded.nodesByPath[currentPath] == null)
         {
             selectedNodePath = document.root.path
         }
     }
 
     val expandedSet = remember(expandedPaths) { expandedPaths.toSet() }
-    val changesForEntry = (
-        state.timingDeviceTreeChanges +
-            state.moduleDeviceTreeChanges +
-            state.deviceTreeChanges
-        ).filter { it.entryIndex == entry }
+    val changesForEntry = remember(state.transactions, entry) {
+        state.transactions.flatMap { it.operations }.filter { it.entryIndex == entry }
+    }
     val modifiedNodePaths = remember(changesForEntry)
     {
         changesForEntry
@@ -198,38 +193,25 @@ fun DeviceTreeScreen(
     }
     val referenceIndex = loaded.referenceIndex
     val filteredMode = query.isNotBlank() || searchScope != DeviceTreeSearchScope.ALL
-    val visibleRows = remember(
-        document,
-        query,
-        searchScope,
-        expandedSet,
-        referenceIndex,
-        modifiedNodePaths
-    )
-    {
-        val search = query.trim()
-        when
-        {
-            document == null -> emptyList()
-            filteredMode ->
-            {
-                document.flatten()
-                    .filter { node ->
-                        matchesSearchScope(
-                            node = node,
-                            query = search,
-                            scope = searchScope,
-                            referenceIndex = referenceIndex,
-                            modifiedNodePaths = modifiedNodePaths
-                        )
-                    }
-                    .map { TreeRow(it, depthOf(it.path)) }
+    val visibleRows by key(document, query, searchScope, expandedSet, referenceIndex, modifiedNodePaths) {
+        produceState<List<TreeRow>>(initialValue = emptyList()) {
+            if (document == null) return@produceState
+            if (query.isNotBlank()) delay(180)
+            value = withContext(Dispatchers.Default) {
+                val search = query.trim()
+                if (filteredMode) {
+                    loaded.nodes.asSequence().filter { node ->
+                        ensureActive()
+                        matchesSearchScope(node, search, searchScope, referenceIndex, modifiedNodePaths)
+                    }.map { TreeRow(it, depthOf(it.path)) }.toList()
+                } else {
+                    buildVisibleRows(document.root, expandedSet) { ensureActive() }
+                }
             }
-            else -> buildVisibleRows(document.root, expandedSet)
         }
     }
 
-    val selectedNode = document?.findNode(selectedNodePath ?: "/")
+    val selectedNode = loaded.nodesByPath[selectedNodePath ?: "/"]
 
     LazyColumn(
         modifier = Modifier
@@ -319,7 +301,7 @@ fun DeviceTreeScreen(
                     document == null -> Text("该 Entry 无法反编译为可编辑 DTS。")
                     else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            "Entry $entry · ${document.flatten().size} 个节点 · 当前显示 ${visibleRows.size} · " +
+                            "Entry $entry · ${loaded.nodes.size} 个节点 · 当前显示 ${visibleRows.size} · " +
                                 "${referenceIndex?.references?.size ?: 0} 条引用",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -359,7 +341,7 @@ fun DeviceTreeScreen(
                             ) {
                                 TextButton(
                                     onClick = {
-                                        expandedPaths = document.flatten()
+                                        expandedPaths = loaded.nodes
                                             .filter { it.children.isNotEmpty() && depthOf(it.path) < 2 }
                                             .map { it.path }
                                             .distinct()
@@ -374,7 +356,7 @@ fun DeviceTreeScreen(
                                 }
                                 TextButton(
                                     onClick = {
-                                        expandedPaths = document.flatten()
+                                        expandedPaths = loaded.nodes
                                             .filter { it.children.isNotEmpty() }
                                             .map { it.path }
                                             .distinct()
@@ -451,7 +433,10 @@ fun DeviceTreeScreen(
                     items(changesForEntry, key = { it.id }) { change ->
                         ChangeCard(
                             change = change,
-                            undoEnabled = state.deviceTreeChanges.lastOrNull()?.id == change.id,
+                            undoEnabled = !state.busy && state.transactions.lastOrNull()?.let {
+                                it.kind == io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransactionKind.GENERIC_EDIT &&
+                                    it.operations.singleOrNull()?.id == change.id
+                            } == true,
                             onUndo = { onUndoChange(change.id) }
                         )
                     }
@@ -1163,7 +1148,7 @@ private fun PropertyCard(
                 Text(
                     DeviceTreeValueCodec.displayName(property.type),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (DeviceTreeValueCodec.supportsTypedEditor(property.type))
+                    color = if (DeviceTreeValueCodec.supportsTypedEditor(property.type, property.rawValue))
                     {
                         MaterialTheme.colorScheme.primary
                     }
@@ -1251,7 +1236,7 @@ private fun PropertyEditorDialog(
         mutableStateOf(DeviceTreeValueCodec.preferredNumberBase(property))
     }
     var rawMode by remember(property, adding) {
-        mutableStateOf(property != null && !DeviceTreeValueCodec.supportsTypedEditor(property.type))
+        mutableStateOf(property != null && !DeviceTreeValueCodec.supportsTypedEditor(property.type, property.rawValue))
     }
     var typedText by remember(property, adding) {
         mutableStateOf(
@@ -1266,7 +1251,7 @@ private fun PropertyEditorDialog(
         mutableStateOf(property?.rawValue.orEmpty())
     }
 
-    val typedSupported = DeviceTreeValueCodec.supportsTypedEditor(selectedType)
+    val typedSupported = DeviceTreeValueCodec.supportsTypedEditor(selectedType, if (rawMode) rawText.takeIf { it.isNotBlank() } else property?.rawValue)
     val useRaw = rawMode || !typedSupported
     val validationError = remember(selectedType, typedText, rawText, useRaw)
     {
@@ -1367,7 +1352,15 @@ private fun PropertyEditorDialog(
                         }
                         Switch(
                             checked = rawMode,
-                            onCheckedChange = { rawMode = it }
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    runCatching { DeviceTreeValueCodec.encode(selectedType, typedText, numberBase) }
+                                        .onSuccess { rawText = it.orEmpty(); rawMode = true }
+                                } else {
+                                    typedText = DeviceTreeValueCodec.editableText(selectedType, rawText, numberBase)
+                                    rawMode = false
+                                }
+                            }
                         )
                     }
                 }
@@ -1676,13 +1669,15 @@ private fun ancestorPaths(path: String): List<String>
 
 private fun buildVisibleRows(
     root: DeviceTreeNode,
-    expandedPaths: Set<String>
+    expandedPaths: Set<String>,
+    checkCancellation: () -> Unit = {}
 ): List<TreeRow>
 {
     val result = mutableListOf<TreeRow>()
 
     fun walk(node: DeviceTreeNode, depth: Int)
     {
+        checkCancellation()
         result += TreeRow(node, depth)
         if (node.path in expandedPaths)
         {

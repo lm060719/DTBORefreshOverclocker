@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.mo.dtbooverclocker.core.ActivePanelDetectionResult
+import io.mo.dtbooverclocker.core.WorkspaceOperationRunner
 import io.mo.dtbooverclocker.core.ActivePanelDetector
 import io.mo.dtbooverclocker.core.CapabilityScanner
 import io.mo.dtbooverclocker.core.DtboPatchEngine
@@ -39,6 +40,7 @@ import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 import io.mo.dtbooverclocker.util.AppLogger
 import io.mo.dtbooverclocker.util.StorageUtils
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,6 +61,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val slotDetector = SlotDetector(executor)
     private val patchEngine = DtboPatchEngine(application, executor, ::appendLog)
     private val safetyGuard = SafetyGuardManager(application, rootDetector, ::appendLog)
+    private val workspaceOperations = WorkspaceOperationRunner()
     private var capabilityScanGeneration: Long = 0L
 
     companion object {
@@ -135,7 +138,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun importImage(uri: Uri) {
-        viewModelScope.launch {
+        launchWorkspaceOperation(replacesWorkspace = true) {
             setBusy(true, "正在导入并解析 DTBO…")
             runCatching {
                 val image = patchEngine.importImage(uri)
@@ -151,7 +154,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun extractActivePartition() {
-        viewModelScope.launch {
+        launchWorkspaceOperation(replacesWorkspace = true) {
             setBusy(true, "正在提取当前活跃槽位 DTBO…")
             runCatching {
                 val slot = _state.value.slotInfo ?: slotDetector.detect()
@@ -243,26 +246,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stageTimingChange() {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
-            val workspace = current.workspace ?: return@launch showError(
+            val workspace = current.workspace ?: return@launchWorkspaceOperation showError(
                 IllegalStateException("请先导入或提取 DTBO 镜像")
             )
             val candidate = workspace.candidates.firstOrNull { it.id == current.selectedCandidateId }
-                ?: return@launch showError(IllegalStateException("请选择一个 DSI 时序节点"))
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("请选择一个 DSI 时序节点"))
 
             if (current.patchMode == PatchMode.DELETE_EXISTING) {
                 val countInEntry = workspace.candidates.count { it.entryIndex == candidate.entryIndex }
                 requireOrReport(countInEntry > 1) {
                     "当前 DTB 镜像条目仅存 1 个时序档位，删除会导致设备无法点亮屏幕，已拒绝操作。"
-                } ?: return@launch
+                } ?: return@launchWorkspaceOperation
             }
 
             val customParams = if (current.strategy == PatchStrategy.CUSTOM && current.patchMode != PatchMode.DELETE_EXISTING) {
                 val p = current.customTimingParams
                 requireOrReport(p != null && (p.pixelClockHz != null || candidate.pixelClockHz != null)) {
                     "在自定义计算策略下，必须输入有效的像素时钟 (Pixel Clock)"
-                } ?: return@launch
+                } ?: return@launchWorkspaceOperation
                 p
             } else null
 
@@ -337,19 +340,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stageResolutionChange()
     {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
-            val workspace = current.workspace ?: return@launch showError(
+            val workspace = current.workspace ?: return@launchWorkspaceOperation showError(
                 IllegalStateException("请先导入或提取 DTBO 镜像")
             )
             val candidate = workspace.candidates
                 .firstOrNull { it.id == current.selectedCandidateId }
-                ?: return@launch showError(IllegalStateException("请选择一个带分辨率信息的 DSI 时序节点"))
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("请选择一个带分辨率信息的 DSI 时序节点"))
 
             val targetWidth = current.resolutionWidthText.toIntOrNull()
-                ?: return@launch showError(IllegalArgumentException("请输入有效的目标宽度"))
+                ?: return@launchWorkspaceOperation showError(IllegalArgumentException("请输入有效的目标宽度"))
             val targetHeight = current.resolutionHeightText.toIntOrNull()
-                ?: return@launch showError(IllegalArgumentException("请输入有效的目标高度"))
+                ?: return@launchWorkspaceOperation showError(IllegalArgumentException("请输入有效的目标高度"))
 
             runCatching {
                 patchEngine.applyResolutionChange(
@@ -385,9 +388,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun stageDscChange(entryIndex: Int, nodePath: String, parameters: io.mo.dtbooverclocker.model.DscParameters)
     {
         if (_state.value.busy) return
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
-            val workspace = current.workspace ?: return@launch
+            val workspace = current.workspace ?: return@launchWorkspaceOperation
             setBusy(true, "正在暂存 DSC 修改…")
             try {
                 val (updatedWorkspace, transaction) = patchEngine.applyDscChange(workspace, entryIndex, nodePath, parameters)
@@ -412,9 +415,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun stageChargingChange(snapshot: io.mo.dtbooverclocker.model.ChargingNode, inputs: Map<String, String>)
     {
         if (_state.value.busy || _state.value.capabilityScanInProgress) return
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
-            val workspace = current.workspace ?: return@launch
+            val workspace = current.workspace ?: return@launchWorkspaceOperation
             setBusy(true, "正在暂存 Charging 修改…")
             try {
                 val (updatedWorkspace, transaction) = patchEngine.applyChargingChange(workspace, snapshot, inputs)
@@ -545,14 +548,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun undoDeviceTreeChange(changeId: String) {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             undoLastTransactionInternal(requiredGenericChangeId = changeId)
         }
     }
 
     fun undoLastTransaction()
     {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             undoLastTransactionInternal(requiredGenericChangeId = null)
         }
     }
@@ -574,14 +577,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         runCatching {
-            var updatedWorkspace = workspace
-            transaction.operations.asReversed().forEach { operation ->
-                updatedWorkspace = patchEngine.applyDeviceTreeChange(
-                    updatedWorkspace,
-                    operation.inverse()
-                )
-            }
-            updatedWorkspace
+            patchEngine.applyDeviceTreeChanges(
+                workspace,
+                transaction.operations.asReversed().map { it.inverse() }
+            )
         }.onSuccess { updatedWorkspace ->
             val remaining = current.transactions.dropLast(1)
             _state.update {
@@ -601,9 +600,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         entryIndex: Int,
         builder: (String) -> DeviceTreeChange
     ) {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
-            val workspace = current.workspace ?: return@launch showError(
+            val workspace = current.workspace ?: return@launchWorkspaceOperation showError(
                 IllegalStateException("请先导入或提取 DTBO 镜像")
             )
 
@@ -633,9 +632,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resetStagedChanges() {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
-            val workspace = current.workspace ?: return@launch
+            val workspace = current.workspace ?: return@launchWorkspaceOperation
             setBusy(true, "正在重置所有修改…")
             runCatching {
                 patchEngine.resetWorkspace(workspace)
@@ -656,14 +655,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun packageStagedChanges() {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
-            val workspace = current.workspace ?: return@launch showError(
+            val workspace = current.workspace ?: return@launchWorkspaceOperation showError(
                 IllegalStateException("请先导入或提取 DTBO 镜像")
             )
             requireOrReport(current.transactions.isNotEmpty()) {
                 "当前尚未暂存任何修改，请先修改功能模块、时序或设备树属性后再打包"
-            } ?: return@launch
+            } ?: return@launchWorkspaceOperation
 
             setBusy(true, "正在重编译 DTB 并集中打包 DTBO 镜像…")
             runCatching {
@@ -689,21 +688,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun flashPatched() {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
             val report = current.patchReport
-                ?: return@launch showError(IllegalStateException("尚未生成修补镜像"))
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("尚未生成修补镜像"))
             val slot = current.slotInfo
-                ?: return@launch showError(IllegalStateException("无法确定目标槽位"))
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("无法确定目标槽位"))
             requireOrReport(current.sourceMode == SourceMode.ROOT_PARTITION) {
                 "直接刷写仅允许用于“从手机当前分区读取”的工作区，防止误刷入来自其他设备的导入镜像。"
-            } ?: return@launch
+            } ?: return@launchWorkspaceOperation
             requireOrReport(current.transactions.isNotEmpty()) {
                 "当前没有可刷写的设备树事务。"
-            } ?: return@launch
+            } ?: return@launchWorkspaceOperation
             requireOrReport(current.transactions.all { it.directFlashAllowed }) {
                 "当前事务队列包含仅允许导出验证的修改（例如分辨率或通用设备树编辑），已禁止 Root 直刷。"
-            } ?: return@launch
+            } ?: return@launchWorkspaceOperation
 
             setBusy(true, "正在执行备份、救援包生成与单槽位刷写…")
             runCatching {
@@ -722,12 +721,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun prepareRecoveryZip(onReady: (File) -> Unit) {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
             val patched = current.patchReport?.outputImage
-                ?: return@launch showError(IllegalStateException("请先生成修补镜像"))
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("请先生成修补镜像"))
             val slot = current.slotInfo
-                ?: return@launch showError(IllegalStateException("无法确定 DTBO 分区路径"))
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("无法确定 DTBO 分区路径"))
 
             setBusy(true, "正在生成 Recovery 单槽位刷机 Zip…")
             runCatching {
@@ -738,12 +737,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun prepareFastbootBundle(onReady: (File) -> Unit) {
-        viewModelScope.launch {
+        launchWorkspaceOperation {
             val current = _state.value
             val patched = current.patchReport?.outputImage
-                ?: return@launch showError(IllegalStateException("请先生成修补镜像"))
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("请先生成修补镜像"))
             val slot = current.slotInfo
-                ?: return@launch showError(IllegalStateException("无法确定槽位"))
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("无法确定槽位"))
             val original = current.workspace?.inputImage
 
             setBusy(true, "正在生成 PC Fastboot 一键包…")
@@ -777,7 +776,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearAllCache(onComplete: ((freedBytes: Long) -> Unit)? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
+        launchWorkspaceOperation(Dispatchers.IO) {
             setBusy(true, "正在清理应用所有缓存…")
             runCatching {
                 val app = getApplication<Application>()
@@ -1067,6 +1066,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun launchWorkspaceOperation(
+        dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+        replacesWorkspace: Boolean = false,
+        action: suspend () -> Unit
+    ) {
+        val expectedWorkspace = _state.value.workspace?.rootDir
+        viewModelScope.launch(dispatcher) {
+            workspaceOperations.run {
+                if (!replacesWorkspace && _state.value.workspace?.rootDir != expectedWorkspace) {
+                    showError(IllegalStateException("工作区已切换，请在当前工作区重新执行操作"))
+                    return@run
+                }
+                _state.update { it.copy(busy = true, workspaceOperationInProgress = true) }
+                try {
+                    action()
+                } finally {
+                    _state.update {
+                        it.copy(
+                            busy = false,
+                            workspaceOperationInProgress = false,
+                            workspaceRevision = it.workspaceRevision + 1
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private fun suggestedTarget(currentHz: Int): Int {
         return when {
             currentHz < 60 -> 60
@@ -1113,6 +1140,8 @@ data class MainUiState(
     val slotInfo: SlotInfo? = null,
     val sourceMode: SourceMode = SourceMode.LOCAL_IMAGE,
     val busy: Boolean = false,
+    val workspaceOperationInProgress: Boolean = false,
+    val workspaceRevision: Long = 0,
     val status: String = "初始化中…",
     val workspace: DtboWorkspace? = null,
     val selectedCandidateId: String? = null,

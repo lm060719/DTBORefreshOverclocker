@@ -15,6 +15,9 @@ import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
+import io.mo.dtbooverclocker.core.devicetree.DtsFileTransaction
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParser
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditValidator
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransactionKind
@@ -173,21 +176,15 @@ class DtboPatchEngine(
     suspend fun resetWorkspace(workspace: DtboWorkspace): DtboWorkspace = withContext(Dispatchers.IO) {
         val dtsOriginalDir = File(workspace.rootDir, "dts_original")
         val dtsDir = File(workspace.rootDir, "dts")
-        val refreshedCandidates = mutableListOf<TimingCandidate>()
-        val dtsFiles = mutableListOf<File>()
-
-        workspace.extractedEntries.forEachIndexed { index, _ ->
-            val backupDts = File(dtsOriginalDir, "entry_$index.dts")
-            val targetDts = File(dtsDir, "entry_$index.dts")
-            if (backupDts.isFile) {
-                backupDts.copyTo(targetDts, overwrite = true)
-                dtsFiles += targetDts
-                refreshedCandidates += DtsTimingPatcher.analyzeEntry(index, targetDts)
-            }
-        }
-        logSink("[INFO] 工作区 DTS 已重置为初始状态，共恢复 ${refreshedCandidates.size} 个原始候选档位")
-        workspace.copy(candidates = refreshedCandidates, dtsFiles = dtsFiles)
+        val texts = workspace.extractedEntries.indices.mapNotNull { index ->
+            val backup = File(dtsOriginalDir, "entry_$index.dts")
+            if (backup.isFile) index to backup.readText() else null
+        }.toMap()
+        val updated = commitWorkspaceTexts(workspace, texts)
+        logSink("[INFO] 工作区 DTS 已重置为初始状态，共恢复 ${updated.candidates.size} 个原始候选档位")
+        updated.copy(dtsFiles = texts.keys.map { File(dtsDir, "entry_$it.dts") })
     }
+
 
     suspend fun applyTimingChange(
         workspace: DtboWorkspace,
@@ -210,12 +207,8 @@ class DtboPatchEngine(
         )
 
         // 真正写入工作区的内容来自通用 DeviceTreeChange 回放结果，而不是旧文本修补器。
-        candidate.dtsFile.writeText(plan.replayedText)
-
-        val refreshedForEntry = DtsTimingPatcher.analyzeEntry(candidate.entryIndex, candidate.dtsFile)
-        val allCandidates = workspace.candidates.toMutableList()
-        allCandidates.removeAll { it.entryIndex == candidate.entryIndex }
-        allCandidates.addAll(refreshedForEntry)
+        val updatedWorkspace = commitWorkspaceTexts(workspace, mapOf(candidate.entryIndex to plan.replayedText))
+        val refreshedForEntry = updatedWorkspace.candidates.filter { it.entryIndex == candidate.entryIndex }
 
         val nodeName = TimingUtils.parseTimingNodeName(candidate.nodePath)
         val nextSelectedId = when (mode) {
@@ -257,7 +250,7 @@ class DtboPatchEngine(
 
         logSink("[OK] 已暂存时序修改：$summary")
         TimingApplyResult(
-            updatedWorkspace = workspace.copy(candidates = allCandidates),
+            updatedWorkspace = updatedWorkspace,
             selectedCandidateId = nextSelectedId,
             stagedChange = staged,
             operations = plan.operations,
@@ -285,12 +278,8 @@ class DtboPatchEngine(
             scope = scope
         )
 
-        candidate.dtsFile.writeText(plan.replayedText)
-
-        val refreshedForEntry = DtsTimingPatcher.analyzeEntry(candidate.entryIndex, candidate.dtsFile)
-        val allCandidates = workspace.candidates.toMutableList()
-        allCandidates.removeAll { it.entryIndex == candidate.entryIndex }
-        allCandidates.addAll(refreshedForEntry)
+        val updatedWorkspace = commitWorkspaceTexts(workspace, mapOf(candidate.entryIndex to plan.replayedText))
+        val refreshedForEntry = updatedWorkspace.candidates.filter { it.entryIndex == candidate.entryIndex }
 
         val nextSelectedId = refreshedForEntry
             .firstOrNull { it.nodePath == candidate.nodePath }
@@ -312,7 +301,7 @@ class DtboPatchEngine(
         plan.warnings.forEach { logSink("[WARN][RESOLUTION] $it") }
         logSink("[OK] 已暂存分辨率模块修改：$summary")
         ResolutionApplyResult(
-            updatedWorkspace = workspace.copy(candidates = allCandidates),
+            updatedWorkspace = updatedWorkspace,
             selectedCandidateId = nextSelectedId,
             stagedChange = staged,
             operations = plan.operations,
@@ -333,14 +322,7 @@ class DtboPatchEngine(
         require(dtsFile.isFile) { "Entry $entryIndex 没有可编辑的 DTS 文件" }
         val originalText = dtsFile.readText()
         val plan = DscPlanner.plan(entryIndex, originalText, nodePath, parameters)
-        val updatedWorkspace = try {
-            dtsFile.writeText(plan.replayedText)
-            workspace.copy(candidates = workspace.candidates.filterNot { it.entryIndex == entryIndex } +
-                DtsTimingPatcher.analyzeEntry(entryIndex, dtsFile))
-        } catch (failure: Exception) {
-            dtsFile.writeText(originalText)
-            throw failure
-        }
+        val updatedWorkspace = commitWorkspaceTexts(workspace, mapOf(entryIndex to plan.replayedText))
         plan.transaction.operations.forEach { logSink("[DSC] ${it.summary}") }
         updatedWorkspace to plan.transaction
     }
@@ -356,14 +338,7 @@ class DtboPatchEngine(
         require(dtsFile.isFile) { "Entry $entryIndex 没有可编辑的 DTS 文件" }
         val originalText = dtsFile.readText()
         val plan = ChargingPlanner.plan(originalText, snapshot, inputs)
-        val updatedWorkspace = try {
-            dtsFile.writeText(plan.replayedText)
-            workspace.copy(candidates = workspace.candidates.filterNot { it.entryIndex == entryIndex } +
-                DtsTimingPatcher.analyzeEntry(entryIndex, dtsFile))
-        } catch (failure: Exception) {
-            dtsFile.writeText(originalText)
-            throw failure
-        }
+        val updatedWorkspace = commitWorkspaceTexts(workspace, mapOf(entryIndex to plan.replayedText))
         plan.transaction.moduleChange?.changes?.forEach { logSink("[CHARGING] $it") }
         updatedWorkspace to plan.transaction
     }
@@ -371,26 +346,42 @@ class DtboPatchEngine(
     suspend fun applyDeviceTreeChange(
         workspace: DtboWorkspace,
         change: DeviceTreeChange
+    ): DtboWorkspace = applyDeviceTreeChanges(workspace, listOf(change), validateReferences = true)
+
+    suspend fun applyDeviceTreeChanges(
+        workspace: DtboWorkspace,
+        changes: List<DeviceTreeChange>,
+        validateReferences: Boolean = false
     ): DtboWorkspace = withContext(Dispatchers.IO) {
-        require(change.entryIndex in workspace.extractedEntries.indices) {
-            "设备树修改对应的 DTB 索引无效：${change.entryIndex}"
+        // Replay the entire transaction in memory before touching any live file.
+        val texts = linkedMapOf<Int, String>()
+        changes.forEach { change ->
+            require(change.entryIndex in workspace.extractedEntries.indices) {
+                "设备树修改对应的 DTB 索引无效：${change.entryIndex}"
+            }
+            val text = texts.getOrPut(change.entryIndex) {
+                File(workspace.rootDir, "dts/entry_${change.entryIndex}.dts").readText()
+            }
+            if (validateReferences) {
+                DeviceTreeEditValidator.validate(
+                    DeviceTreeParser.parse(change.entryIndex, text), change
+                )
+            }
+            texts[change.entryIndex] = DeviceTreeEditor.apply(text, change)
         }
+        val updated = commitWorkspaceTexts(workspace, texts)
+        changes.forEach { logSink("[OK] 已暂存设备树修改：${it.summary}") }
+        updated
+    }
 
-        val dtsFile = File(workspace.rootDir, "dts/entry_${change.entryIndex}.dts")
-        require(dtsFile.isFile) {
-            "Entry ${change.entryIndex} 没有可编辑的 DTS 文件"
+    private fun commitWorkspaceTexts(workspace: DtboWorkspace, texts: Map<Int, String>): DtboWorkspace {
+        val files = texts.mapKeys { (index, _) -> File(workspace.rootDir, "dts/entry_$index.dts") }
+        return DtsFileTransaction.commit(files) {
+            val refreshed = texts.keys.flatMap { index ->
+                DtsTimingPatcher.analyzeEntry(index, File(workspace.rootDir, "dts/entry_$index.dts"))
+            }
+            workspace.copy(candidates = workspace.candidates.filterNot { it.entryIndex in texts } + refreshed)
         }
-
-        val updatedText = DeviceTreeEditor.apply(dtsFile.readText(), change)
-        dtsFile.writeText(updatedText)
-
-        val refreshedForEntry = DtsTimingPatcher.analyzeEntry(change.entryIndex, dtsFile)
-        val allCandidates = workspace.candidates.toMutableList()
-        allCandidates.removeAll { it.entryIndex == change.entryIndex }
-        allCandidates.addAll(refreshedForEntry)
-
-        logSink("[OK] 已暂存通用设备树修改：${change.summary}")
-        workspace.copy(candidates = allCandidates)
     }
 
     suspend fun packageStaged(
@@ -422,9 +413,8 @@ class DtboPatchEngine(
                 require(dtsFile.isFile) { "条目 $index 对应的 DTS 文件不存在" }
                 val currentText = dtsFile.readText()
                 val sanitized = DtsSanitizer.sanitize(currentText)
-                if (sanitized != currentText) {
-                    dtsFile.writeText(sanitized)
-                }
+                // Compile a staging copy so packaging cannot mutate the editor's source.
+                val compileSource = File(rebuiltDir, "entry_$index.dts").apply { writeText(sanitized) }
 
                 val targetDtb = File(rebuiltDir, "entry_$index.dtb")
                 val compile = executor.runDtc(
@@ -432,7 +422,7 @@ class DtboPatchEngine(
                         "-I", "dts",
                         "-O", "dtb",
                         "-o", targetDtb.absolutePath,
-                        dtsFile.absolutePath
+                        compileSource.absolutePath
                     ),
                     workingDir = workspace.rootDir
                 )
