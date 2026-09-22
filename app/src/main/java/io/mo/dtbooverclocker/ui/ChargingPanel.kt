@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.core.ChargingAnalyzer
+import io.mo.dtbooverclocker.core.ChargingGuideRisk
+import io.mo.dtbooverclocker.core.ChargingGuidanceResolver
 import io.mo.dtbooverclocker.core.ChargingPlanner
 import io.mo.dtbooverclocker.model.ChargingNode
 import io.mo.dtbooverclocker.model.FeatureModuleKind
@@ -31,7 +33,9 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
     val workspace = state.workspace ?: return
     val nodes = state.capabilityReport?.chargingNodes.orEmpty()
     val uniquePathCount = remember(nodes) { nodes.map { it.nodePath }.distinct().size }
-    val editableNodeCount = remember(nodes) { nodes.count { it.editableCount > 0 } }
+    val editableNodes = remember(nodes) { nodes.filter { it.editableCount > 0 } }
+    val editableNodeCount = editableNodes.size
+    val readOnlyNodeCount = nodes.size - editableNodeCount
     val editableParameterCount = remember(nodes) { nodes.sumOf { it.editableCount } }
     val enabled = !state.busy && !state.capabilityScanInProgress
     if (nodes.isEmpty()) {
@@ -42,10 +46,19 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
         }
         return
     }
-    var selectedKey by rememberSaveable(workspace.rootDir.absolutePath) {
-        mutableStateOf(nodes.firstOrNull { it.editableCount > 0 }?.key ?: nodes.first().key)
+    var showReadOnlyNodes by rememberSaveable(workspace.rootDir.absolutePath) { mutableStateOf(false) }
+    val visibleNodes = remember(nodes, showReadOnlyNodes) {
+        if (showReadOnlyNodes) nodes else editableNodes
     }
-    val node = nodes.firstOrNull { it.key == selectedKey } ?: nodes.first()
+    var selectedKey by rememberSaveable(workspace.rootDir.absolutePath) {
+        mutableStateOf(editableNodes.firstOrNull()?.key ?: nodes.first().key)
+    }
+    val node = visibleNodes.firstOrNull { it.key == selectedKey }
+        ?: visibleNodes.firstOrNull()
+        ?: nodes.first()
+    LaunchedEffect(node.key, showReadOnlyNodes) {
+        if (selectedKey != node.key) selectedKey = node.key
+    }
     var selecting by rememberSaveable { mutableStateOf(false) }
     val drafts = rememberSaveableStateHolder()
 
