@@ -22,23 +22,71 @@ import java.io.ByteArrayOutputStream
  */
 object DtsSanitizer {
 
-    private val STRING_LITERAL_REGEX = Regex(""""([^"\\]*(?:\\.[^"\\]*)*)"""")
+    private const val HEX = "0123456789abcdef"
 
     fun sanitize(dtsText: String): String {
         if (!dtsText.contains("""\0""")) {
             return dtsText
         }
 
-        return STRING_LITERAL_REGEX.replace(dtsText) { matchResult ->
-            val content = matchResult.groupValues[1]
-            if (content.contains("""\0""")) {
-                val rawBytes = unescapeDtsStringToBytes(content)
-                val hexString = rawBytes.joinToString(" ") { "%02x".format(it) }
-                "[ $hexString ]"
-            } else {
-                matchResult.value
+        // OPlus/Qualcomm 的大型 overlay DTS 可达到数 MB。旧实现使用全文件正则，
+        // 并对每个字节执行 String.format("%02x")，在 Android 上会放大到数十秒。
+        // 这里改成单次线性扫描，只在真正含 \0 的字符串上做解码和十六进制转换。
+        val output = StringBuilder(dtsText.length + 128)
+        var index = 0
+        var changed = false
+
+        while (index < dtsText.length) {
+            if (dtsText[index] != '"') {
+                output.append(dtsText[index])
+                index++
+                continue
             }
+
+            val literalStart = index
+            val contentStart = ++index
+            var hasEmbeddedNull = false
+
+            while (index < dtsText.length) {
+                val ch = dtsText[index]
+                if (ch == '\\' && index + 1 < dtsText.length) {
+                    if (dtsText[index + 1] == '0') {
+                        hasEmbeddedNull = true
+                    }
+                    index += 2
+                    continue
+                }
+                if (ch == '"') {
+                    break
+                }
+                index++
+            }
+
+            if (index >= dtsText.length) {
+                output.append(dtsText, literalStart, dtsText.length)
+                break
+            }
+
+            if (!hasEmbeddedNull) {
+                output.append(dtsText, literalStart, index + 1)
+            } else {
+                val rawBytes = unescapeDtsStringToBytes(dtsText.substring(contentStart, index))
+                output.append("[ ")
+                rawBytes.forEachIndexed { byteIndex, value ->
+                    if (byteIndex > 0) {
+                        output.append(' ')
+                    }
+                    val unsigned = value.toInt() and 0xff
+                    output.append(HEX[unsigned ushr 4])
+                    output.append(HEX[unsigned and 0x0f])
+                }
+                output.append(" ]")
+                changed = true
+            }
+            index++
         }
+
+        return if (changed) output.toString() else dtsText
     }
 
     /**
