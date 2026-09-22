@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import io.mo.dtbooverclocker.core.ActivePanelDetector
+import io.mo.dtbooverclocker.ui.components.PanelClassification
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 import io.mo.dtbooverclocker.core.DscPlanner
@@ -55,6 +56,15 @@ internal fun DscAnalysisPanel(
     val workspace = state.workspace ?: return
     val report = state.capabilityReport
     val topologies = report?.dscTopologies.orEmpty()
+    val uniqueDscPanelCount = remember(topologies) {
+        topologies.map { TimingUtils.parsePanelIdentifier(it.nodePath) }.distinct().size
+    }
+    val dscPanelInstanceCount = remember(topologies) {
+        topologies
+            .map { it.entryIndex to TimingUtils.parsePanelIdentifier(it.nodePath) }
+            .distinct()
+            .size
+    }
 
     if (state.capabilityScanInProgress && report == null)
     {
@@ -154,12 +164,18 @@ internal fun DscAnalysisPanel(
                     color = MaterialTheme.colorScheme.tertiaryContainer
                 ) {
                     Text(
-                        "${topologies.size} 个 DSC timing",
+                        "${topologies.size} 个 DSC timing · $uniqueDscPanelCount 个唯一面板",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
             }
+
+            Text(
+                "DSC 面板统计：$uniqueDscPanelCount 个唯一面板 / $dscPanelInstanceCount 个面板-DTB 实例。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             if (dscCandidates.isNotEmpty()) {
                 TimingCandidateSelector(
@@ -202,8 +218,20 @@ internal fun DscAnalysisPanel(
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(TimingUtils.formatPanelDisplayName(panel), fontWeight = FontWeight.SemiBold)
                                 Text("DTB[${item.entryIndex}] · ${item.nodePath.substringAfterLast('/')} · ${item.panelWidth ?: "?"} × ${item.panelHeight ?: "?"}", style = MaterialTheme.typography.bodySmall)
-                                Text(if (detected) "本机在用" else if (TimingUtils.isDeviceSpecific(panel)) "机型专属" else "公版 / 仿真",
-                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                val classification = TimingUtils.classifyPanel(panel)
+                                val classificationLabel = when
+                                {
+                                    detected -> "本机在用"
+                                    classification == PanelClassification.VENDOR -> "厂商面板"
+                                    classification == PanelClassification.QCOM_REFERENCE -> "高通参考"
+                                    classification == PanelClassification.SIMULATION -> "仿真 / 测试"
+                                    else -> "未分类"
+                                }
+                                Text(
+                                    classificationLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }
