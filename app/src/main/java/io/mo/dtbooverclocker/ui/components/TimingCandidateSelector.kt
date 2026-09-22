@@ -176,7 +176,7 @@ fun TimingCandidateSelector(
         allGroupCandidates.map { it.entryIndex }.distinct().sorted()
     }
     val selectedInGroup = allGroupCandidates.firstOrNull { it.id == selectedCandidateId }
-    var activeEntryIndex by remember(activeGroupKey, entryIndices) {
+    var activeEntryIndex by remember(activeGroupKey, entryIndices, selectedCandidateId) {
         mutableStateOf(selectedInGroup?.entryIndex ?: entryIndices.firstOrNull())
     }
     if (activeEntryIndex !in entryIndices)
@@ -444,7 +444,8 @@ fun TimingCandidateSelector(
 
         // 刷新率档位卡片列表
         Text(
-            selectionLabel,            style = MaterialTheme.typography.labelMedium,
+            selectionLabel,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Medium
         )
 
