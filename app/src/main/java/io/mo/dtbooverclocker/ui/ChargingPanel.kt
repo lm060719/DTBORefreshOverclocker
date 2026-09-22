@@ -235,15 +235,32 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
         groupIndices.drop(page * 16).take(16).forEach { index ->
             val field = fields[index]
             val parameter = field.parameter
+            val guidance = remember(field) { ChargingGuidanceResolver.resolve(field) }
             val error = if (values[index] == original[index]) null else runCatching {
                 ChargingAnalyzer.parseInput(parameter, values[index])
             }.exceptionOrNull()?.message
+            val changePercent = remember(values[index], original[index]) {
+                val before = original[index].toDoubleOrNull()
+                val after = values[index].toDoubleOrNull()
+                if (before != null && after != null && before != 0.0 && values[index] != original[index]) {
+                    (after - before) / before * 100.0
+                } else {
+                    null
+                }
+            }
+            val guideExpanded = expandedGuideKey == field.inputKey
+
             if (parameter.boolean) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(parameter.label, style = MaterialTheme.typography.bodyMedium)
                         Text(parameter.name, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
                         Text(if (field.exists) "当前：开启" else "当前：关闭（属性未声明）", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            "建议：${guidance.beginnerAdvice}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                     Switch(checked = values[index] == "true", enabled = enabled, onCheckedChange = { checked ->
                         values = values.mapIndexed { position, previous -> if (position == index) checked.toString() else previous }
@@ -256,12 +273,61 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
                     label = { Text("${parameter.label}（${parameter.unit}）") },
                     isError = error != null, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     supportingText = {
-                        Column {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(error ?: "当前：${original[index]} ${parameter.unit} · 原始：${field.value} ${parameter.rawUnit}")
+                            changePercent?.let { percent ->
+                                Text(
+                                    "相对原厂：${if (percent >= 0) "+" else ""}${String.format(java.util.Locale.US, "%.1f", percent)}%",
+                                    color = if (percent > 0 && guidance.risk != ChargingGuideRisk.LOW) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
+                                )
+                            }
+                            Text(
+                                "建议：${guidance.beginnerAdvice}",
+                                color = when (guidance.risk) {
+                                    ChargingGuideRisk.HIGH -> MaterialTheme.colorScheme.error
+                                    ChargingGuideRisk.MEDIUM -> MaterialTheme.colorScheme.tertiary
+                                    ChargingGuideRisk.LOW -> MaterialTheme.colorScheme.primary
+                                }
+                            )
                             Text(field.inputKey, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 )
+            }
+
+            TextButton(
+                onClick = { expandedGuideKey = if (guideExpanded) null else field.inputKey },
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+            ) {
+                Text(if (guideExpanded) "收起“怎么调”" else "查看“调小 / 调大分别会怎样”")
+            }
+
+            if (guideExpanded) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = when (guidance.risk) {
+                            ChargingGuideRisk.HIGH -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+                            ChargingGuideRisk.MEDIUM -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
+                            ChargingGuideRisk.LOW -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                        }
+                    )
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("它是什么", fontWeight = FontWeight.SemiBold)
+                        Text(guidance.plainMeaning, style = MaterialTheme.typography.bodySmall)
+                        Text("↓ 调小：${guidance.lowerEffect}", style = MaterialTheme.typography.bodySmall)
+                        Text("↑ 调大：${guidance.higherEffect}", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "新手建议：${guidance.beginnerAdvice}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
         }
     }
