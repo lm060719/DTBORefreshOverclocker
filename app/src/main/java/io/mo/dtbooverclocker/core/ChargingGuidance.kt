@@ -228,7 +228,41 @@ object ChargingGuidanceResolver
             beginnerAdvice = "除非已知硬件压降和驱动算法，否则保持原厂。",
             risk = ChargingGuideRisk.HIGH
         ),
-        "div_single_curr" to currentLimit(
+        "multi_ibus_th" to ChargingGuidance(
+            plainMeaning = "切换/启用多路充电泵时使用的输入电流门槛，不是单纯的最大电流。",
+            lowerEffect = "降低后可能更早满足多路切换条件，策略会更积极。",
+            higherEffect = "提高后需要更高输入电流才切换多路，通常更保守。",
+            beginnerAdvice = "这类门槛会改变充电泵切换逻辑；如果只是想降温，优先调电流上限或温控表，不要先动它。",
+            risk = ChargingGuideRisk.HIGH
+        ),
+        "open_path_th" to ChargingGuidance(
+            plainMeaning = "开启额外充电通路/充电泵路径时使用的电流门槛。",
+            lowerEffect = "降低后可能更容易、更早开启额外路径。",
+            higherEffect = "提高后会更晚开启额外路径，通常更保守但可能更早限制功率。",
+            beginnerAdvice = "它控制路径切换，不是直接的功率上限；没有明确问题时保持原厂。",
+            risk = ChargingGuideRisk.HIGH
+        ),
+        "div_delta_volt" to ChargingGuidance(
+            plainMeaning = "不同充电泵倍率下用于调节适配器/总线电压的步进量。",
+            lowerEffect = "降低后调压会更细、更慢，可能增加达到目标的时间。",
+            higherEffect = "提高后每次调压跨度更大，响应更快但更容易过冲或振荡。",
+            beginnerAdvice = "这不是电压上限；看不懂调压算法时保持原厂。",
+            risk = ChargingGuideRisk.HIGH
+        ),
+        "div_delta_ibat" to ChargingGuidance(
+            plainMeaning = "不同充电泵倍率下，控制环用于调节电池电流的步进/偏差量。",
+            lowerEffect = "降低后电流调节更细、更保守，但响应可能更慢。",
+            higherEffect = "提高后电流调整跨度更大，可能更容易出现过冲或波动。",
+            beginnerAdvice = "它不是电池电流上限；想降温应改 div_max_curr / div_single_curr，而不是先改这个。",
+            risk = ChargingGuideRisk.HIGH
+        ),
+        "ibus_compensation" to ChargingGuidance(
+            plainMeaning = "输入总线电流控制中的补偿量，用于修正控制环误差。",
+            lowerEffect = "降低会减小补偿，可能让目标电流跟踪偏低。",
+            higherEffect = "提高会增加补偿，可能让实际输入电流偏高或控制更激进。",
+            beginnerAdvice = "这是控制环校准参数，不是普通限流项；保持原厂最稳妥。",
+            risk = ChargingGuideRisk.HIGH
+        ),        "div_single_curr" to currentLimit(
             "不同充电泵倍率下，单路充电泵允许的电池侧电流。",
             "这是快充核心电流限制。想降温可往小调；不要为了提速高于原厂。"
         ),
