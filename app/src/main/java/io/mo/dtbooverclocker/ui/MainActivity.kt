@@ -116,6 +116,7 @@ import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.TimingCandidate
+import io.mo.dtbooverclocker.model.AvbProtectionState
 import io.mo.dtbooverclocker.ui.components.DisclaimerDialog
 import io.mo.dtbooverclocker.ui.components.OverclockPreviewCard
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
@@ -477,6 +478,32 @@ internal fun ImageSummaryCard(state: MainUiState) {
                     onClick = {},
                     label = { Text("时序候选: ${workspace.candidates.size}") }
                 )
+                workspace.sourceImage?.let { source ->
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            val avbLabel = when (source.avbProtectionState) {
+                                AvbProtectionState.NONE -> "AVB: 无"
+                                AvbProtectionState.UNSIGNED -> "AVB: 未签名"
+                                AvbProtectionState.SIGNED -> {
+                                    "AVB: 已签名${source.avbAlgorithm?.let { " $it" }.orEmpty()}"
+                                }
+                            }
+                            Text(avbLabel)
+                        },
+                        leadingIcon = if (source.avbProtectionState == AvbProtectionState.SIGNED) {
+                            {
+                                Icon(
+                                    Icons.Default.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        } else {
+                            null
+                        }
+                    )
+                }
                 if (state.activePanelDisplayName != null) {
                     AssistChip(
                         onClick = {},
@@ -498,6 +525,14 @@ internal fun ImageSummaryCard(state: MainUiState) {
                     "检测到 $devCount 个机型专属面板（如 O1-38 / O1-42），其余 ${panelCount - devCount} 个为高通公版/仿真测试屏节点，已优先为您展示机型屏幕。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            if (workspace.sourceImage?.avbProtectionState == AvbProtectionState.SIGNED) {
+                Text(
+                    "检测到原厂签名 AVB。当前可正常浏览、搜索和编辑设备树；生成修改镜像时会保持安全拦截，避免输出签名失效的可刷写镜像。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary
                 )
             }
 
