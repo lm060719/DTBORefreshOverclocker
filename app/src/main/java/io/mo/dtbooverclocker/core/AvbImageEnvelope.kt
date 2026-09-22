@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.core
 
+import io.mo.dtbooverclocker.model.AvbProtectionState
 import io.mo.dtbooverclocker.util.HashUtils
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -22,12 +23,30 @@ object AvbImageEnvelope {
         val magicCandidates: Int,
         val validFooters: Int,
         // Sorted by position; all accepted copies describe exactly the same vbmeta and payload.
-        val footerOffsets: List<Int>
+        val footerOffsets: List<Int>,
+        val protectionState: AvbProtectionState,
+        val algorithm: String?
     ) {
         // A zero-padded image without AVB does not establish a logical envelope boundary.
         val logicalImageSize: Int? get() = layout?.let { it.footer + 64 }
             ?: dtboTotalSize.takeIf { it == containerSize }
     }
+
+    private data class VbmetaHeader(
+        val authenticationSize: Int,
+        val auxiliarySize: Int,
+        val algorithmType: Int,
+        val hashOffset: Int,
+        val hashSize: Int,
+        val signatureOffset: Int,
+        val signatureSize: Int,
+        val descriptorsOffset: Int,
+        val descriptorsSize: Int
+    ) {
+        val isSigned: Boolean
+            get() = algorithmType != 0 || authenticationSize != 0
+    }
+
     private data class HashField(val descriptor: Int, val digest: Int, val size: Int,
                                  val algorithm: String, val salt: ByteArray)
 
@@ -72,6 +91,23 @@ object AvbImageEnvelope {
 
     fun validate(
         bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "VALIDATE"
+    ): Inspection = validateInternal(bytes, total, logSink, stage, allowSigned = false)
+
+    /**
+     * Import-time validation is intentionally less restrictive than rebuild validation.
+     * A correctly formed signed AVB container is safe to inspect and edit in the workspace,
+     * but it still cannot be rebuilt without the signing key.
+     */
+    fun validateForAnalysis(
+        bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "ANALYZE"
+    ): Inspection = validateInternal(bytes, total, logSink, stage, allowSigned = true)
+
+    private fun validateInternal(
+        bytes: ByteArray,
+        total: Int,
+        logSink: (String) -> Unit,
+        stage: String,
+        allowSigned: Boolean
     ): Inspection {
         val inspection = inspect(bytes, total, logSink, stage)
         val layout = inspection.layout ?: return inspection
@@ -81,7 +117,18 @@ object AvbImageEnvelope {
             val vbmeta = bytes.copyOfRange(layout.vbmeta, layout.vbmeta + layout.size)
             val b = buffer(vbmeta)
             require(b.getInt(4) == 1 && b.getInt(8) in 0..3) { "不支持的 AVB vbmeta required version" }
-            hashFields(vbmeta).forEach { field ->
+            val header = parseVbmetaHeader(vbmeta)
+            if (header.isSigned) {
+                require(allowSigned) {
+                    "该镜像包含 AVB 签名，修改后需要原签名密钥；已阻止生成无效镜像"
+                }
+                validateAuthenticationHash(vbmeta, header)
+                logSink(
+                    "[WARN][AVB][$stage] 检测到已签名 AVB (${algorithmName(header.algorithmType)}); " +
+                        "允许进入设备树工作区，但修改后的镜像仍需原签名密钥才能生成有效签名"
+                )
+            }
+            hashFields(vbmeta, allowUnknownDescriptors = allowSigned).forEach { field ->
                 require(b.getLong(field.descriptor + 16) == total.toLong()) {
                     "AVB 哈希覆盖范围与 DTBO total_size 不一致，暂不支持重建此布局"
                 }
@@ -96,7 +143,6 @@ object AvbImageEnvelope {
         }
         return inspection
     }
-
     /** Recognizes structure independently of signing/descriptor support; never drops unknown trailers. */
     fun inspect(
         bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "INSPECT"
@@ -177,7 +223,28 @@ object AvbImageEnvelope {
             logSink("[ERROR] $message")
             throw IllegalArgumentException(message, e)
         }
-        return Inspection(bytes.size, total, sha256, selected, candidates, valid, layouts.map { it.footer })
+        val selectedAlgorithmType = selected?.let { layout ->
+            buffer(bytes).getInt(layout.vbmeta + 28)
+        }
+        val selectedAuthenticationSize = selected?.let { layout ->
+            buffer(bytes).getLong(layout.vbmeta + 12)
+        } ?: 0L
+        val protectionState = when {
+            selected == null -> AvbProtectionState.NONE
+            selectedAlgorithmType != 0 || selectedAuthenticationSize != 0L -> AvbProtectionState.SIGNED
+            else -> AvbProtectionState.UNSIGNED
+        }
+        return Inspection(
+            bytes.size,
+            total,
+            sha256,
+            selected,
+            candidates,
+            valid,
+            layouts.map { it.footer },
+            protectionState,
+            selectedAlgorithmType?.let(::algorithmName)
+        )
     }
 
     private fun parseCandidate(bytes: ByteArray, total: Int, f: Int): Layout {
@@ -218,17 +285,84 @@ object AvbImageEnvelope {
         return Layout(f, offset, size, originalSize, major, minor)
     }
 
-    private fun hashFields(v: ByteArray): List<HashField> {
+    private fun parseVbmetaHeader(v: ByteArray): VbmetaHeader {
+        require(v.size >= 256) { "AVB vbmeta 头部截断" }
         val b = buffer(v)
-        require(b.getInt(28) == 0 && b.getLong(12) == 0L) {
-            "该镜像包含 AVB 签名，修改后需要原签名密钥；已阻止生成无效镜像"
+        val authenticationSize = bounded(b.getLong(12), v.size - 256)
+        val auxiliarySize = bounded(b.getLong(20), v.size - 256 - authenticationSize)
+        require(256L + authenticationSize + auxiliarySize == v.size.toLong()) {
+            "AVB authentication/auxiliary 数据大小与 vbmeta 不匹配"
         }
-        val auxiliarySize = bounded(b.getLong(20), v.size - 256)
-        require(256 + auxiliarySize == v.size) { "AVB 辅助数据大小不匹配" }
-        val descriptorsOffset = bounded(b.getLong(96), auxiliarySize)
-        val descriptorsSize = bounded(b.getLong(104), auxiliarySize - descriptorsOffset)
-        var p = 256 + descriptorsOffset
-        val end = p + descriptorsSize
+
+        fun range(field: Int, limit: Int): Pair<Int, Int> {
+            val start = bounded(b.getLong(field), limit)
+            val size = bounded(b.getLong(field + 8), limit - start)
+            return start to size
+        }
+
+        val (hashOffset, hashSize) = range(32, authenticationSize)
+        val (signatureOffset, signatureSize) = range(48, authenticationSize)
+        range(64, auxiliarySize)
+        range(80, auxiliarySize)
+        val (descriptorsOffset, descriptorsSize) = range(96, auxiliarySize)
+
+        return VbmetaHeader(
+            authenticationSize = authenticationSize,
+            auxiliarySize = auxiliarySize,
+            algorithmType = b.getInt(28),
+            hashOffset = hashOffset,
+            hashSize = hashSize,
+            signatureOffset = signatureOffset,
+            signatureSize = signatureSize,
+            descriptorsOffset = descriptorsOffset,
+            descriptorsSize = descriptorsSize
+        )
+    }
+
+    private fun validateAuthenticationHash(v: ByteArray, header: VbmetaHeader) {
+        val digestAlgorithm = authenticationDigestAlgorithm(header.algorithmType) ?: return
+        val expectedSize = MessageDigest.getInstance(digestAlgorithm).digestLength
+        require(header.hashSize == expectedSize) {
+            "AVB 签名认证摘要长度无效：${header.hashSize}"
+        }
+        require(header.signatureSize > 0) { "AVB 标记为已签名，但签名数据为空" }
+
+        val authBase = 256
+        val auxBase = authBase + header.authenticationSize
+        val storedHash = v.copyOfRange(
+            authBase + header.hashOffset,
+            authBase + header.hashOffset + header.hashSize
+        )
+        val calculated = MessageDigest.getInstance(digestAlgorithm).apply {
+            update(v, 0, 256)
+            update(v, auxBase, header.auxiliarySize)
+        }.digest()
+        require(storedHash.contentEquals(calculated)) { "AVB vbmeta 认证摘要校验失败" }
+    }
+
+    private fun authenticationDigestAlgorithm(algorithmType: Int): String? = when (algorithmType) {
+        1, 2, 3 -> "SHA-256"
+        4, 5, 6 -> "SHA-512"
+        else -> null
+    }
+
+    private fun algorithmName(algorithmType: Int): String = when (algorithmType) {
+        0 -> "NONE"
+        1 -> "SHA256_RSA2048"
+        2 -> "SHA256_RSA4096"
+        3 -> "SHA256_RSA8192"
+        4 -> "SHA512_RSA2048"
+        5 -> "SHA512_RSA4096"
+        6 -> "SHA512_RSA8192"
+        else -> "AVB_ALGORITHM_$algorithmType"
+    }
+
+    private fun hashFields(v: ByteArray, allowUnknownDescriptors: Boolean = false): List<HashField> {
+        val b = buffer(v)
+        val header = parseVbmetaHeader(v)
+        val auxiliaryBase = 256 + header.authenticationSize
+        var p = auxiliaryBase + header.descriptorsOffset
+        val end = p + header.descriptorsSize
         val fields = mutableListOf<HashField>()
         while (p < end) {
             require(end - p >= 16) { "AVB descriptor 头部截断" }
@@ -256,14 +390,15 @@ object AvbImageEnvelope {
                     fields += HashField(p, saltStart + saltSize, digestSize, javaAlgorithm,
                         v.copyOfRange(saltStart, saltStart + saltSize))
                 }
-                else -> throw IllegalArgumentException("暂不支持重建 AVB descriptor 类型 $tag")
+                else -> if (!allowUnknownDescriptors) {
+                    throw IllegalArgumentException("暂不支持重建 AVB descriptor 类型 $tag")
+                }
             }
             p = next
         }
         require(fields.size == 1) { "需要唯一的 dtbo AVB hash descriptor" }
         return fields
     }
-
     private fun bounded(value: Long, limit: Int): Int {
         require(value >= 0 && value <= limit.toLong()) { "AVB 字段越界：$value" }
         return value.toInt()
