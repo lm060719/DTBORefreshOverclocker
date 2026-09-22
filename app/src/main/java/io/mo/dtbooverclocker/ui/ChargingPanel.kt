@@ -73,6 +73,53 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     style = MaterialTheme.typography.labelSmall
                 )
             }
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+                )
+            ) {
+                Column(
+                    Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("新手怎么改", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "如果目标只是降低充电温度：优先降低“输入电流 / 电池电流 / 温控限流”类参数；" +
+                            "不要提高原厂电流或电压上限。电池电压、浮充电压、回差和快充进入/退出门槛看不懂时保持原厂。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "每个参数下方会显示调整方向和风险说明；修改后还会显示相对原厂变化百分比。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (readOnlyNodeCount > 0) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("显示只读节点", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "默认隐藏 $readOnlyNodeCount 个没有已验证编辑项的相关节点",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = showReadOnlyNodes,
+                        onCheckedChange = {
+                            showReadOnlyNodes = it
+                            selecting = false
+                        }
+                    )
+                }
+            }
+
             Text("选择充电节点", style = MaterialTheme.typography.labelLarge)
             OutlinedCard(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -93,11 +140,11 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     Text("${node.editableCount} 个可编辑参数 · status: ${node.status ?: "未声明"}", style = MaterialTheme.typography.labelSmall)
                 }
             }
-            if (nodes.size > 1) {
+            if (visibleNodes.size > 1) {
                 OutlinedButton(onClick = { selecting = !selecting }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (selecting) "收起节点列表" else "切换充电节点（${nodes.size}）")
+                    Text(if (selecting) "收起节点列表" else "切换充电节点（${visibleNodes.size}）")
                 }
-                if (selecting) nodes.forEach { candidate ->
+                if (selecting) visibleNodes.forEach { candidate ->
                     OutlinedCard(
                         onClick = { selectedKey = candidate.key; selecting = false }, enabled = enabled,
                         modifier = Modifier.fillMaxWidth(),
@@ -116,10 +163,10 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
             if (node.status != null && node.status !in listOf("okay", "ok")) {
                 Text("此节点 status 为 ${node.status}，修改参数不会自动启用节点。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-            if (node.editableCount == 0 && nodes.any { it.editableCount > 0 }) {
-                Text("当前是相关配置节点。此镜像还有可编辑的充电节点。", style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = { selectedKey = nodes.first { it.editableCount > 0 }.key }, enabled = enabled) {
-                    Text("切换到可编辑节点")
+            if (node.editableCount == 0 && editableNodes.isNotEmpty()) {
+                Text("这是只读相关节点，没有经过验证的可编辑参数。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = { selectedKey = editableNodes.first().key }, enabled = enabled) {
+                    Text("返回可编辑节点")
                 }
             }
             HorizontalDivider()
