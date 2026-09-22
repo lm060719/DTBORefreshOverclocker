@@ -25,6 +25,34 @@ data class ChargingGuidance(
  */
 object ChargingGuidanceResolver
 {
+    fun nodeAdvice(compatible: String?): String? = when
+    {
+        compatible?.contains("mca,quick_charger") == true ->
+            "这个节点主要管小米 MCA 快充策略。想降温优先看 div_single_curr、div_max_curr、QC/PPS 电流上限；max_vbat、qc_normal_charge_fv 属于电池电压边界，新手不要提高。"
+
+        compatible?.contains("mca,strategy_buckchg") == true ->
+            "这个节点主要管 DCP / PD / QC / USB 等普通 Buck 充电路径的输入电流和电池充电电流。想降温时，优先降低对应协议的输入/充电电流，不要同时提高电压边界。"
+
+        compatible?.contains("mca_charger_thermal") == true ->
+            "这是小米充电温控限流表。数值表示触发相应温控档位后允许的电流；想让手机更凉，应降低高温档位的限流值，而不是提高它。"
+
+        compatible?.contains("mca,quick_wireless") == true ->
+            "这是小米无线快充策略。想降温优先降低电流限制；不要为了速度提高原厂电压/电流上限。"
+
+        compatible?.contains("mca,basic_wireless") == true ->
+            "这是基础无线充电/反向供电参数。正常有线快充不受这些参数直接控制。"
+
+        compatible?.contains("oplus,chg_wls") == true ->
+            "这是 OPlus 无线充电参数。优先理解 fastchg_curr_max_ma、verity_curr_max_ma 等电流上限；电压类参数不建议高于原厂。"
+
+        compatible?.contains("oplus,common-charge") == true ->
+            "这是 OPlus 通用充电策略。iterm 是终止电流，vbat/fv 类参数是电池电压边界；新手不建议提高电压边界。"
+
+        compatible?.contains("oplus,pps_charge") == true || compatible?.contains("oplus,ufcs_charge") == true ->
+            "这是 OPlus PPS / UFCS 快充策略。curr_max_ma 是协议电流上限；降低通常会降功率和发热，提高则不建议超过原厂。"
+
+        else -> null
+    }
     fun resolve(field: ChargingField): ChargingGuidance
     {
         val name = field.parameter.name.lowercase()
