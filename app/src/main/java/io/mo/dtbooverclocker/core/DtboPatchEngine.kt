@@ -3,6 +3,7 @@ package io.mo.dtbooverclocker.core
 import android.content.Context
 import android.net.Uri
 import io.mo.dtbooverclocker.model.CustomTimingParams
+import io.mo.dtbooverclocker.model.AvbProtectionState
 import io.mo.dtbooverclocker.model.FeatureModuleKind
 import io.mo.dtbooverclocker.model.ModuleStagedChange
 import io.mo.dtbooverclocker.model.DtboSourceImage
@@ -99,7 +100,7 @@ class DtboPatchEngine(
 
         logSink("[INFO] 使用纯 Kotlin DTBO codec 解析表头、entry table 与压缩条目")
         val binaryImage = DtboImageCodec.parse(stagedImage)
-        val inspection = AvbImageEnvelope.validate(
+        val inspection = AvbImageEnvelope.validateForAnalysis(
             requireNotNull(binaryImage.originalBytes), binaryImage.metadata.totalSize, logSink, "STAGED_INPUT"
         )
         require(inspection.containerSize.toLong() == sourceSize && inspection.sha256 == sourceHash) {
@@ -168,7 +169,8 @@ class DtboPatchEngine(
             candidates = candidates,
             sourceImage = DtboSourceImage(
                 sourceMode, sourcePath, inspection.sha256, inspection.containerSize,
-                inspection.dtboTotalSize, inspection.logicalImageSize, inspection.layout?.footer
+                inspection.dtboTotalSize, inspection.logicalImageSize, inspection.layout?.footer,
+                inspection.protectionState, inspection.algorithm
             )
         )
     }
@@ -389,6 +391,14 @@ class DtboPatchEngine(
         transactions: List<DeviceTreeTransaction>
     ): PatchReport = withContext(Dispatchers.IO) {
         require(transactions.isNotEmpty()) { "暂存事务列表为空，无需打包" }
+
+        workspace.sourceImage?.let { source ->
+            require(source.avbProtectionState != AvbProtectionState.SIGNED) {
+                "当前 DTBO 使用已签名 AVB${source.avbAlgorithm?.let { " ($it)" }.orEmpty()}。" +
+                    "设备树可以继续浏览和编辑，但修改后原厂签名会失效；" +
+                    "在提供重新签名能力前，已阻止生成可能无法启动的修改镜像。"
+            }
+        }
 
         val stagedChanges = transactions.mapNotNull { it.timingChange }
         val moduleStagedChanges = transactions.mapNotNull { it.moduleChange }
