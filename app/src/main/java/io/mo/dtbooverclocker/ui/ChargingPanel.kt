@@ -193,6 +193,8 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
         mutableStateOf(original)
     }
     var showOther by rememberSaveable { mutableStateOf(false) }
+    var showInvalid by rememberSaveable { mutableStateOf(false) }
+    var expandedGuideKey by rememberSaveable(node) { mutableStateOf<String?>(null) }
     val inputs = fields.mapIndexed { index, field -> field.inputKey to values[index] }.toMap()
     val result = remember(node, values) { runCatching { ChargingPlanner.preview(node, inputs) } }
     val preview = result.getOrNull()
