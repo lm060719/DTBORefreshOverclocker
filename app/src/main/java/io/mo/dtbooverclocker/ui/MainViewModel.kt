@@ -40,8 +40,11 @@ import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 import io.mo.dtbooverclocker.util.AppLogger
 import io.mo.dtbooverclocker.util.StorageUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -1040,7 +1043,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(capabilityScanInProgress = true) }
 
         viewModelScope.launch(Dispatchers.Default) {
-            val result = runCatching { CapabilityScanner.scan(workspace) }
+            val coroutineContext = currentCoroutineContext()
+            val result = runCatching {
+                CapabilityScanner.scan(
+                    workspace = workspace,
+                    progress = ::appendLog,
+                    checkCancellation = { coroutineContext.ensureActive() }
+                )
+            }
+            result.exceptionOrNull()?.let { throwable ->
+                if (throwable is CancellationException)
+                {
+                    throw throwable
+                }
+            }
+
             withContext(Dispatchers.Main) {
                 if (generation != capabilityScanGeneration)
                 {
