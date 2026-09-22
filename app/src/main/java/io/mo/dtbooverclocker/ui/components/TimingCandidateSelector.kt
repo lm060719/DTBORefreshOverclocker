@@ -170,8 +170,24 @@ fun TimingCandidateSelector(
         activeGroupKey = filteredGroups.keys.firstOrNull() ?: groups.keys.first()
     }
 
-    // 如果当前选中的候选不在 activeGroupKey 列表中，允许自动联动
-    val currentGroupCandidates = filteredGroups[activeGroupKey].orEmpty()
+    // 同一唯一面板可能重复存在于多个 DTB entry。面板只计数一次，但编辑必须保留精确 entry。
+    val allGroupCandidates = filteredGroups[activeGroupKey].orEmpty()
+    val entryIndices = remember(allGroupCandidates) {
+        allGroupCandidates.map { it.entryIndex }.distinct().sorted()
+    }
+    val selectedInGroup = allGroupCandidates.firstOrNull { it.id == selectedCandidateId }
+    var activeEntryIndex by remember(activeGroupKey, entryIndices) {
+        mutableStateOf(selectedInGroup?.entryIndex ?: entryIndices.firstOrNull())
+    }
+    if (activeEntryIndex !in entryIndices)
+    {
+        activeEntryIndex = entryIndices.firstOrNull()
+    }
+    val currentGroupCandidates = remember(allGroupCandidates, activeEntryIndex) {
+        activeEntryIndex?.let { entry ->
+            allGroupCandidates.filter { it.entryIndex == entry }
+        }.orEmpty()
+    }
     val activeCandidate = currentGroupCandidates.firstOrNull { it.id == selectedCandidateId }
         ?: currentGroupCandidates.firstOrNull().takeIf { selectFallback }
 
@@ -372,7 +388,7 @@ fun TimingCandidateSelector(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "${currentGroupCandidates.map { it.entryIndex }.distinct().size} 个 DTB 实例",
+                                "${allGroupCandidates.map { it.entryIndex }.distinct().size} 个 DTB 实例",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -386,7 +402,7 @@ fun TimingCandidateSelector(
                             }
                             Text("·", style = MaterialTheme.typography.labelSmall)
                             Text(
-                                "${currentGroupCandidates.size} 个时序档位",
+                                "当前 DTB ${currentGroupCandidates.size} 个档位 · 共 ${allGroupCandidates.size} 个实例",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -396,10 +412,39 @@ fun TimingCandidateSelector(
             }
         }
 
+        if (entryIndices.size > 1)
+        {
+            Text(
+                "选择 DTB 实例：",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                entryIndices.forEach { entryIndex ->
+                    val count = allGroupCandidates.count { it.entryIndex == entryIndex }
+                    FilterChip(
+                        selected = activeEntryIndex == entryIndex,
+                        onClick = {
+                            activeEntryIndex = entryIndex
+                            allGroupCandidates.firstOrNull { it.entryIndex == entryIndex }?.let { onSelect(it.id) }
+                        },
+                        label = { Text("DTB[$entryIndex] · $count 档") }
+                    )
+                }
+            }
+            Text(
+                "同一唯一面板在多个 DTB entry 中重复出现；切换这里不会把它们重复计算成多块屏幕。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         // 刷新率档位卡片列表
         Text(
-            selectionLabel,
-            style = MaterialTheme.typography.labelMedium,
+            selectionLabel,            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Medium
         )
 
