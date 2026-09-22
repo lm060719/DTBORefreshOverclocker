@@ -90,6 +90,56 @@ class TimingUtilsTest {
     }
 
     @Test
+    fun panelClassificationIsConservativeAndUnknownIsNotVendor()
+    {
+        assertEquals(
+            PanelClassification.VENDOR,
+            TimingUtils.classifyPanel("qcom,mdss_dsi_o1_42_02_0a_dsc_cmd")
+        )
+        assertEquals(
+            PanelClassification.QCOM_REFERENCE,
+            TimingUtils.classifyPanel("qcom,mdss_dsi_nt37801_wqhd_plus_cmd")
+        )
+        assertEquals(
+            PanelClassification.SIMULATION,
+            TimingUtils.classifyPanel("qcom,mdss_dsi_dual_sim_cmd")
+        )
+        assertEquals(
+            PanelClassification.UNKNOWN,
+            TimingUtils.classifyPanel("qcom,mdss_dsi_mystery_panel_cmd")
+        )
+        assertTrue(!TimingUtils.isDeviceSpecific("qcom,mdss_dsi_mystery_panel_cmd"))
+    }
+
+    @Test
+    fun groupCandidatesCountsSamePanelAcrossEntriesOnlyOnce()
+    {
+        fun candidate(entry: Int, panel: String, hz: Int) = TimingCandidate(
+            id = "$entry:$panel:$hz",
+            entryIndex = entry,
+            dtsFile = File("entry_$entry.dts"),
+            nodePath = "/$panel/qcom,mdss-dsi-display-timings/timing@$hz",
+            nodeStart = 0,
+            nodeEndExclusive = 10,
+            currentHz = hz
+        )
+
+        val panel = "qcom,mdss_dsi_o1_42_02_0a_dsc_cmd"
+        val groups = TimingUtils.groupCandidates(
+            listOf(
+                candidate(0, panel, 60),
+                candidate(0, panel, 120),
+                candidate(1, panel, 60),
+                candidate(1, panel, 120)
+            )
+        )
+
+        assertEquals(1, groups.size)
+        assertEquals(4, groups.values.single().size)
+        assertEquals(setOf(0, 1), groups.values.single().map { it.entryIndex }.toSet())
+        assertEquals(PanelClassification.VENDOR, groups.keys.single().classification)
+    }
+    @Test
     fun testCalculateSimulationWithCustomParams() {
         val candidate = TimingCandidate(
             id = "0:100:test_custom",
