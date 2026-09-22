@@ -96,35 +96,29 @@ data class DeviceTreeDocument(
     val sourceText: String
 )
 {
-    fun findNode(path: String): DeviceTreeNode?
+    /**
+     * 设备树文档在能力扫描期间会被 DSC、充电、关键字扫描等多个分析器反复访问。
+     * 旧实现的 findNode() 每次都会从根节点 DFS 整棵树，OPlus/Qualcomm overlay
+     * 中大量 __fixups__ 会把复杂度放大到近似 O(N²)。这里一次性建立只读索引。
+     */
+    private val flattenedNodes: List<DeviceTreeNode> by lazy(LazyThreadSafetyMode.PUBLICATION)
     {
-        fun walk(node: DeviceTreeNode): DeviceTreeNode?
-        {
-            if (node.path == path)
+        buildList {
+            fun walk(node: DeviceTreeNode)
             {
-                return node
+                add(node)
+                node.children.forEach(::walk)
             }
-
-            node.children.forEach { child ->
-                walk(child)?.let { return it }
-            }
-            return null
+            walk(root)
         }
-
-        return walk(root)
     }
 
-    fun flatten(): List<DeviceTreeNode>
+    private val nodeByPath: Map<String, DeviceTreeNode> by lazy(LazyThreadSafetyMode.PUBLICATION)
     {
-        val result = mutableListOf<DeviceTreeNode>()
-
-        fun walk(node: DeviceTreeNode)
-        {
-            result += node
-            node.children.forEach(::walk)
-        }
-
-        walk(root)
-        return result
+        flattenedNodes.associateBy(DeviceTreeNode::path)
     }
+
+    fun findNode(path: String): DeviceTreeNode? = nodeByPath[path]
+
+    fun flatten(): List<DeviceTreeNode> = flattenedNodes
 }
