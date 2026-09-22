@@ -41,6 +41,7 @@ object ChargingPlanner {
         below("charge-term-current-microamp", "constant-charge-current-max-microamp", "终止电流不能超过恒流充电电流上限")
         below("precharge-upper-limit-microvolt", "constant-charge-voltage-max-microvolt", "预充电电压不能超过恒压充电电压上限")
         below("constant-charge-voltage-max-microvolt", "over-voltage-threshold-microvolt", "恒压充电电压不能超过过压保护阈值")
+        below("oplus,cp-open-offset-min-mv", "oplus,cp-open-offset-mv", "充电泵最小开启电压偏移不能超过开启电压偏移")
         // The Qualcomm pair uses different native units.
         if ("qcom,auto-recharge-vbat-mv" in changed || "qcom,fv-max-uv" in changed) {
             val recharge = merged["qcom,auto-recharge-vbat-mv"]
