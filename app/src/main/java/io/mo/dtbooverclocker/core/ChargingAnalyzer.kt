@@ -48,8 +48,14 @@ object ChargingAnalyzer {
             val compatible = node.properties.firstOrNull { it.name == "compatible" }?.rawValue
             val targetLabel = targets[node.path]
             val mcaFields = McaChargingBindings.fields(node, compatible)
+            val oplusFields = OplusChargingBindings.fields(node, compatible)
             val searchable = (listOf(node.name, compatible.orEmpty(), targetLabel.orEmpty()) + node.properties.map { it.name }).joinToString(" ").lowercase()
-            if (mcaFields.isEmpty() && node.properties.none { it.name in byName || it.name == THERMAL_TABLE } && tokens.none(searchable::contains)) return@nodeLoop null
+            if (
+                mcaFields.isEmpty() &&
+                oplusFields.isEmpty() &&
+                node.properties.none { it.name in byName || it.name == THERMAL_TABLE } &&
+                tokens.none(searchable::contains)
+            ) return@nodeLoop null
             val fields = parameters.mapNotNull { parameter ->
                 val matches = node.properties.filter { it.name == parameter.name }
                 val property = matches.firstOrNull()
@@ -64,7 +70,7 @@ object ChargingAnalyzer {
                     value == null -> if (parameter.boolean) "此开关不是空布尔属性" else "不是单个 32 位数值，保留原始内容"
                     else -> null
                 })
-            } + thermalFields(node, compatible, targetLabel) + mcaFields
+            } + thermalFields(node, compatible, targetLabel) + mcaFields + oplusFields
             ChargingNode(document.entryIndex, node.path, compatible,
                 node.properties.firstOrNull { it.name == "status" }?.rawValue?.removeSurrounding("\""),
                 fields, node.properties.filter { property -> fields.none { it.parameter.name == property.name } }.map { it.name to it.rawValue }, targetLabel)
