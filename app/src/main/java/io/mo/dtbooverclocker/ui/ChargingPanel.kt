@@ -331,9 +331,20 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
             }
         }
     }
-    node.fields.filter { it.issue != null }.forEach { field ->
-        Text("${field.parameter.name}\n${field.rawValue ?: "<空属性>"}\n${field.issue}",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val invalidFields = node.fields.filter { it.issue != null }
+    if (invalidFields.isNotEmpty()) {
+        TextButton(onClick = { showInvalid = !showInvalid }) {
+            Text(if (showInvalid) "收起只读 / 异常参数" else "查看只读 / 异常参数（${invalidFields.size}）")
+        }
+        if (showInvalid) {
+            invalidFields.forEach { field ->
+                Text(
+                    "${field.parameter.name}\n${field.rawValue ?: "<空属性>"}\n${field.issue}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
     if (node.otherProperties.isNotEmpty()) {
         TextButton(onClick = { showOther = !showOther }) { Text(if (showOther) "收起其他属性" else "查看其他原始属性（${node.otherProperties.size}）") }
@@ -355,8 +366,11 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f))) {
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.Info, null, modifier = Modifier.size(20.dp))
-                Text("请按电池和充电芯片规格设置电流、电压。参数合法不代表硬件支持；修改沿用分辨率模块的导出验证流程，暂存后到概览打包。",
-                    style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "参数合法不代表硬件支持。默认不要超过原厂电流/电压；如果只是想降温，优先小幅降低限流类参数。" +
+                        "修改沿用导出验证流程，暂存后到概览打包。",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
         OutlinedButton(onClick = { values = original }, enabled = enabled && dirty, modifier = Modifier.fillMaxWidth()) {
