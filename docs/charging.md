@@ -43,6 +43,22 @@
 
 手机实际 DTC 输出回归：`-PchargingSampleDts=<entry_0.dts>`。同时传入 `-PchargingDeviceImage=<原始镜像>` 和 `-PhostDtc=<dtc可执行文件>` 可验证修改后 DTC 编译、二进制属性差异及 DTBO 重建。测试输出保存在 DTS 同目录；镜像不加入源码仓库。
 
+## OPlus / OnePlus 第一阶段绑定
+
+针对本次提供的 OPlus / OnePlus `dtbo_a.img` 增加独立的保守绑定，不把“属性名包含 charger / fastchg / battery”直接等同于可编辑。当前只在 `compatible` 精确命中以下驱动时开放参数：
+
+- `oplus,common-charge`
+- `oplus,chg_wls`
+- `oplus,pps_charge`
+- `oplus,ufcs_charge`
+- `oplus,virtual_cp`
+
+第一阶段只开放**属性名自身明确带有 mA / mV 单位且值严格为单个 U32** 的参数。例如通用充电的 `oplus_spec,iterm-ma`、`oplus_spec,vbat_uv_thr_mv`，无线充电的 `oplus,max-voltage-mv`、`oplus,fastchg_curr_max_ma`、BPP/EPP/VOOC/SVOOC 电压，以及 PPS/UFCS 的 `oplus,curr_max_ma`。充电泵的最小开启电压偏移不能超过开启电压偏移。
+
+真实镜像中还存在 `oplus,iclmax-ma`、`oplus_spec,wired-ffc-fcc-ma`、`oplus,fastchg-max-vbat`、PPS/UFCS 温区策略、无线 BCC/FFC/温区/SOC 曲线等大量数组。虽然这些属性可以被识别为 Charging 相关配置，但数组每列的含义和驱动约束尚未逐项验证，因此继续显示为只读原始属性，不会被拆成可编辑数字输入框。
+
+Charging 面板的统计区分“可编辑参数”“可编辑节点”“唯一节点路径”和“DTB 实例”。同一个 overlay 在多个 DTB entry 中重复出现时，不再把实例数量误解为不同的充电模块。
+
 ## 边界
 
 这是设备树参数编辑，不是实时充电控制。未发现可编辑字段时，面板显示原始节点属性与说明。尚未确认的厂商私有参数、JEITA/字符串曲线表、其他格式温控表、协议协商开关、驱动寄存器与电池校准表保持不变。通用 U32 与关联参数检查不能证明某个芯片支持该值或步进，需结合目标设备规格和驱动确认；事务沿用分辨率/DSC 的 `EXPORT_ONLY` 策略。
