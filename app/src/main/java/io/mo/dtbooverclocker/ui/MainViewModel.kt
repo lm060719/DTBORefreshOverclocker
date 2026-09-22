@@ -43,6 +43,7 @@ import io.mo.dtbooverclocker.util.StorageUtils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,6 +67,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val safetyGuard = SafetyGuardManager(application, rootDetector, ::appendLog)
     private val workspaceOperations = WorkspaceOperationRunner()
     private var capabilityScanGeneration: Long = 0L
+    private var capabilityScanJob: Job? = null
 
     companion object {
         private const val KEY_HAS_REQUESTED_ROOT = "has_requested_root"
@@ -1040,9 +1042,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun refreshCapabilities(workspace: DtboWorkspace)
     {
         val generation = ++capabilityScanGeneration
+        capabilityScanJob?.cancel()
         _state.update { it.copy(capabilityScanInProgress = true) }
 
-        viewModelScope.launch(Dispatchers.Default) {
+        capabilityScanJob = viewModelScope.launch(Dispatchers.Default) {
             val coroutineContext = currentCoroutineContext()
             val result = runCatching {
                 CapabilityScanner.scan(
