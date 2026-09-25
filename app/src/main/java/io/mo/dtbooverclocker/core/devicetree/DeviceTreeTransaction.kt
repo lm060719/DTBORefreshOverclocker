@@ -62,10 +62,12 @@ data class DeviceTreeTransaction(
             stagedChange: StagedChange,
             operations: List<DeviceTreeChange>,
             warnings: List<String>,
-            directFlashAllowed: Boolean
+            directFlashAllowed: Boolean,
+            id: String = UUID.randomUUID().toString()
         ): DeviceTreeTransaction
         {
             return DeviceTreeTransaction(
+                id = id,
                 kind = DeviceTreeTransactionKind.REFRESH_RATE,
                 summary = stagedChange.summary,
                 operations = operations,
@@ -89,9 +91,13 @@ data class DeviceTreeTransaction(
             )
         }
 
-        fun generic(change: DeviceTreeChange): DeviceTreeTransaction
+        fun generic(
+            change: DeviceTreeChange,
+            id: String = UUID.randomUUID().toString()
+        ): DeviceTreeTransaction
         {
             return DeviceTreeTransaction(
+                id = id,
                 kind = DeviceTreeTransactionKind.GENERIC_EDIT,
                 summary = change.summary,
                 operations = listOf(change),

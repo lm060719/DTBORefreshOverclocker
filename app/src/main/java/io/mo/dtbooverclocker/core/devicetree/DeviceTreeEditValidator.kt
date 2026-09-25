@@ -2,6 +2,11 @@ package io.mo.dtbooverclocker.core.devicetree
 
 /** Conservative guard for free-form structural edits; never rewrites guessed references. */
 object DeviceTreeEditValidator {
+    // Hoisted: validate() visits every property of the document, so per-call construction adds up.
+    private val quotedStringRegex = Regex("\"([^\"\\\\]*)\"")
+    private val cellSeparatorRegex = Regex("[\\s,]+")
+    private val phandlePropertyNames = setOf("phandle", "linux,phandle")
+
     fun validate(document: DeviceTreeDocument, change: DeviceTreeChange) {
         if (change !is DeleteNodeChange && change !is RenameNodeChange) return
         val deleting = change is DeleteNodeChange
@@ -28,13 +33,13 @@ object DeviceTreeEditValidator {
             node.properties.forEach { property ->
                 val raw = property.rawValue.orEmpty()
                 // Includes __symbols__, __fixups__, aliases and chosen path strings.
-                Regex("\"([^\"\\\\]*)\"").findAll(raw).forEach { match ->
+                quotedStringRegex.findAll(raw).forEach { match ->
                     val target = match.groupValues[1].substringBefore(':')
                     if (inside(target)) affected += "${node.path}/${property.name}"
                 }
-                if (removedPhandles.isNotEmpty() && property.name !in setOf("phandle", "linux,phandle") &&
+                if (removedPhandles.isNotEmpty() && property.name !in phandlePropertyNames &&
                     raw.startsWith('<') && raw.endsWith('>')) {
-                    val cells = raw.drop(1).dropLast(1).split(Regex("[\\s,]+"))
+                    val cells = raw.drop(1).dropLast(1).split(cellSeparatorRegex)
                     if (cells.any { token ->
                         val number = if (token.startsWith("0x", true)) token.drop(2).toLongOrNull(16) else token.toLongOrNull()
                         number in removedPhandles

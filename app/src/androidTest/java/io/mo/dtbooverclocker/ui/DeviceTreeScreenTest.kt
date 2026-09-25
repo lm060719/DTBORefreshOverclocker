@@ -69,8 +69,20 @@ class DeviceTreeScreenTest {
         }
         awaitText("/updated")
         compose.onNodeWithText("/alpha").assertDoesNotExist()
+    }
+
+    @Test
+    fun operationInProgressKeepsLastDocumentAndDefersReload() {
+        show()
         compose.runOnIdle { state.value = state.value.copy(workspaceOperationInProgress = true, busy = true) }
-        compose.onNodeWithText("/updated").assertDoesNotExist()
+        compose.onNodeWithText("/alpha").assertExists()
+        compose.runOnIdle {
+            state.value.workspace!!.dtsFiles.first().writeText(source("updated"))
+            state.value = state.value.copy(workspaceRevision = state.value.workspaceRevision + 1)
+        }
+        compose.onNodeWithText("/alpha").assertExists()
+        compose.runOnIdle { state.value = state.value.copy(workspaceOperationInProgress = false, busy = false) }
+        awaitText("/updated")
     }
 
     @Test

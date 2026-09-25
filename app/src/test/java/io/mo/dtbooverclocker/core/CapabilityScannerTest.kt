@@ -23,6 +23,42 @@ class CapabilityScannerTest
             DtboBinaryImage(metadata, byteArrayOf(), emptyList()), emptyList(), files, emptyList()))
     }
 
+    @Test fun incrementalScanReparsesOnlyDirtyEntriesAndReusesTheRest() {
+        val charger = """
+            /dts-v1/;
+            / {
+                charger {
+                    qcom,fcc-max-ua = <2000000>;
+                };
+            };
+        """.trimIndent()
+        val plain = "/dts-v1/;\n/ {\n    model = \"x\";\n};"
+        val root = chargingTemp.newFolder()
+        val files = listOf(charger, plain).mapIndexed { index, content ->
+            File(root, "entry_$index.dts").apply { writeText(content) }
+        }
+        val metadata = DtboMetadata("0xd7b7ab1e", 0, 32, 32, 32, 4096, 0, emptyList())
+        val workspace = DtboWorkspace(root, File(root, "input.img"), File(root, "metadata"), metadata,
+            DtboBinaryImage(metadata, byteArrayOf(), emptyList()), emptyList(), files, emptyList())
+        val full = CapabilityScanner.scan(workspace)
+        assertEquals(listOf(0, 1), full.entryScans.map { it.entryIndex })
+        assertEquals(1, full.chargingNodes.size)
+
+        // Entry 0 loses its charger node on disk but is not marked dirty: its cached result must be reused.
+        files[0].writeText(plain)
+        files[1].writeText(charger)
+        val scannedLogs = mutableListOf<String>()
+        val incremental = CapabilityScanner.scan(workspace, progress = { scannedLogs += it }, previous = full, dirtyEntries = setOf(1))
+        assertEquals(listOf(0, 1), incremental.chargingNodes.map { it.entryIndex })
+        assertTrue(scannedLogs.none { it.contains("DTB[0] 扫描完成") })
+        assertTrue(scannedLogs.any { it.contains("DTB[1] 扫描完成") })
+
+        // A null dirty set always rescans everything, regardless of the previous report.
+        val rescanned = CapabilityScanner.scan(workspace, previous = full, dirtyEntries = null)
+        assertEquals(listOf(1), rescanned.chargingNodes.map { it.entryIndex })
+        assertEquals(full.nodeCount, rescanned.nodeCount)
+    }
+
     @Test fun chargingIsAvailableWithoutAnyDisplayCandidatesAndCountsEntriesSeparately() {
         val source = """
             /dts-v1/;

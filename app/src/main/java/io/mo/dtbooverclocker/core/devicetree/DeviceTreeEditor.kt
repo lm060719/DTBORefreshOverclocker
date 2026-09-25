@@ -3,30 +3,28 @@ package io.mo.dtbooverclocker.core.devicetree
 object DeviceTreeEditor
 {
     private val nodeNameRegex = Regex("^[A-Za-z0-9,._@+#-]+$")
+    private val propertyNameRegex = Regex("^[A-Za-z0-9,._+#?-]+$")
 
     fun apply(text: String, change: DeviceTreeChange): String
     {
+        return apply(text, change, DeviceTreeParser.parse(change.entryIndex, text))
+    }
+
+    /** Applies [change] using a [document] the caller already parsed from exactly [text]. */
+    fun apply(text: String, change: DeviceTreeChange, document: DeviceTreeDocument): String
+    {
+        require(document.sourceText == text) {
+            "设备树文档与待修改文本不一致"
+        }
         return when (change)
         {
-            is SetPropertyChange ->
-            {
-                val node = requireNode(change.entryIndex, text, change.nodePath)
-                setProperty(text, node, change)
-            }
-            is AddPropertyChange ->
-            {
-                val node = requireNode(change.entryIndex, text, change.nodePath)
-                addProperty(text, node, change)
-            }
-            is DeletePropertyChange ->
-            {
-                val node = requireNode(change.entryIndex, text, change.nodePath)
-                deleteProperty(text, node, change)
-            }
-            is AddNodeChange -> addNode(text, change)
-            is DeleteNodeChange -> deleteNode(text, change)
-            is RenameNodeChange -> renameNode(text, change)
-            is CloneNodeChange -> cloneNode(text, change)
+            is SetPropertyChange -> setProperty(text, requireNode(document, change.nodePath), change)
+            is AddPropertyChange -> addProperty(text, requireNode(document, change.nodePath), change)
+            is DeletePropertyChange -> deleteProperty(text, requireNode(document, change.nodePath), change)
+            is AddNodeChange -> addNode(text, document, change)
+            is DeleteNodeChange -> deleteNode(text, document, change)
+            is RenameNodeChange -> renameNode(text, document, change)
+            is CloneNodeChange -> cloneNode(text, document, change)
         }
     }
 
@@ -38,6 +36,7 @@ object DeviceTreeEditor
         newRawValue: String?
     ): SetPropertyChange
     {
+        requireValidRawValue(newRawValue)
         val property = requireProperty(entryIndex, text, nodePath, propertyName)
         return SetPropertyChange(
             entryIndex = entryIndex,
@@ -57,6 +56,7 @@ object DeviceTreeEditor
     ): AddPropertyChange
     {
         validatePropertyName(propertyName)
+        requireValidRawValue(newRawValue)
         val node = requireNode(entryIndex, text, nodePath)
         require(node.properties.none { it.name == propertyName }) {
             "属性已存在：$nodePath/$propertyName"
@@ -226,6 +226,7 @@ object DeviceTreeEditor
         val property = requireNotNull(node.properties.firstOrNull { it.name == change.propertyName }) {
             "属性不存在：${change.nodePath}/${change.propertyName}"
         }
+        requireExpectedValue(change.nodePath, property, change.oldRawValue)
         val replacement = statement(property.indent, change.propertyName, change.newRawValue)
         return text.replaceRange(property.startOffset, property.endOffsetExclusive, replacement)
     }
@@ -256,12 +257,25 @@ object DeviceTreeEditor
         val property = requireNotNull(node.properties.firstOrNull { it.name == change.propertyName }) {
             "属性不存在：${change.nodePath}/${change.propertyName}"
         }
+        requireExpectedValue(change.nodePath, property, change.oldRawValue)
         return removeSourceRangeWithLineBreak(text, property.startOffset, property.endOffsetExclusive)
     }
 
-    private fun addNode(text: String, change: AddNodeChange): String
+    // Guards against clobbering a value that another transaction changed after this change was built.
+    private fun requireExpectedValue(
+        nodePath: String,
+        property: DeviceTreeProperty,
+        expectedRawValue: String?
+    )
     {
-        val document = DeviceTreeParser.parse(change.entryIndex, text)
+        require(normalizeRawValue(property.rawValue) == normalizeRawValue(expectedRawValue)) {
+            "属性值已变化，拒绝覆盖：$nodePath/${property.name}，" +
+                "期望 ${expectedRawValue ?: "<boolean>"}，实际 ${property.rawValue ?: "<boolean>"}"
+        }
+    }
+
+    private fun addNode(text: String, document: DeviceTreeDocument, change: AddNodeChange): String
+    {
         require(document.findNode(change.nodePath) == null) {
             "目标节点已存在：${change.nodePath}"
         }
@@ -274,9 +288,8 @@ object DeviceTreeEditor
         return insertNodeSource(text, parent, source)
     }
 
-    private fun cloneNode(text: String, change: CloneNodeChange): String
+    private fun cloneNode(text: String, document: DeviceTreeDocument, change: CloneNodeChange): String
     {
-        val document = DeviceTreeParser.parse(change.entryIndex, text)
         requireNotNull(document.findNode(change.sourceNodePath)) {
             "源节点不存在：${change.sourceNodePath}"
         }
@@ -292,22 +305,21 @@ object DeviceTreeEditor
         return insertNodeSource(text, parent, source)
     }
 
-    private fun deleteNode(text: String, change: DeleteNodeChange): String
+    private fun deleteNode(text: String, document: DeviceTreeDocument, change: DeleteNodeChange): String
     {
         require(change.nodePath != "/") {
             "根节点不能删除"
         }
-        val node = requireNode(change.entryIndex, text, change.nodePath)
+        val node = requireNode(document, change.nodePath)
         return removeSourceRangeWithLineBreak(text, node.startOffset, node.endOffsetExclusive)
     }
 
-    private fun renameNode(text: String, change: RenameNodeChange): String
+    private fun renameNode(text: String, document: DeviceTreeDocument, change: RenameNodeChange): String
     {
         require(change.nodePath != "/") {
             "根节点不能重命名"
         }
 
-        val document = DeviceTreeParser.parse(change.entryIndex, text)
         val node = requireNotNull(document.findNode(change.nodePath)) {
             "节点不存在：${change.nodePath}"
         }
@@ -342,7 +354,11 @@ object DeviceTreeEditor
         nodePath: String
     ): DeviceTreeNode
     {
-        val document = DeviceTreeParser.parse(entryIndex, text)
+        return requireNode(DeviceTreeParser.parse(entryIndex, text), nodePath)
+    }
+
+    private fun requireNode(document: DeviceTreeDocument, nodePath: String): DeviceTreeNode
+    {
         return requireNotNull(document.findNode(nodePath)) {
             "设备树节点不存在：$nodePath"
         }
@@ -523,9 +539,103 @@ object DeviceTreeEditor
         return value?.takeIf { it.isNotEmpty() }
     }
 
+    /**
+     * 检查用户输入的 Raw DTS 值能否作为单个属性值安全写入。
+     *
+     * 解析器按行识别节点与属性：值里一旦出现引号外的 `;`、`{`、`}` 或注释，
+     * dtc 编译出的结构就会与编辑器看到的结构分叉（例如多出一个属性，或提前闭合节点）。
+     * 返回 null 表示通过，否则返回错误说明。
+     */
+    fun rawValueError(rawValue: String?): String?
+    {
+        val value = normalizeRawValue(rawValue) ?: return null
+        var index = 0
+        var inCells = false
+        var inBytes = false
+        var parenDepth = 0
+
+        while (index < value.length)
+        {
+            val char = value[index]
+            val next = value.getOrNull(index + 1)
+            when
+            {
+                char == '"' || (char == '\'' && inCells) ->
+                {
+                    if (char == '"' && (inCells || inBytes)) return "字符串不能写在 <> 或 [] 内部"
+                    var end = index + 1
+                    while (end < value.length && value[end] != char)
+                    {
+                        if (value[end] == '\n' || value[end] == '\r') return "引号内不能换行"
+                        end += if (value[end] == '\\') 2 else 1
+                    }
+                    if (end >= value.length) return "字符串缺少结束引号"
+                    index = end
+                }
+                char == '&' && next == '{' ->
+                {
+                    val end = value.indexOf('}', index + 2)
+                    if (end < 0) return "路径引用 &{…} 缺少 '}'"
+                    if (value.substring(index + 2, end).any { it in ";{\n\r" }) return "路径引用 &{…} 内容无效"
+                    index = end
+                }
+                char == '/' && (next == '/' || next == '*') -> return "属性值中不支持注释"
+                char == ';' -> return "引号外不能包含 ';'，一次只能编辑一个属性"
+                char == '{' || char == '}' -> return "引号外不能包含 '{' 或 '}'"
+                parenDepth > 0 && (char == '<' || char == '>') -> Unit
+                char == '<' ->
+                {
+                    if (inCells || inBytes) return "'<' 不能嵌套"
+                    inCells = true
+                }
+                char == '>' ->
+                {
+                    if (!inCells) return "多余的 '>'"
+                    inCells = false
+                }
+                char == '(' ->
+                {
+                    if (!inCells) return "表达式括号只能出现在 <> 内部"
+                    parenDepth++
+                }
+                char == ')' ->
+                {
+                    if (parenDepth == 0) return "多余的 ')'"
+                    parenDepth--
+                }
+                char == '[' ->
+                {
+                    if (inCells || inBytes) return "'[' 不能嵌套"
+                    inBytes = true
+                }
+                char == ']' ->
+                {
+                    if (!inBytes) return "多余的 ']'"
+                    inBytes = false
+                }
+            }
+            index++
+        }
+
+        return when
+        {
+            parenDepth > 0 -> "缺少 ')'"
+            inCells -> "缺少 '>'"
+            inBytes -> "缺少 ']'"
+            else -> null
+        }
+    }
+
+    private fun requireValidRawValue(rawValue: String?)
+    {
+        rawValueError(rawValue)?.let { error ->
+            throw IllegalArgumentException("属性值语法无效：$error")
+        }
+    }
+
     private fun validatePropertyName(name: String)
     {
-        require(Regex("^[A-Za-z0-9,._+#?-]+$").matches(name)) {
+        require(propertyNameRegex.matches(name)) {
             "属性名包含不支持的字符：$name"
         }
     }

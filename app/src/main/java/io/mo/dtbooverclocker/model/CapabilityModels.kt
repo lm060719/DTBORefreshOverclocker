@@ -22,12 +22,21 @@ data class CapabilityFinding(
     val sourceHint: String? = null
 )
 
+/** 单个 DTB 的扫描结果；增量重扫时未修改的条目直接复用。 */
+data class EntryCapabilityScan(
+    val entryIndex: Int,
+    val nodeCount: Int,
+    val propertyCount: Int,
+    val chargingNodes: List<ChargingNode>
+)
+
 data class CapabilityReport(
     val scannedEntryCount: Int,
     val nodeCount: Int,
     val propertyCount: Int,
     val findings: List<CapabilityFinding>,
-    val chargingNodes: List<ChargingNode> = emptyList()
+    val chargingNodes: List<ChargingNode> = emptyList(),
+    val entryScans: List<EntryCapabilityScan> = emptyList()
 )
 {
     fun finding(kind: CapabilityKind): CapabilityFinding?

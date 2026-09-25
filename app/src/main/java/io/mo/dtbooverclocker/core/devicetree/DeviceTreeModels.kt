@@ -47,9 +47,12 @@ data class DeviceTreeProperty(
 
     companion object
     {
+        private val quotedStringRegex = Regex("\\\"((?:\\\\.|[^\\\"])*)\\\"")
+        private val whitespaceRegex = Regex("\\s+")
+
         private fun parseQuotedStrings(raw: String): List<String>
         {
-            return Regex("\\\"((?:\\\\.|[^\\\"])*)\\\"")
+            return quotedStringRegex
                 .findAll(raw)
                 .map { it.groupValues[1] }
                 .toList()
@@ -58,7 +61,7 @@ data class DeviceTreeProperty(
         private fun parseCells(raw: String): List<Long>
         {
             val body = raw.trim().removePrefix("<").removeSuffix(">")
-            return body.split(Regex("\\s+"))
+            return body.split(whitespaceRegex)
                 .mapNotNull { token ->
                     val clean = token.trim().trimEnd(',')
                     when

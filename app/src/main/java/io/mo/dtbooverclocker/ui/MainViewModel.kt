@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.UUID
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(MainUiState())
@@ -69,6 +70,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val workspaceOperations = WorkspaceOperationRunner()
     private var capabilityScanGeneration: Long = 0L
     private var capabilityScanJob: Job? = null
+    // Entries whose DTS changed since the last completed scan; null means everything must be rescanned.
+    // Accumulated across cancelled scans so a superseded scan never leaves stale per-entry results behind.
+    private var capabilityDirtyEntries: Set<Int>? = null
 
     companion object {
         private const val KEY_HAS_REQUESTED_ROOT = "has_requested_root"
@@ -270,6 +274,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 p
             } else null
 
+            val transactionId = UUID.randomUUID().toString()
             runCatching {
                 patchEngine.applyTimingChange(
                     workspace = workspace,
@@ -277,14 +282,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     targetHz = current.targetHz,
                     strategy = current.strategy,
                     mode = current.patchMode,
-                    customParams = customParams
+                    customParams = customParams,
+                    transactionId = transactionId
                 )
             }.onSuccess { result ->
                 val transaction = DeviceTreeTransaction.refreshRate(
                     stagedChange = result.stagedChange,
                     operations = result.operations,
                     warnings = result.warnings,
-                    directFlashAllowed = result.stagedChange.strategy != PatchStrategy.FRAMERATE_ONLY
+                    directFlashAllowed = result.stagedChange.strategy != PatchStrategy.FRAMERATE_ONLY,
+                    id = transactionId
                 ).withPanelWarning(candidate.nodePath)
                 val newTransactions = current.transactions + transaction
                 _state.update {
@@ -297,7 +304,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode
                     )
                 }
-                refreshCapabilities(result.updatedWorkspace)
+                refreshCapabilities(result.updatedWorkspace, transaction.entryIndices)
             }.onFailure(::showError)
         }
     }
@@ -321,7 +328,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "已暂存充电修改：${transaction.summary}；到概览集中打包"
                     )
                 }
-                refreshCapabilities(updatedWorkspace)
+                refreshCapabilities(updatedWorkspace, transaction.entryIndices)
             } catch (failure: Exception) {
                 showError(failure)
             } finally {
@@ -468,10 +475,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         runCatching {
-            patchEngine.applyDeviceTreeChanges(
-                workspace,
-                transaction.operations.asReversed().map { it.inverse() }
-            )
+            // Snapshot restore is byte-exact; inverse replay is only a fallback for snapshot-less transactions.
+            patchEngine.restoreUndoSnapshot(workspace, transaction.id)
+                ?: patchEngine.applyDeviceTreeChanges(
+                    workspace,
+                    transaction.operations.asReversed().map { it.inverse() }
+                )
         }.onSuccess { updatedWorkspace ->
             val remaining = current.transactions.dropLast(1)
             _state.update {
@@ -483,7 +492,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     status = "已原子撤销事务：${transaction.kind.displayName} · ${transaction.summary}"
                 )
             }
-            refreshCapabilities(updatedWorkspace)
+            refreshCapabilities(updatedWorkspace, transaction.entryIndices)
         }.onFailure(::showError)
     }
 
@@ -497,16 +506,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 IllegalStateException("请先导入或提取 DTBO 镜像")
             )
 
+            val transactionId = UUID.randomUUID().toString()
             runCatching {
                 val dtsFile = File(workspace.rootDir, "dts/entry_$entryIndex.dts")
                 require(dtsFile.isFile) { "Entry $entryIndex 没有可编辑的 DTS 文件" }
                 val change = withContext(Dispatchers.IO) {
                     builder(dtsFile.readText())
                 }
-                val updatedWorkspace = patchEngine.applyDeviceTreeChange(workspace, change)
+                val updatedWorkspace = patchEngine.applyDeviceTreeChange(workspace, change, transactionId)
                 change to updatedWorkspace
             }.onSuccess { (change, updatedWorkspace) ->
-                val transaction = DeviceTreeTransaction.generic(change)
+                val transaction = DeviceTreeTransaction.generic(change, id = transactionId)
                 val newTransactions = current.transactions + transaction
                 _state.update {
                     it.copy(
@@ -517,7 +527,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "已暂存设备树修改：${transaction.summary} (共 ${newTransactions.size} 个事务待打包)"
                     )
                 }
-                refreshCapabilities(updatedWorkspace)
+                refreshCapabilities(updatedWorkspace, setOf(entryIndex))
             }.onFailure(::showError)
         }
     }
@@ -569,7 +579,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     transactions = current.transactions
                 )
             }.also {
-                if (scanInterrupted) refreshCapabilities(workspace)
+                // Packaging does not touch the editor DTS, so only previously pending entries need rescanning.
+                if (scanInterrupted) refreshCapabilities(workspace, emptySet())
             }.onSuccess { report ->
                 _state.update {
                     it.copy(
@@ -950,8 +961,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshCapabilities(workspace)
     }
 
-    private fun refreshCapabilities(workspace: DtboWorkspace)
+    private fun refreshCapabilities(workspace: DtboWorkspace, dirtyEntries: Set<Int>? = null)
     {
+        val pendingDirty = capabilityDirtyEntries
+        val dirty = if (dirtyEntries == null || pendingDirty == null) null else pendingDirty + dirtyEntries
+        capabilityDirtyEntries = dirty
+        val previous = _state.value.capabilityReport.takeIf { dirty != null }
         val generation = ++capabilityScanGeneration
         capabilityScanJob?.cancel()
         _state.update { it.copy(capabilityScanInProgress = true) }
@@ -962,7 +977,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 CapabilityScanner.scan(
                     workspace = workspace,
                     progress = ::appendLog,
-                    checkCancellation = { coroutineContext.ensureActive() }
+                    checkCancellation = { coroutineContext.ensureActive() },
+                    previous = previous,
+                    dirtyEntries = dirty
                 )
             }
             result.exceptionOrNull()?.let { throwable ->
@@ -979,6 +996,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 result.onSuccess { report ->
+                    capabilityDirtyEntries = emptySet()
                     _state.update {
                         it.copy(
                             capabilityReport = report,

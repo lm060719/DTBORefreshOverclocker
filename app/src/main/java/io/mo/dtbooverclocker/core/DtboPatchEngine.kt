@@ -172,6 +172,7 @@ class DtboPatchEngine(
             if (backup.isFile) index to backup.readText() else null
         }.toMap()
         val updated = commitWorkspaceTexts(workspace, texts)
+        File(workspace.rootDir, UNDO_SNAPSHOT_DIR).deleteRecursively()
         logSink("[INFO] 工作区 DTS 已重置为初始状态，共恢复 ${updated.candidates.size} 个原始候选档位")
         updated.copy(dtsFiles = texts.keys.map { File(dtsDir, "entry_$it.dts") })
     }
@@ -183,7 +184,8 @@ class DtboPatchEngine(
         targetHz: Int,
         strategy: PatchStrategy,
         mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
-        customParams: CustomTimingParams? = null
+        customParams: CustomTimingParams? = null,
+        transactionId: String? = null
     ): TimingApplyResult = withContext(Dispatchers.IO) {
         require(candidate.entryIndex in workspace.extractedEntries.indices) {
             "候选节点对应的 DTB 索引无效"
@@ -198,7 +200,9 @@ class DtboPatchEngine(
         )
 
         // 真正写入工作区的内容来自通用 DeviceTreeChange 回放结果，而不是旧文本修补器。
-        val updatedWorkspace = commitWorkspaceTexts(workspace, mapOf(candidate.entryIndex to plan.replayedText))
+        val updatedWorkspace = commitWorkspaceTexts(
+            workspace, mapOf(candidate.entryIndex to plan.replayedText), undoSnapshotId = transactionId
+        )
         val refreshedForEntry = updatedWorkspace.candidates.filter { it.entryIndex == candidate.entryIndex }
 
         val nodeName = TimingUtils.parseTimingNodeName(candidate.nodePath)
@@ -262,20 +266,26 @@ class DtboPatchEngine(
         require(dtsFile.isFile) { "Entry $entryIndex 没有可编辑的 DTS 文件" }
         val originalText = dtsFile.readText()
         val plan = ChargingPlanner.plan(originalText, snapshot, inputs)
-        val updatedWorkspace = commitWorkspaceTexts(workspace, mapOf(entryIndex to plan.replayedText))
+        val updatedWorkspace = commitWorkspaceTexts(
+            workspace, mapOf(entryIndex to plan.replayedText), undoSnapshotId = plan.transaction.id
+        )
         plan.transaction.moduleChange?.changes?.forEach { logSink("[CHARGING] $it") }
         updatedWorkspace to plan.transaction
     }
 
     suspend fun applyDeviceTreeChange(
         workspace: DtboWorkspace,
-        change: DeviceTreeChange
-    ): DtboWorkspace = applyDeviceTreeChanges(workspace, listOf(change), validateReferences = true)
+        change: DeviceTreeChange,
+        transactionId: String? = null
+    ): DtboWorkspace = applyDeviceTreeChanges(
+        workspace, listOf(change), validateReferences = true, transactionId = transactionId
+    )
 
     suspend fun applyDeviceTreeChanges(
         workspace: DtboWorkspace,
         changes: List<DeviceTreeChange>,
-        validateReferences: Boolean = false
+        validateReferences: Boolean = false,
+        transactionId: String? = null
     ): DtboWorkspace = withContext(Dispatchers.IO) {
         // Replay the entire transaction in memory before touching any live file.
         val texts = linkedMapOf<Int, String>()
@@ -286,26 +296,85 @@ class DtboPatchEngine(
             val text = texts.getOrPut(change.entryIndex) {
                 File(workspace.rootDir, "dts/entry_${change.entryIndex}.dts").readText()
             }
+            // One parse serves both the reference validation and the edit itself.
+            val document = DeviceTreeParser.parse(change.entryIndex, text)
             if (validateReferences) {
-                DeviceTreeEditValidator.validate(
-                    DeviceTreeParser.parse(change.entryIndex, text), change
-                )
+                DeviceTreeEditValidator.validate(document, change)
             }
-            texts[change.entryIndex] = DeviceTreeEditor.apply(text, change)
+            texts[change.entryIndex] = DeviceTreeEditor.apply(text, change, document)
         }
-        val updated = commitWorkspaceTexts(workspace, texts)
+        val updated = commitWorkspaceTexts(workspace, texts, undoSnapshotId = transactionId)
         changes.forEach { logSink("[OK] 已暂存设备树修改：${it.summary}") }
         updated
     }
 
-    private fun commitWorkspaceTexts(workspace: DtboWorkspace, texts: Map<Int, String>): DtboWorkspace {
-        val files = texts.mapKeys { (index, _) -> File(workspace.rootDir, "dts/entry_$index.dts") }
-        return DtsFileTransaction.commit(files) {
-            val refreshed = texts.keys.flatMap { index ->
-                DtsTimingPatcher.analyzeEntry(index, File(workspace.rootDir, "dts/entry_$index.dts"))
+    /**
+     * 撤销最后一个事务：直接写回该事务提交前的 DTS 原文快照，保证与撤销前逐字节一致
+     * （节点与属性顺序不会漂移）。没有快照时返回 null，由调用方回退到逆操作回放。
+     */
+    suspend fun restoreUndoSnapshot(
+        workspace: DtboWorkspace,
+        transactionId: String
+    ): DtboWorkspace? = withContext(Dispatchers.IO) {
+        val snapshotDir = undoSnapshotDir(workspace, transactionId)
+        if (!snapshotDir.isDirectory) return@withContext null
+
+        val texts = snapshotDir.listFiles().orEmpty()
+            .mapNotNull { file ->
+                UNDO_SNAPSHOT_FILE.matchEntire(file.name)?.let { it.groupValues[1].toInt() to file }
             }
-            workspace.copy(candidates = workspace.candidates.filterNot { it.entryIndex in texts } + refreshed)
+            .associate { (index, file) ->
+                val expected = File(snapshotDir, "entry_$index.sha256").takeIf { it.isFile }?.readText()?.trim()
+                val current = File(workspace.rootDir, "dts/entry_$index.dts")
+                require(expected != null && current.isFile && HashUtils.sha256(current) == expected) {
+                    "Entry $index 在该事务之后被修改过，无法安全撤销；请重置工作区"
+                }
+                index to file.readText()
+            }
+        require(texts.isNotEmpty()) { "撤销快照为空：$transactionId" }
+
+        val updated = commitWorkspaceTexts(workspace, texts)
+        snapshotDir.deleteRecursively()
+        logSink("[OK] 已按快照恢复 ${texts.size} 个 DTS 条目")
+        updated
+    }
+
+    private fun commitWorkspaceTexts(
+        workspace: DtboWorkspace,
+        texts: Map<Int, String>,
+        undoSnapshotId: String? = null
+    ): DtboWorkspace {
+        val files = texts.mapKeys { (index, _) -> File(workspace.rootDir, "dts/entry_$index.dts") }
+        val snapshotDir = undoSnapshotId?.let { id ->
+            undoSnapshotDir(workspace, id).apply {
+                deleteRecursively()
+                mkdirs()
+                files.forEach { (file, _) -> file.copyTo(File(this, file.name), overwrite = true) }
+            }
         }
+        try {
+            return DtsFileTransaction.commit(files) {
+                // Post-image hashes let undo detect any write that bypassed the transaction queue.
+                snapshotDir?.let { dir ->
+                    texts.keys.forEach { index ->
+                        File(dir, "entry_$index.sha256")
+                            .writeText(HashUtils.sha256(File(workspace.rootDir, "dts/entry_$index.dts")))
+                    }
+                }
+                val refreshed = texts.keys.flatMap { index ->
+                    DtsTimingPatcher.analyzeEntry(index, File(workspace.rootDir, "dts/entry_$index.dts"))
+                }
+                workspace.copy(candidates = workspace.candidates.filterNot { it.entryIndex in texts } + refreshed)
+            }
+        } catch (failure: Throwable) {
+            snapshotDir?.deleteRecursively()
+            throw failure
+        }
+    }
+
+    private fun undoSnapshotDir(workspace: DtboWorkspace, transactionId: String): File {
+        require(UNDO_SNAPSHOT_ID.matches(transactionId)) { "无效的事务 ID：$transactionId" }
+        return File(workspace.rootDir, "$UNDO_SNAPSHOT_DIR/$transactionId")
     }
 
     suspend fun packageStaged(
@@ -574,3 +643,7 @@ class DtboPatchEngine(
         logSink("[OK] DTB[$entryIndex] 属性完整性校验通过：仅声明的属性或节点子树允许产生差异")
     }
 }
+
+private const val UNDO_SNAPSHOT_DIR = "undo_snapshots"
+private val UNDO_SNAPSHOT_ID = Regex("^[A-Za-z0-9-]+$")
+private val UNDO_SNAPSHOT_FILE = Regex("""^entry_(\d+)\.dts$""")

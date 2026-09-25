@@ -19,6 +19,10 @@ object DeviceTreeParser
 
     private val propertyNameRegex = Regex("""^[A-Za-z0-9,._+#?-]+$""")
 
+    // Type inference runs once per property; compiling these per call dominated large overlays.
+    private val whitespaceRegex = Regex("\\s+")
+    private val quotedStringRegex = Regex("\\\"(?:\\\\.|[^\\\"])*\\\"")
+
     fun parse(entryIndex: Int, text: String, checkCancellation: () -> Unit = {}): DeviceTreeDocument
     {
         val stack = mutableListOf<MutableNode>()
@@ -224,7 +228,7 @@ object DeviceTreeParser
             }
 
             val tokens = raw.removePrefix("<").removeSuffix(">").trim()
-                .split(Regex("\\s+"))
+                .split(whitespaceRegex)
                 .filter { it.isNotBlank() }
             return when (tokens.size)
             {
@@ -234,7 +238,7 @@ object DeviceTreeParser
         }
         if (raw.startsWith('"'))
         {
-            val count = Regex("\\\"(?:\\\\.|[^\\\"])*\\\"").findAll(raw).count()
+            val count = quotedStringRegex.findAll(raw).take(2).count()
             return if (count > 1) PropertyType.STRING_LIST else PropertyType.STRING
         }
 

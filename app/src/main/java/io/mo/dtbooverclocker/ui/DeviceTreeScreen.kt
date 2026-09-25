@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeDiff
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeDocument
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeNode
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParser
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeProperty
@@ -43,6 +44,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -54,6 +56,17 @@ private data class DocumentLoadResult(
     val loading: Boolean = true,
     val error: String? = null,
     val referenceError: String? = null
+)
+
+private data class DtsFileStamp(
+    val lastModified: Long,
+    val length: Long
+)
+
+private data class CachedDocumentLoad(
+    val stamp: DtsFileStamp?,
+    val transactionIds: List<String>,
+    val result: DocumentLoadResult
 )
 
 private data class TreeRow(
@@ -115,11 +128,27 @@ fun DeviceTreeScreen(
     }
 
     val file = workspace?.let { File(it.rootDir, "dts/entry_$entry.dts") }?.takeIf { it.isFile }
-    val invalidation = state.workspaceRevision to state.transactions.map { it.id }
-    val loaded by key(file, invalidation, state.workspaceOperationInProgress) {
-        produceState(initialValue = DocumentLoadResult()) {
-            if (state.workspaceOperationInProgress) return@produceState
-            value = try
+    val entryTransactionIds = remember(state.transactions, entry) {
+        state.transactions.filter { entry in it.entryIndices }.map { it.id }
+    }
+    val operationInProgress by rememberUpdatedState(state.workspaceOperationInProgress)
+    var lastLoad by remember(file) { mutableStateOf<CachedDocumentLoad?>(null) }
+    // workspaceRevision bumps after every workspace operation, including ones on other entries.
+    // Reparse only when this entry's transactions changed or the file on disk actually changed.
+    val loaded by key(file, entryTransactionIds, state.workspaceRevision) {
+        produceState(initialValue = lastLoad?.result ?: DocumentLoadResult()) {
+            // Keep showing the last document while an operation runs; never read a DTS it may be replacing.
+            snapshotFlow { operationInProgress }.first { !it }
+            val stamp = withContext(Dispatchers.IO) { file?.let { DtsFileStamp(it.lastModified(), it.length()) } }
+            val cached = lastLoad
+            if (cached != null && cached.stamp == stamp && cached.transactionIds == entryTransactionIds)
+            {
+                value = cached.result
+                return@produceState
+            }
+
+            value = DocumentLoadResult()
+            val result = try
             {
                 val text = withContext(Dispatchers.IO) { file?.readText() }
                 val document = withContext(Dispatchers.Default) {
@@ -164,6 +193,8 @@ fun DeviceTreeScreen(
             {
                 DocumentLoadResult(loading = false, error = error.message ?: "读取失败")
             }
+            value = result
+            lastLoad = CachedDocumentLoad(stamp, entryTransactionIds, result)
         }
     }
 
@@ -200,9 +231,10 @@ fun DeviceTreeScreen(
             value = withContext(Dispatchers.Default) {
                 val search = query.trim()
                 if (filteredMode) {
+                    val modifiedIndex = ModifiedPathIndex(modifiedNodePaths)
                     loaded.nodes.asSequence().filter { node ->
                         ensureActive()
-                        matchesSearchScope(node, search, searchScope, referenceIndex, modifiedNodePaths)
+                        matchesSearchScope(node, search, searchScope, referenceIndex, modifiedIndex)
                     }.map { TreeRow(it, depthOf(it.path)) }.toList()
                 } else {
                     buildVisibleRows(document.root, expandedSet) { ensureActive() }
@@ -1267,7 +1299,7 @@ private fun PropertyEditorDialog(
             }
             else
             {
-                null
+                DeviceTreeEditor.rawValueError(rawText)
             }
         }
         else
@@ -1599,54 +1631,64 @@ private fun formatReferenceIndexError(error: Throwable): String
     return chain.joinToString(" ← ").ifBlank { error::class.java.name }
 }
 
+/** O(depth) lookup for "node is, contains, or lies inside a modified node". */
+internal class ModifiedPathIndex(private val modifiedPaths: Set<String>)
+{
+    private val modifiedAncestors: Set<String> = modifiedPaths.flatMapTo(HashSet(), ::ancestorPaths)
+
+    fun isRelated(path: String): Boolean
+    {
+        return path in modifiedPaths ||
+            path in modifiedAncestors ||
+            ancestorPaths(path).any { it in modifiedPaths }
+    }
+}
+
 private fun matchesSearchScope(
     node: DeviceTreeNode,
     query: String,
     scope: DeviceTreeSearchScope,
     referenceIndex: DeviceTreeReferenceIndex?,
-    modifiedNodePaths: Set<String>
+    modifiedPaths: ModifiedPathIndex
 ): Boolean
 {
-    val nodeMatch = query.isBlank() ||
+    // Each predicate is evaluated lazily so a scope only pays for the checks it actually needs.
+    fun nodeMatch() = query.isBlank() ||
         node.path.contains(query, ignoreCase = true) ||
         node.name.contains(query, ignoreCase = true) ||
         node.label?.contains(query, ignoreCase = true) == true
 
-    val propertyMatch = node.properties.any { property ->
-        query.isBlank() || property.name.contains(query, ignoreCase = true)
+    fun propertyMatch() = query.isBlank() || node.properties.any { property ->
+        property.name.contains(query, ignoreCase = true)
     }
 
-    val valueMatch = node.properties.any { property ->
-        query.isBlank() ||
-            property.rawValue?.contains(query, ignoreCase = true) == true ||
+    fun valueMatch() = query.isBlank() || node.properties.any { property ->
+        property.rawValue?.contains(query, ignoreCase = true) == true ||
             property.displayValue.contains(query, ignoreCase = true)
     }
 
-    val references = referenceIndex
-        ?.let { it.outgoing(node.path) + it.incoming(node.path) }
-        .orEmpty()
-    val referenceMatch = references.any { reference ->
-        query.isBlank() ||
-            reference.token.contains(query, ignoreCase = true) ||
-            reference.propertyName.contains(query, ignoreCase = true) ||
-            reference.sourceNodePath.contains(query, ignoreCase = true) ||
-            reference.targetNodePath?.contains(query, ignoreCase = true) == true
+    fun referenceMatch(): Boolean
+    {
+        val index = referenceIndex ?: return false
+        val references = index.outgoing(node.path).asSequence() + index.incoming(node.path).asSequence()
+        return references.any { reference ->
+            query.isBlank() ||
+                reference.token.contains(query, ignoreCase = true) ||
+                reference.propertyName.contains(query, ignoreCase = true) ||
+                reference.sourceNodePath.contains(query, ignoreCase = true) ||
+                reference.targetNodePath?.contains(query, ignoreCase = true) == true
+        }
     }
-
-    val modifiedMatch = modifiedNodePaths.any { modifiedPath ->
-        node.path == modifiedPath ||
-            node.path.startsWith("${modifiedPath.trimEnd('/')}/") ||
-            modifiedPath.startsWith("${node.path.trimEnd('/')}/")
-    } && (query.isBlank() || nodeMatch || propertyMatch || valueMatch)
 
     return when (scope)
     {
-        DeviceTreeSearchScope.ALL -> nodeMatch || propertyMatch || valueMatch || referenceMatch
-        DeviceTreeSearchScope.NODE -> nodeMatch
-        DeviceTreeSearchScope.PROPERTY -> propertyMatch
-        DeviceTreeSearchScope.VALUE -> valueMatch
-        DeviceTreeSearchScope.REFERENCE -> referenceMatch
-        DeviceTreeSearchScope.MODIFIED -> modifiedMatch
+        DeviceTreeSearchScope.ALL -> nodeMatch() || propertyMatch() || valueMatch() || referenceMatch()
+        DeviceTreeSearchScope.NODE -> nodeMatch()
+        DeviceTreeSearchScope.PROPERTY -> propertyMatch()
+        DeviceTreeSearchScope.VALUE -> valueMatch()
+        DeviceTreeSearchScope.REFERENCE -> referenceMatch()
+        DeviceTreeSearchScope.MODIFIED -> modifiedPaths.isRelated(node.path) &&
+            (nodeMatch() || propertyMatch() || valueMatch())
     }
 }
 

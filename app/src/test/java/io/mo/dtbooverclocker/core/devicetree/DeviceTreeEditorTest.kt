@@ -279,4 +279,83 @@ class DeviceTreeEditorTest
         }
     }
 
+    @Test
+    fun rawValueValidationRejectsStatementsThatWouldDesyncParserAndDtc()
+    {
+        listOf(
+            "<1>; injected = <2>",
+            "<1>\n};",
+            "<1",
+            "1>",
+            "[01 ff",
+            "\"unterminated",
+            "\"line\nbreak\"",
+            "<1> // comment",
+            "<1> /* comment */",
+            "&{/panel",
+            "<(1 + 2>",
+            "{"
+        ).forEach { raw ->
+            assertTrue("应拒绝：$raw", DeviceTreeEditor.rawValueError(raw) != null)
+        }
+
+        listOf(
+            null,
+            "",
+            "<0x78>;",
+            "<1 2>,\n<3 4>",
+            "\"qcom,panel\", \"semi;colon {x}\"",
+            "\"esc\\\"aped\"",
+            "<&label 0x1>",
+            "&{/soc/panel@0}",
+            "<&{/soc/panel@0} 1>",
+            "[01 ff a0]",
+            "<(1 << 4) (8 >> 1)>",
+            "<'a'>",
+            "/bits/ 16 <0x1234>"
+        ).forEach { raw ->
+            assertEquals("应接受：$raw", null, DeviceTreeEditor.rawValueError(raw))
+        }
+    }
+
+    @Test
+    fun buildRejectsInvalidRawValuesBeforeTouchingSource()
+    {
+        val source = "/ {\n    value = <1>;\n};"
+        assertThrows(IllegalArgumentException::class.java) {
+            DeviceTreeEditor.buildSetChange(0, source, "/", "value", "<1>; injected = <2>")
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            DeviceTreeEditor.buildAddChange(0, source, "/", "other", "<1>\n};")
+        }
+    }
+
+    @Test
+    fun applyWithSharedDocumentMatchesReparsingAndRejectsStaleDocument()
+    {
+        val source = "/ {\n    value = <1>;\n    child {\n    };\n};"
+        val document = DeviceTreeParser.parse(0, source)
+        val change = DeviceTreeEditor.buildDeleteNodeChange(0, source, "/child")
+
+        assertEquals(DeviceTreeEditor.apply(source, change), DeviceTreeEditor.apply(source, change, document))
+        assertThrows(IllegalArgumentException::class.java) {
+            DeviceTreeEditor.apply(source.replace("<1>", "<2>"), change, document)
+        }
+    }
+
+    @Test
+    fun applyRefusesToOverwritePropertyChangedByLaterEdit()
+    {
+        val source = "/ {\n    value = <1>;\n};"
+        val stale = DeviceTreeEditor.buildSetChange(0, source, "/", "value", "<2>")
+        val changedElsewhere = source.replace("<1>", "<5>")
+
+        assertThrows(IllegalArgumentException::class.java) {
+            DeviceTreeEditor.apply(changedElsewhere, stale)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            DeviceTreeEditor.apply(changedElsewhere, DeviceTreeEditor.buildDeleteChange(0, source, "/", "value"))
+        }
+        assertEquals(source, DeviceTreeEditor.apply(DeviceTreeEditor.apply(source, stale), stale.inverse()))
+    }
 }

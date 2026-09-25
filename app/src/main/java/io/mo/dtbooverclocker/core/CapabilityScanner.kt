@@ -5,8 +5,8 @@ import io.mo.dtbooverclocker.model.CapabilityFinding
 import io.mo.dtbooverclocker.model.CapabilityKind
 import io.mo.dtbooverclocker.model.CapabilityReport
 import io.mo.dtbooverclocker.model.CapabilityStatus
-import io.mo.dtbooverclocker.model.ChargingNode
 import io.mo.dtbooverclocker.model.DtboWorkspace
+import io.mo.dtbooverclocker.model.EntryCapabilityScan
 
 /**
  * 当前工作区的设备树能力扫描器。
@@ -16,30 +16,59 @@ import io.mo.dtbooverclocker.model.DtboWorkspace
  */
 object CapabilityScanner
 {
+    /**
+     * [previous] + [dirtyEntries] 启用增量扫描：不在 [dirtyEntries] 中的条目直接复用 [previous] 的结果。
+     * [dirtyEntries] 为 null 表示全部重扫。
+     */
     fun scan(
         workspace: DtboWorkspace,
         progress: (String) -> Unit = {},
-        checkCancellation: () -> Unit = {}
+        checkCancellation: () -> Unit = {},
+        previous: CapabilityReport? = null,
+        dirtyEntries: Set<Int>? = null
     ): CapabilityReport
     {
         val totalStarted = System.nanoTime()
+        val reusable = if (dirtyEntries != null && previous?.scannedEntryCount == workspace.dtsFiles.size)
+        {
+            previous.entryScans.associateBy { it.entryIndex }
+        }
+        else
+        {
+            emptyMap()
+        }
         // Stream one DTB at a time: a 40-entry DTBO parsed all at once (400k properties) does not fit
         // in the default Android heap next to a partition-sized packaging job. Every analyzer is
         // per-document, so results and their order are unchanged.
-        var nodeCount = 0
-        var propertyCount = 0
-        val chargingNodes = mutableListOf<ChargingNode>()
-        workspace.dtsFiles.forEachIndexed { index, file ->
+        var reusedCount = 0
+        val entryScans = workspace.dtsFiles.mapIndexed { index, file ->
             checkCancellation()
+            val cached = reusable[index]?.takeIf { dirtyEntries != null && index !in dirtyEntries }
+            if (cached != null)
+            {
+                reusedCount++
+                return@mapIndexed cached
+            }
             val started = System.nanoTime()
             val document = DeviceTreeParser.parse(index, file.readText(), checkCancellation)
             val nodes = document.flatten()
-            nodeCount += nodes.size
-            propertyCount += nodes.sumOf { it.properties.size }
             checkCancellation()
-            chargingNodes += ChargingAnalyzer.analyze(listOf(document))
+            val scan = EntryCapabilityScan(
+                entryIndex = index,
+                nodeCount = nodes.size,
+                propertyCount = nodes.sumOf { it.properties.size },
+                chargingNodes = ChargingAnalyzer.analyze(listOf(document))
+            )
             progress("[CAPABILITY] DTB[$index] 扫描完成：${nodes.size} 节点，${elapsedMs(started)} ms")
+            scan
         }
+        if (reusedCount > 0)
+        {
+            progress("[CAPABILITY] 增量扫描：复用 $reusedCount 个未修改条目")
+        }
+        val nodeCount = entryScans.sumOf { it.nodeCount }
+        val propertyCount = entryScans.sumOf { it.propertyCount }
+        val chargingNodes = entryScans.flatMap { it.chargingNodes }
         progress("[CAPABILITY] 充电 ${chargingNodes.size} 个节点")
         val editableChargingNodes = chargingNodes.filter { it.editableCount > 0 }
 
@@ -78,7 +107,8 @@ object CapabilityScanner
             nodeCount = nodeCount,
             propertyCount = propertyCount,
             findings = findings,
-            chargingNodes = chargingNodes
+            chargingNodes = chargingNodes,
+            entryScans = entryScans
         )
         progress(
             "[CAPABILITY] 全部扫描完成：${report.nodeCount} 节点 / ${report.propertyCount} 属性，" +
