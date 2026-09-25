@@ -52,6 +52,43 @@ class DtboPatchEngineUndoTest
     }
 
     @Test
+    fun undoThroughEarlierTransactionRestoresItsPreImageAtomically() = runBlocking {
+        val (engine, workspace, dts) = setUp()
+        val setFramerate = DeviceTreeEditor.buildSetChange(0, source, "/panel/timing@0", "qcom,mdss-dsi-panel-framerate", "<144>")
+        engine.applyDeviceTreeChange(workspace, setFramerate, TRANSACTION_ID)
+        val afterFirst = dts.readText()
+        val deleteNode = DeviceTreeEditor.buildDeleteNodeChange(0, afterFirst, "/panel/timing@1")
+        engine.applyDeviceTreeChange(workspace, deleteNode, SECOND_TRANSACTION_ID)
+
+        engine.restoreUndoSnapshots(workspace, listOf(TRANSACTION_ID, SECOND_TRANSACTION_ID))
+
+        assertEquals(source, dts.readText())
+        assertFalse(File(workspace.rootDir, "undo_snapshots/$TRANSACTION_ID").exists())
+        assertFalse(File(workspace.rootDir, "undo_snapshots/$SECOND_TRANSACTION_ID").exists())
+    }
+
+    @Test
+    fun undoingTransactionsOneByOneWalksBackThroughEachPreImage() = runBlocking {
+        val (engine, workspace, dts) = setUp()
+        engine.applyDeviceTreeChange(
+            workspace,
+            DeviceTreeEditor.buildSetChange(0, source, "/panel/timing@0", "qcom,mdss-dsi-panel-framerate", "<144>"),
+            TRANSACTION_ID
+        )
+        val afterFirst = dts.readText()
+        engine.applyDeviceTreeChange(
+            workspace,
+            DeviceTreeEditor.buildDeleteNodeChange(0, afterFirst, "/panel/timing@1"),
+            SECOND_TRANSACTION_ID
+        )
+
+        engine.restoreUndoSnapshot(workspace, SECOND_TRANSACTION_ID)
+        assertEquals(afterFirst, dts.readText())
+        engine.restoreUndoSnapshot(workspace, TRANSACTION_ID)
+        assertEquals(source, dts.readText())
+    }
+
+    @Test
     fun undoRefusesWhenFileChangedAfterTransaction() = runBlocking<Unit> {
         val (engine, workspace, dts) = setUp()
         val change = DeviceTreeEditor.buildSetChange(0, source, "/panel/timing@0", "qcom,mdss-dsi-panel-framerate", "<144>")
@@ -110,5 +147,6 @@ class DtboPatchEngineUndoTest
     private companion object
     {
         const val TRANSACTION_ID = "0f8fad5b-d9cb-469f-a165-70867728950e"
+        const val SECOND_TRANSACTION_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
     }
 }

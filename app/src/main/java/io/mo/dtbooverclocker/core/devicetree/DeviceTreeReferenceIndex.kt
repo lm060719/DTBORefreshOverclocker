@@ -30,6 +30,21 @@ data class DeviceTreeReferenceIndex(
     private val incomingByNode: Map<String, List<DeviceTreeReference>>
 )
 {
+    // Reverse maps built once; the node sheet used to scan every label/phandle per recomposition.
+    private val labelsByNode: Map<String, List<String>> by lazy(LazyThreadSafetyMode.PUBLICATION)
+    {
+        labels.entries.groupBy({ it.value }, { it.key }).mapValues { (_, names) -> names.sorted() }
+    }
+
+    private val phandlesByNode: Map<String, List<Long>> by lazy(LazyThreadSafetyMode.PUBLICATION)
+    {
+        phandles.entries.groupBy({ it.value }, { it.key }).mapValues { (_, values) -> values.sorted() }
+    }
+
+    fun labelsOf(nodePath: String): List<String> = labelsByNode[nodePath].orEmpty()
+
+    fun phandlesOf(nodePath: String): List<Long> = phandlesByNode[nodePath].orEmpty()
+
     fun outgoing(nodePath: String): List<DeviceTreeReference>
     {
         return outgoingByNode[nodePath].orEmpty()

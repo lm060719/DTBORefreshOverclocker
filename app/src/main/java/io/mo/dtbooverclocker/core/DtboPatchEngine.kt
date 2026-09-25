@@ -309,33 +309,51 @@ class DtboPatchEngine(
     }
 
     /**
-     * 撤销最后一个事务：直接写回该事务提交前的 DTS 原文快照，保证与撤销前逐字节一致
+     * 撤销单个事务：直接写回该事务提交前的 DTS 原文快照，保证与撤销前逐字节一致
      * （节点与属性顺序不会漂移）。没有快照时返回 null，由调用方回退到逆操作回放。
      */
     suspend fun restoreUndoSnapshot(
         workspace: DtboWorkspace,
         transactionId: String
-    ): DtboWorkspace? = withContext(Dispatchers.IO) {
-        val snapshotDir = undoSnapshotDir(workspace, transactionId)
-        if (!snapshotDir.isDirectory) return@withContext null
+    ): DtboWorkspace? = restoreUndoSnapshots(workspace, listOf(transactionId))
 
-        val texts = snapshotDir.listFiles().orEmpty()
-            .mapNotNull { file ->
-                UNDO_SNAPSHOT_FILE.matchEntire(file.name)?.let { it.groupValues[1].toInt() to file }
+    /**
+     * 原子撤销队列末尾的连续事务 [transactionIds]（按提交顺序，从旧到新）。
+     *
+     * 每个 entry 写回「最早触及它的事务」的提交前快照，并要求当前文件等于「最晚触及它的事务」的提交后哈希。
+     * 任一事务缺少快照时返回 null。
+     */
+    suspend fun restoreUndoSnapshots(
+        workspace: DtboWorkspace,
+        transactionIds: List<String>
+    ): DtboWorkspace? = withContext(Dispatchers.IO) {
+        require(transactionIds.isNotEmpty()) { "没有需要撤销的事务" }
+        val snapshotDirs = transactionIds.map { undoSnapshotDir(workspace, it) }
+        if (snapshotDirs.any { !it.isDirectory }) return@withContext null
+
+        val preImages = linkedMapOf<Int, File>()
+        val expectedCurrent = mutableMapOf<Int, String?>()
+        snapshotDirs.forEach { dir ->
+            dir.listFiles().orEmpty().forEach { file ->
+                val index = UNDO_SNAPSHOT_FILE.matchEntire(file.name)?.groupValues?.get(1)?.toInt() ?: return@forEach
+                preImages.putIfAbsent(index, file)
+                expectedCurrent[index] = File(dir, "entry_$index.sha256").takeIf { it.isFile }?.readText()?.trim()
             }
-            .associate { (index, file) ->
-                val expected = File(snapshotDir, "entry_$index.sha256").takeIf { it.isFile }?.readText()?.trim()
-                val current = File(workspace.rootDir, "dts/entry_$index.dts")
-                require(expected != null && current.isFile && HashUtils.sha256(current) == expected) {
-                    "Entry $index 在该事务之后被修改过，无法安全撤销；请重置工作区"
-                }
-                index to file.readText()
+        }
+        require(preImages.isNotEmpty()) { "撤销快照为空：${transactionIds.joinToString()}" }
+
+        val texts = preImages.mapValues { (index, snapshot) ->
+            val current = File(workspace.rootDir, "dts/entry_$index.dts")
+            val expected = expectedCurrent[index]
+            require(expected != null && current.isFile && HashUtils.sha256(current) == expected) {
+                "Entry $index 在该事务之后被修改过，无法安全撤销；请重置工作区"
             }
-        require(texts.isNotEmpty()) { "撤销快照为空：$transactionId" }
+            snapshot.readText()
+        }
 
         val updated = commitWorkspaceTexts(workspace, texts)
-        snapshotDir.deleteRecursively()
-        logSink("[OK] 已按快照恢复 ${texts.size} 个 DTS 条目")
+        snapshotDirs.forEach { it.deleteRecursively() }
+        logSink("[OK] 已按快照撤销 ${transactionIds.size} 个事务，恢复 ${texts.size} 个 DTS 条目")
         updated
     }
 

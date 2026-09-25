@@ -2,9 +2,6 @@ package io.mo.dtbooverclocker.core.devicetree
 
 object DeviceTreeEditor
 {
-    private val nodeNameRegex = Regex("^[A-Za-z0-9,._@+#-]+$")
-    private val propertyNameRegex = Regex("^[A-Za-z0-9,._+#?-]+$")
-
     fun apply(text: String, change: DeviceTreeChange): String
     {
         return apply(text, change, DeviceTreeParser.parse(change.entryIndex, text))
@@ -635,15 +632,15 @@ object DeviceTreeEditor
 
     private fun validatePropertyName(name: String)
     {
-        require(propertyNameRegex.matches(name)) {
-            "属性名包含不支持的字符：$name"
+        DeviceTreeNames.propertyNameError(name)?.let { error ->
+            throw IllegalArgumentException("$error：$name")
         }
     }
 
     private fun validateNodeName(name: String)
     {
-        require(nodeNameRegex.matches(name) && name != "/") {
-            "节点名包含不支持的字符：$name"
+        DeviceTreeNames.nodeNameError(name)?.let { error ->
+            throw IllegalArgumentException("$error：$name")
         }
     }
 }

@@ -5,6 +5,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -29,13 +31,16 @@ import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeDiff
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeDocument
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeNames
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeNode
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParseWarning
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParser
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeProperty
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReference
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceIndex
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceIndexer
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceKind
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
 import io.mo.dtbooverclocker.core.devicetree.allowedNodePaths
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeValueCodec
 import io.mo.dtbooverclocker.core.devicetree.NumberBase
@@ -67,6 +72,12 @@ private data class CachedDocumentLoad(
     val stamp: DtsFileStamp?,
     val transactionIds: List<String>,
     val result: DocumentLoadResult
+)
+
+private data class StagedChangeRow(
+    val transaction: DeviceTreeTransaction,
+    val change: DeviceTreeChange,
+    val laterTransactionCount: Int
 )
 
 private data class TreeRow(
@@ -103,7 +114,7 @@ fun DeviceTreeScreen(
     onCloneNode: (Int, String, String) -> Unit,
     onRenameNode: (Int, String, String) -> Unit,
     onDeleteNode: (Int, String) -> Unit,
-    onUndoChange: (String) -> Unit
+    onUndoThroughTransaction: (String) -> Unit
 ) {
     val workspace = state.workspace
     var query by rememberSaveable(workspace?.rootDir?.path) { mutableStateOf("") }
@@ -118,6 +129,7 @@ fun DeviceTreeScreen(
     var deleteProperty by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<DeviceTreeProperty?>(null) }
     var nodeEditMode by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<NodeEditMode?>(null) }
     var deleteNodePath by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<String?>(null) }
+    var undoConfirmTransactionId by remember(workspace?.rootDir?.path) { mutableStateOf<String?>(null) }
 
     val entry = selectedEntry.coerceIn(
         0,
@@ -213,9 +225,14 @@ fun DeviceTreeScreen(
     }
 
     val expandedSet = remember(expandedPaths) { expandedPaths.toSet() }
-    val changesForEntry = remember(state.transactions, entry) {
-        state.transactions.flatMap { it.operations }.filter { it.entryIndex == entry }
+    val stagedChangesForEntry = remember(state.transactions, entry) {
+        state.transactions.flatMapIndexed { index, transaction ->
+            transaction.operations
+                .filter { it.entryIndex == entry }
+                .map { StagedChangeRow(transaction, it, laterTransactionCount = state.transactions.lastIndex - index) }
+        }
     }
+    val changesForEntry = remember(stagedChangesForEntry) { stagedChangesForEntry.map { it.change } }
     val modifiedNodePaths = remember(changesForEntry)
     {
         changesForEntry
@@ -345,6 +362,7 @@ fun DeviceTreeScreen(
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
+                        ParseWarningsText(document.warnings)
 
                         val externalFixupCount = referenceIndex?.externalFixups()?.size ?: 0
                         if (externalFixupCount > 0)
@@ -462,14 +480,20 @@ fun DeviceTreeScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    items(changesForEntry, key = { it.id }) { change ->
+                    items(stagedChangesForEntry, key = { it.change.id }) { row ->
                         ChangeCard(
-                            change = change,
-                            undoEnabled = !state.busy && state.transactions.lastOrNull()?.let {
-                                it.kind == io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransactionKind.GENERIC_EDIT &&
-                                    it.operations.singleOrNull()?.id == change.id
-                            } == true,
-                            onUndo = { onUndoChange(change.id) }
+                            row = row,
+                            undoEnabled = !state.busy,
+                            onUndo = {
+                                if (row.laterTransactionCount == 0)
+                                {
+                                    onUndoThroughTransaction(row.transaction.id)
+                                }
+                                else
+                                {
+                                    undoConfirmTransactionId = row.transaction.id
+                                }
+                            }
                         )
                     }
                 }
@@ -617,6 +641,39 @@ fun DeviceTreeScreen(
         )
     }
 
+    val undoConfirmIndex = state.transactions.indexOfFirst { it.id == undoConfirmTransactionId }
+    if (undoConfirmIndex >= 0)
+    {
+        val undone = state.transactions.drop(undoConfirmIndex)
+        AlertDialog(
+            onDismissRequest = { undoConfirmTransactionId = null },
+            title = { Text("撤销 ${undone.size} 个事务") },
+            text = {
+                Text(
+                    "为保持事务顺序，撤销此修改会同时撤销之后暂存的全部事务（包括其他 Entry 与功能模块的修改）：\n\n" +
+                        undone.take(6).joinToString("\n") { "• ${it.kind.displayName} · ${it.summary}" } +
+                        if (undone.size > 6) "\n… 等 ${undone.size} 个" else ""
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onUndoThroughTransaction(undone.first().id)
+                        undoConfirmTransactionId = null
+                    },
+                    enabled = !state.busy
+                ) {
+                    Text("全部撤销")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { undoConfirmTransactionId = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     if (deleteNodePath != null)
     {
         val targetPath = deleteNodePath!!
@@ -660,7 +717,8 @@ private fun TreeNodeCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = if (searchMode) 0.dp else (row.depth * 12).dp),
+            // Deep fixup paths would otherwise push the node name off a phone-width screen.
+            .padding(start = if (searchMode) 0.dp else (minOf(row.depth, MAX_INDENT_DEPTH) * 12).dp),
         colors = CardDefaults.cardColors(
             containerColor = if (selected)
             {
@@ -729,13 +787,18 @@ private fun TreeNodeCard(
             }
 
             Text(
-                "${node.propertyCount}P · ${node.childCount}N",
+                buildString {
+                    if (!searchMode && row.depth > MAX_INDENT_DEPTH) append("L${row.depth} · ")
+                    append("${node.propertyCount}P · ${node.childCount}N")
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
+
+private const val MAX_INDENT_DEPTH = 6
 
 @Composable
 private fun NodeDetailSheet(
@@ -751,79 +814,84 @@ private fun NodeDetailSheet(
     referenceIndex: DeviceTreeReferenceIndex?,
     onNavigateReference: (String) -> Unit
 ) {
-    Column(
+    // Lazy: __symbols__ / __fixups__ nodes can carry thousands of properties and references.
+    val listState = remember(node.path) { LazyListState() }
+    LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 680.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp)
-            .padding(bottom = 28.dp),
+            .heightIn(max = 680.dp),
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            node.name,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            node.path,
-            fontFamily = FontFamily.Monospace,
-            style = MaterialTheme.typography.bodySmall
-        )
-        node.label?.let {
-            Text(
-                "Label · $it",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        Text(
-            "${node.propertyCount} 个直接属性 · ${node.childCount} 个直接子节点",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        item(key = "header") {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    node.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    node.path,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                node.label?.let {
+                    Text(
+                        "Label · $it",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    "${node.propertyCount} 个直接属性 · ${node.childCount} 个直接子节点",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
-        OutlinedButton(
-            onClick = onAdd,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Default.Add, null)
-            Spacer(Modifier.width(8.dp))
-            Text("新增属性")
-        }
+                OutlinedButton(
+                    onClick = onAdd,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("新增属性")
+                }
 
-        Text(
-            "节点操作",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            AssistChip(
-                onClick = onAddChild,
-                label = { Text("新增子节点") }
-            )
-            if (node.path != "/")
-            {
-                AssistChip(
-                    onClick = onClone,
-                    label = { Text("克隆节点") }
+                Text(
+                    "节点操作",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
-                AssistChip(
-                    onClick = onRename,
-                    label = { Text("重命名") }
-                )
-                AssistChip(
-                    onClick = onDeleteNode,
-                    label = { Text("删除节点") }
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AssistChip(
+                        onClick = onAddChild,
+                        label = { Text("新增子节点") }
+                    )
+                    if (node.path != "/")
+                    {
+                        AssistChip(
+                            onClick = onClone,
+                            label = { Text("克隆节点") }
+                        )
+                        AssistChip(
+                            onClick = onRename,
+                            label = { Text("重命名") }
+                        )
+                        AssistChip(
+                            onClick = onDeleteNode,
+                            label = { Text("删除节点") }
+                        )
+                    }
+                }
             }
         }
 
-        ReferenceSection(
+        referenceItems(
             node = node,
             referenceIndex = referenceIndex,
             onNavigate = onNavigateReference
@@ -831,12 +899,14 @@ private fun NodeDetailSheet(
 
         if (node.children.isNotEmpty())
         {
-            Text(
-                "子节点",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            node.children.forEach { child ->
+            item(key = "children-title") {
+                Text(
+                    "子节点",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            items(node.children, key = { "child:${it.startOffset}" }) { child ->
                 OutlinedCard(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -864,22 +934,26 @@ private fun NodeDetailSheet(
             }
         }
 
-        Text(
-            "属性",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
+        item(key = "properties-title") {
+            Text(
+                "属性",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
 
         if (node.properties.isEmpty())
         {
-            Text(
-                "该节点没有直接属性。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            item(key = "properties-empty") {
+                Text(
+                    "该节点没有直接属性。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         else
         {
-            node.properties.forEach { property ->
+            items(node.properties, key = { "property:${it.startOffset}" }) { property ->
                 PropertyCard(
                     property = property,
                     onEdit = { onEdit(property) },
@@ -890,9 +964,7 @@ private fun NodeDetailSheet(
     }
 }
 
-
-@Composable
-private fun ReferenceSection(
+private fun LazyListScope.referenceItems(
     node: DeviceTreeNode,
     referenceIndex: DeviceTreeReferenceIndex?,
     onNavigate: (String) -> Unit
@@ -903,14 +975,8 @@ private fun ReferenceSection(
         return
     }
 
-    val aliases = referenceIndex.labels
-        .filterValues { it == node.path }
-        .keys
-        .sorted()
-    val phandles = referenceIndex.phandles
-        .filterValues { it == node.path }
-        .keys
-        .sorted()
+    val aliases = referenceIndex.labelsOf(node.path)
+    val phandles = referenceIndex.phandlesOf(node.path)
     val outgoing = referenceIndex.outgoing(node.path)
     val incoming = referenceIndex.incoming(node.path)
 
@@ -919,42 +985,48 @@ private fun ReferenceSection(
         return
     }
 
-    HorizontalDivider()
-    Text(
-        "引用关系",
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold
-    )
+    item(key = "references-header") {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            HorizontalDivider()
+            Text(
+                "引用关系",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
 
-    if (aliases.isNotEmpty())
-    {
-        Text(
-            "Label · " + aliases.joinToString { "&$it" },
-            fontFamily = FontFamily.Monospace,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary
-        )
-    }
+            if (aliases.isNotEmpty())
+            {
+                Text(
+                    "Label · " + aliases.joinToString { "&$it" },
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
 
-    if (phandles.isNotEmpty())
-    {
-        Text(
-            "Phandle · " + phandles.joinToString { "0x" + it.toString(16) },
-            fontFamily = FontFamily.Monospace,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+            if (phandles.isNotEmpty())
+            {
+                Text(
+                    "Phandle · " + phandles.joinToString { "0x" + it.toString(16) },
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 
     if (outgoing.isNotEmpty())
     {
-        Text(
-            "引用出去 · ${outgoing.size}",
-            style = MaterialTheme.typography.labelLarge
-        )
-        outgoing.forEach { reference ->
+        item(key = "references-outgoing") {
+            Text(
+                "引用出去 · ${outgoing.size}",
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+        items(outgoing.size) { index ->
             ReferenceCard(
-                reference = reference,
+                reference = outgoing[index],
                 incoming = false,
                 onNavigate = onNavigate
             )
@@ -963,13 +1035,15 @@ private fun ReferenceSection(
 
     if (incoming.isNotEmpty())
     {
-        Text(
-            "被引用 · ${incoming.size}",
-            style = MaterialTheme.typography.labelLarge
-        )
-        incoming.forEach { reference ->
+        item(key = "references-incoming") {
+            Text(
+                "被引用 · ${incoming.size}",
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+        items(incoming.size) { index ->
             ReferenceCard(
-                reference = reference,
+                reference = incoming[index],
                 incoming = true,
                 onNavigate = onNavigate
             )
@@ -1088,10 +1162,14 @@ private fun NodeNameDialog(
         NodeEditMode.RENAME -> node.name
     }
     var name by remember(mode, node.path) { mutableStateOf(initial) }
-    val valid = name.isNotBlank() &&
-        name != "/" &&
-        Regex("^[A-Za-z0-9,._@+#-]+$").matches(name) &&
-        (mode != NodeEditMode.RENAME || name != node.name)
+    val nameError = DeviceTreeNames.nodeNameError(name)
+        ?: when
+        {
+            mode == NodeEditMode.RENAME && name == node.name -> "新节点名与原节点名相同"
+            mode == NodeEditMode.ADD_CHILD && node.children.any { it.name == name } -> "已存在同名子节点"
+            else -> null
+        }
+    val valid = nameError == null
 
     val title = when (mode)
     {
@@ -1122,8 +1200,13 @@ private fun NodeNameDialog(
                     value = name,
                     onValueChange = { name = it.trim() },
                     label = { Text("节点名") },
+                    // An empty field is simply unfinished input, not an error worth shouting about.
+                    isError = name.isNotEmpty() && nameError != null,
                     supportingText = {
-                        Text("支持 unit-address，例如 timing@3、panel@ae94000")
+                        Text(
+                            nameError?.takeIf { name.isNotEmpty() }
+                                ?: "支持 unit-address，例如 timing@3、panel@ae94000"
+                        )
                     },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -1283,6 +1366,16 @@ private fun PropertyEditorDialog(
         mutableStateOf(property?.rawValue.orEmpty())
     }
 
+    val nameError = if (adding)
+    {
+        val trimmedName = name.trim()
+        DeviceTreeNames.propertyNameError(trimmedName)
+            ?: "属性已存在".takeIf { node.properties.any { it.name == trimmedName } }
+    }
+    else
+    {
+        null
+    }
     val typedSupported = DeviceTreeValueCodec.supportsTypedEditor(selectedType, if (rawMode) rawText.takeIf { it.isNotBlank() } else property?.rawValue)
     val useRaw = rawMode || !typedSupported
     val validationError = remember(selectedType, typedText, rawText, useRaw)
@@ -1329,6 +1422,10 @@ private fun PropertyEditorDialog(
                     onValueChange = { name = it },
                     enabled = adding,
                     label = { Text("属性名") },
+                    isError = adding && name.isNotEmpty() && nameError != null,
+                    supportingText = nameError?.takeIf { adding && name.isNotEmpty() }?.let { error ->
+                        { Text(error) }
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1495,7 +1592,7 @@ private fun PropertyEditorDialog(
                     }
                     onConfirm(name.trim(), rawValue)
                 },
-                enabled = name.isNotBlank() && validationError == null
+                enabled = nameError == null && validationError == null
             ) {
                 Text("暂存修改")
             }
@@ -1578,10 +1675,11 @@ private fun TypedValueField(
 
 @Composable
 private fun ChangeCard(
-    change: DeviceTreeChange,
+    row: StagedChangeRow,
     undoEnabled: Boolean,
     onUndo: () -> Unit
 ) {
+    val change = row.change
     Card(Modifier.fillMaxWidth()) {
         Column(
             Modifier.padding(12.dp),
@@ -1596,24 +1694,49 @@ private fun ChangeCard(
                 Icon(Icons.Default.History, null)
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    if (undoEnabled)
+                    if (row.laterTransactionCount == 0)
                     {
-                        "可撤销最近一项修改"
+                        "${row.transaction.kind.displayName} · 最近事务，可直接撤销"
                     }
                     else
                     {
-                        "后续已有修改，当前项不可单独撤销"
+                        "${row.transaction.kind.displayName} · 撤销会连带之后的 ${row.laterTransactionCount} 个事务"
                     },
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 TextButton(onClick = onUndo, enabled = undoEnabled) {
-                    Text("撤销")
+                    Text(if (row.laterTransactionCount == 0) "撤销" else "撤销到此处")
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ParseWarningsText(warnings: List<DeviceTreeParseWarning>)
+{
+    if (warnings.isEmpty())
+    {
+        return
+    }
+    // An unrecognised node header can shift every later node, so it deserves the error colour.
+    val structural = warnings.any { it.reason.contains("节点头") }
+    Text(
+        buildString {
+            append("解析提示：${warnings.size} 处语句未被编辑器识别，树中看不到它们，但 dtc 编译时仍会生效。")
+            warnings.take(3).forEach { warning ->
+                append("\n· 第 ${warning.lineNumber} 行 ${warning.reason}：${warning.statement}")
+            }
+            if (warnings.size > 3)
+            {
+                append("\n…")
+            }
+        },
+        style = MaterialTheme.typography.labelSmall,
+        color = if (structural) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+    )
 }
 
 private fun formatReferenceIndexError(error: Throwable): String

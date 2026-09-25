@@ -55,7 +55,7 @@ fun StudioScreen(
     onCloneDeviceTreeNode: (Int, String, String) -> Unit,
     onRenameDeviceTreeNode: (Int, String, String) -> Unit,
     onDeleteDeviceTreeNode: (Int, String) -> Unit,
-    onUndoDeviceTreeChange: (String) -> Unit,
+    onUndoThroughTransaction: (String) -> Unit,
     onUndoLastTransaction: () -> Unit,
     onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit,
     onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onFlash: () -> Unit,
@@ -80,7 +80,7 @@ fun StudioScreen(
                 onCloneNode = onCloneDeviceTreeNode,
                 onRenameNode = onRenameDeviceTreeNode,
                 onDeleteNode = onDeleteDeviceTreeNode,
-                onUndoChange = onUndoDeviceTreeChange
+                onUndoThroughTransaction = onUndoThroughTransaction
             )
             StudioTab.SETTINGS -> SettingsHubTab(state, padding, onRequestRoot, onRefreshEnvironment, onOpenRollback, onOpenAdvancedSettings, onOpenAbout)
         }

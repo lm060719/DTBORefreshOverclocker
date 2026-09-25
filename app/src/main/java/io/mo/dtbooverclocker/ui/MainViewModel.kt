@@ -445,54 +445,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun undoDeviceTreeChange(changeId: String) {
+    /** Undoes [transactionId] together with every transaction staged after it, as one atomic step. */
+    fun undoThroughTransaction(transactionId: String)
+    {
         launchWorkspaceOperation {
-            undoLastTransactionInternal(requiredGenericChangeId = changeId)
+            undoThroughTransactionInternal(transactionId)
         }
     }
 
     fun undoLastTransaction()
     {
-        launchWorkspaceOperation {
-            undoLastTransactionInternal(requiredGenericChangeId = null)
-        }
+        val last = _state.value.transactions.lastOrNull() ?: return
+        undoThroughTransaction(last.id)
     }
 
-    private suspend fun undoLastTransactionInternal(requiredGenericChangeId: String?)
+    private suspend fun undoThroughTransactionInternal(transactionId: String)
     {
         val current = _state.value
         val workspace = current.workspace ?: return
-        val transaction = current.transactions.lastOrNull() ?: return
-
-        if (requiredGenericChangeId != null)
-        {
-            val change = transaction.operations.singleOrNull { it.id == requiredGenericChangeId }
-            requireOrReport(
-                transaction.kind == DeviceTreeTransactionKind.GENERIC_EDIT && change != null
-            ) {
-                "为避免破坏事务顺序，设备树详情页只能撤销当前队列最后一个通用编辑事务。"
-            } ?: return
-        }
+        val index = current.transactions.indexOfFirst { it.id == transactionId }
+        requireOrReport(index >= 0) {
+            "事务已不在暂存队列中，可能已被撤销或重置"
+        } ?: return
+        val undone = current.transactions.subList(index, current.transactions.size).toList()
 
         runCatching {
             // Snapshot restore is byte-exact; inverse replay is only a fallback for snapshot-less transactions.
-            patchEngine.restoreUndoSnapshot(workspace, transaction.id)
+            patchEngine.restoreUndoSnapshots(workspace, undone.map { it.id })
                 ?: patchEngine.applyDeviceTreeChanges(
                     workspace,
-                    transaction.operations.asReversed().map { it.inverse() }
+                    undone.asReversed().flatMap { transaction ->
+                        transaction.operations.asReversed().map { it.inverse() }
+                    }
                 )
         }.onSuccess { updatedWorkspace ->
-            val remaining = current.transactions.dropLast(1)
+            val target = undone.first()
             _state.update {
                 it.copy(
                     workspace = updatedWorkspace,
-                    transactions = remaining,
+                    transactions = current.transactions.take(index),
                     patchReport = null,
                     lastFlash = null,
-                    status = "已原子撤销事务：${transaction.kind.displayName} · ${transaction.summary}"
+                    status = if (undone.size == 1)
+                    {
+                        "已原子撤销事务：${target.kind.displayName} · ${target.summary}"
+                    }
+                    else
+                    {
+                        "已原子撤销 ${undone.size} 个事务（自 ${target.kind.displayName} · ${target.summary} 起）"
+                    }
                 )
             }
-            refreshCapabilities(updatedWorkspace, transaction.entryIndices)
+            refreshCapabilities(updatedWorkspace, undone.flatMap { it.entryIndices }.toSet())
         }.onFailure(::showError)
     }
 

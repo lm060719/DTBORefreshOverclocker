@@ -94,10 +94,18 @@ data class DeviceTreeNode(
         get() = children.size
 }
 
+/** A source line the parser could not model; dtc may still compile it into the DTB. */
+data class DeviceTreeParseWarning(
+    val lineNumber: Int,
+    val statement: String,
+    val reason: String
+)
+
 data class DeviceTreeDocument(
     val entryIndex: Int,
     val root: DeviceTreeNode,
-    val sourceText: String
+    val sourceText: String,
+    val warnings: List<DeviceTreeParseWarning> = emptyList()
 )
 {
     /**

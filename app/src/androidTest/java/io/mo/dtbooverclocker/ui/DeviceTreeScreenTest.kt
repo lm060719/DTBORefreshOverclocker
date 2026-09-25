@@ -39,7 +39,7 @@ class DeviceTreeScreenTest {
                     onSetProperty = { _, _, _, _ -> }, onAddProperty = { _, _, _, _ -> },
                     onDeleteProperty = { _, _, _ -> }, onAddNode = { _, _, _ -> },
                     onCloneNode = { _, _, _ -> }, onRenameNode = { _, _, _ -> },
-                    onDeleteNode = { _, _ -> }, onUndoChange = {})
+                    onDeleteNode = { _, _ -> }, onUndoThroughTransaction = {})
             }
         }
         awaitText("/alpha")
@@ -86,7 +86,7 @@ class DeviceTreeScreenTest {
     }
 
     @Test
-    fun laterModuleTransactionDisablesGenericUndoAcrossEntries() {
+    fun laterModuleTransactionTurnsGenericUndoIntoConfirmedUndoThrough() {
         val generic = DeviceTreeTransaction.generic(SetPropertyChange(0, "/alpha", "value", "<0>", "<1>"))
         val module = DeviceTreeTransaction(
             kind = DeviceTreeTransactionKind.CHARGING, summary = "module edit",
@@ -94,9 +94,11 @@ class DeviceTreeScreenTest {
             risk = DeviceTreeTransactionRisk.EXPORT_ONLY, directFlashAllowed = false
         )
         show(listOf(generic, module))
-        compose.onNodeWithText("撤销").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("撤销到此处").performScrollTo().assertIsEnabled().performClick()
+        awaitText("撤销 2 个事务")
+        compose.onNodeWithText("取消").performClick()
         compose.runOnIdle { state.value = state.value.copy(transactions = listOf(generic)) }
-        awaitText("可撤销最近一项修改")
+        awaitText("设备树编辑 · 最近事务，可直接撤销")
         compose.onNodeWithText("撤销").assertIsEnabled()
     }
 }

@@ -23,6 +23,10 @@ object DeviceTreeParser
     private val whitespaceRegex = Regex("\\s+")
     private val quotedStringRegex = Regex("\\\"(?:\\\\.|[^\\\"])*\\\"")
 
+    // Directives the line-based parser cannot model; dtc still honours them at compile time.
+    private val unsupportedDirectives = listOf("/delete-node/", "/delete-property/", "/include/", "/omit-if-no-ref/")
+    private const val MAX_WARNINGS = 100
+
     fun parse(entryIndex: Int, text: String, checkCancellation: () -> Unit = {}): DeviceTreeDocument
     {
         val stack = mutableListOf<MutableNode>()
@@ -31,6 +35,16 @@ object DeviceTreeParser
         var pendingStart = -1
         var pendingIndent = ""
         val pending = StringBuilder()
+        var pendingLineNumber = 0
+        var lineNumber = 0
+        val warnings = mutableListOf<DeviceTreeParseWarning>()
+        fun warn(line: Int, statement: String, reason: String)
+        {
+            if (warnings.size < MAX_WARNINGS)
+            {
+                warnings += DeviceTreeParseWarning(line, statement.take(120), reason)
+            }
+        }
 
         // DTS 往往是数 MB 的大文本。旧实现用正则 findAll() 拆行，会为每一行创建
         // MatchResult；在 OPlus/Qualcomm 大型 overlay 上能力扫描会被明显放大。
@@ -65,6 +79,7 @@ object DeviceTreeParser
 
             val line = text.substring(lineStart, lineEnd)
             val trimmed = line.trim()
+            lineNumber++
 
             if (pending.isNotEmpty())
             {
@@ -72,8 +87,15 @@ object DeviceTreeParser
                 if (trimmed.endsWith(';'))
                 {
                     stack.lastOrNull()?.let { node ->
-                        parseProperty(pending.toString(), pendingStart, lineStart + line.length, pendingIndent)?.let {
-                            node.properties += it
+                        val statement = pending.toString()
+                        val property = parseProperty(statement, pendingStart, lineStart + line.length, pendingIndent)
+                        if (property != null)
+                        {
+                            node.properties += property
+                        }
+                        else
+                        {
+                            warn(pendingLineNumber, statement.trim(), "无法识别的属性语句，已忽略")
                         }
                     }
                     pending.clear()
@@ -140,17 +162,33 @@ object DeviceTreeParser
                 continue
             }
 
-            if (stack.isNotEmpty() && trimmed.isNotEmpty() && !trimmed.startsWith("/") && !trimmed.startsWith("//"))
+            if (trimmed.endsWith('{'))
+            {
+                // e.g. `&label {` overlay syntax: its closing `};` will pop the wrong node from here on.
+                warn(lineNumber, trimmed, "无法识别的节点头，之后的层级结构可能错位")
+            }
+            else if (unsupportedDirectives.any { trimmed.startsWith(it) })
+            {
+                warn(lineNumber, trimmed, "不支持的 DTS 指令，已忽略")
+            }
+            else if (stack.isNotEmpty() && trimmed.isNotEmpty() && !trimmed.startsWith("/") && !trimmed.startsWith("//"))
             {
                 if (trimmed.endsWith(';'))
                 {
-                    parseProperty(line, lineStart, lineStart + line.length, line.takeWhile(Char::isWhitespace))?.let {
-                        stack.last().properties += it
+                    val property = parseProperty(line, lineStart, lineStart + line.length, line.takeWhile(Char::isWhitespace))
+                    if (property != null)
+                    {
+                        stack.last().properties += property
+                    }
+                    else
+                    {
+                        warn(lineNumber, trimmed, "无法识别的属性语句，已忽略")
                     }
                 }
                 else if ("=" in trimmed)
                 {
                     pendingStart = lineStart
+                    pendingLineNumber = lineNumber
                     pendingIndent = line.takeWhile(Char::isWhitespace)
                     pending.append(line)
                 }
@@ -160,7 +198,7 @@ object DeviceTreeParser
         }
 
         val parsedRoot = requireNotNull(root) { "DTS 中没有找到根节点" }
-        return DeviceTreeDocument(entryIndex, parsedRoot, text)
+        return DeviceTreeDocument(entryIndex, parsedRoot, text, warnings.toList())
     }
 
     private fun parseProperty(

@@ -242,7 +242,7 @@ class DeviceWorkflowVerificationTest {
             apply(DeviceTreeEditor.buildCloneNodeChange(entry, text(), cloneSource.path, "${cloneSource.name.substringBefore('@')}_clone"))
             apply(DeviceTreeEditor.buildRenameNodeChange(entry, text(), "$parentPath/${cloneSource.name.substringBefore('@')}_clone", "dtbo_studio_renamed"))
             apply(DeviceTreeEditor.buildAddNodeChange(entry, text(), panelPath, "dtbo_studio_undo"))
-            // Undo the last transaction exactly like MainViewModel.undoLastTransactionInternal.
+            // Undo the last transaction via inverse replay, the fallback path of MainViewModel.undoThroughTransactionInternal.
             current = engine.applyDeviceTreeChanges(current, ops.removeAt(ops.lastIndex).operations.asReversed().map { it.inverse() })
             staged += ops
             packageAndExport("generic", ops.toList(), current) { re ->
