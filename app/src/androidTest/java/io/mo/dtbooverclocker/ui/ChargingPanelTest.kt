@@ -52,6 +52,7 @@ class ChargingPanelTest {
         }
     }
     private fun input(label: String = "最大快充电流（mA）") = compose.onNode(hasSetTextAction() and hasText(label))
+    private fun cell(label: String) = compose.onNode(hasSetTextAction() and hasContentDescription(label))
     private fun stage() = compose.onNodeWithText("暂存充电修改（仅导出验证）")
 
     @Test fun actualPhoneMcaGroupsKeepDraftsAndStageHiddenFields() {
@@ -71,9 +72,8 @@ class ChargingPanelTest {
         }
         compose.onNodeWithText("切换充电节点（14）").performScrollTo().performClick()
         compose.onNodeWithText("/fragment@45/__overlay__/mca_charger_thermal").performScrollTo().performClick()
-        input("有线温控 · 5 V 输入 · 第 1 档（mA）").performScrollTo().performTextReplacement("1950")
-        compose.onNodeWithText("无线温控 · CP 50 W").performScrollTo().performClick()
-        input("无线温控 · CP 50 W · 第 1 档（mA）").performScrollTo().performTextReplacement("8500")
+        cell("有线温控 · 5 V 输入 · 第 1 档").performScrollTo().performTextReplacement("1950")
+        cell("无线温控 · CP 50 W · 第 1 档").performScrollTo().performTextReplacement("8500")
         stage().performScrollTo().assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals("1950", staged?.second?.get("wired_thermal[0]"))
@@ -162,12 +162,13 @@ class ChargingPanelTest {
         """.trimIndent())
         compose.onNodeWithText("Overlay 目标：&battery_charger").assertExists()
         for ((index, value) in listOf("3000", "1500", "1000", "500").withIndex()) {
-            input("温控限流 · 第 ${index + 1} 档（mA）").performScrollTo().assertTextContains(value)
+            cell("温控限流 · 第 ${index + 1} 档").performScrollTo().assertTextContains(value)
         }
-        input("温控限流 · 第 2 档（mA）").performScrollTo().performTextReplacement("3500")
+        cell("温控限流 · 第 2 档").performScrollTo().performTextReplacement("3500")
         stage().performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("温控限流必须按档位非递增排列，同一通道的后一档不能大于前一档").assertExists()
-        input("温控限流 · 第 2 档（mA）").performScrollTo().performTextReplacement("1400")
+        compose.onNodeWithText("红框：数值无效，或高于上一档。同一通道的后一档不能高于前一档。").assertExists()
+        cell("温控限流 · 第 2 档").performScrollTo().performTextReplacement("1400")
         stage().performScrollTo().assertIsEnabled().performClick()
         compose.runOnIdle {
             assertEquals("/fragment@22/__overlay__", staged?.first?.nodePath)
@@ -177,6 +178,6 @@ class ChargingPanelTest {
         compose.onNodeWithText("切换充电节点（2）").performScrollTo().performClick()
         compose.onNodeWithText("/charger_therm0").performScrollTo().performClick()
         compose.onNodeWithText("切换到可编辑节点").performScrollTo().performClick()
-        input("温控限流 · 第 2 档（mA）").assertTextContains("1400")
+        cell("温控限流 · 第 2 档").assertTextContains("1400")
     }
 }

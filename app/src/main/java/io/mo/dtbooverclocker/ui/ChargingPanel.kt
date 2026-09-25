@@ -58,6 +58,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
         if (selectedKey != node.key) selectedKey = node.key
     }
     var selecting by rememberSaveable { mutableStateOf(false) }
+    val thermalNode = remember(editableNodes) { editableNodes.firstOrNull(::hasThermalTable) }
     val drafts = rememberSaveableStateHolder()
 
     Card(Modifier.fillMaxWidth()) {
@@ -115,6 +116,12 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     Text("${node.editableCount} 个可编辑参数 · status: ${node.status ?: "未声明"}", style = MaterialTheme.typography.labelSmall)
                 }
             }
+            if (thermalNode != null && thermalNode.key != node.key) {
+                FilledTonalButton(onClick = { selectedKey = thermalNode.key; selecting = false }, enabled = enabled,
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text("转到温控表：DTB ${thermalNode.entryIndex} · ${thermalNode.nodePath.substringAfterLast('/')}")
+                }
+            }
             if (visibleNodes.size > 1) {
                 OutlinedButton(onClick = { selecting = !selecting }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
                     Text(if (selecting) "收起节点列表" else "切换充电节点（${visibleNodes.size}）")
@@ -128,7 +135,8 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (candidate.key == node.key) Icon(Icons.Default.CheckCircle, "当前节点", tint = MaterialTheme.colorScheme.primary)
                             Column(Modifier.weight(1f)) {
-                                Text("DTB ${candidate.entryIndex} · ${candidate.editableCount} 个可编辑参数", style = MaterialTheme.typography.labelLarge)
+                                Text("DTB ${candidate.entryIndex} · ${candidate.editableCount} 个可编辑参数" +
+                                    if (hasThermalTable(candidate)) " · 含温控表" else "", style = MaterialTheme.typography.labelLarge)
                                 Text(candidate.nodePath, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                             }
                         }
@@ -160,6 +168,9 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
     }
 }
 
+private fun hasThermalTable(node: ChargingNode) =
+    node.fields.any { it.issue == null && it.cellIndex != null && it.parameter.descendingStride > 0 }
+
 @Composable
 private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (ChargingNode, Map<String, String>) -> Unit) {
     val fields = node.fields.filter { it.issue == null }
@@ -173,10 +184,13 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
     val result = remember(node, values) { runCatching { ChargingPlanner.preview(node, inputs) } }
     val preview = result.getOrNull()
     val dirty = values != original
-    val groups = remember(node) { fields.map { it.group }.distinct() }
+    val tables = remember(node) { ThermalTable.from(fields) }
+    val tableCells = remember(tables) { tables.flatMap { it.cells }.toSet() }
+    val plainIndices = remember(node, tableCells) { fields.indices.filter { it !in tableCells } }
+    val groups = remember(node) { plainIndices.map { fields[it].group }.distinct() }
     var selectedGroup by rememberSaveable(node) { mutableStateOf(groups.firstOrNull().orEmpty()) }
     var page by rememberSaveable(node, selectedGroup) { mutableIntStateOf(0) }
-    val groupIndices = fields.indices.filter { fields[it].group == selectedGroup }
+    val groupIndices = plainIndices.filter { fields[it].group == selectedGroup }
     val pageCount = ((groupIndices.size + 15) / 16).coerceAtLeast(1)
 
     if (fields.isEmpty()) {
@@ -185,15 +199,21 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
         Text("充电参数", style = MaterialTheme.typography.labelLarge)
         Text("按参数标注的单位编辑，自动换算为设备树单位；只修改当前 DTB 的当前节点。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (fields.any { it.parameter.descendingStride > 0 }) {
-            Text("温控表按通道和档位编辑，同一通道的后一档不能高于前一档。保持原有档位数量；表中数值为温控限流值。",
+        if (tables.isNotEmpty()) {
+            Text("温控表中的数值是各温控档位的限流值，保持原有档位数量；同一通道的后一档不能高于前一档。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        tables.forEach { table ->
+            ThermalTableEditor(table, fields, values, original, enabled) { updates ->
+                values = values.mapIndexed { position, previous -> updates[position] ?: previous }
+            }
+        }
+        if (tables.isNotEmpty() && groups.isNotEmpty()) Text("其他参数", style = MaterialTheme.typography.labelLarge)
         if (groups.size > 1) {
             Text("参数分组（可左右滑动）", style = MaterialTheme.typography.labelMedium)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 groups.forEach { group ->
-                    val changedCount = fields.indices.count { fields[it].group == group && values[it] != original[it] }
+                    val changedCount = plainIndices.count { fields[it].group == group && values[it] != original[it] }
                     FilterChip(selected = selectedGroup == group, onClick = { selectedGroup = group; page = 0 },
                         label = { Text(group + if (changedCount > 0) " · $changedCount 项待暂存" else "") })
                 }

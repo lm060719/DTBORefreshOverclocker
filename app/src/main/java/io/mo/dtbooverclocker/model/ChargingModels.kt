@@ -21,7 +21,9 @@ data class ChargingField(
     val value: Long?,
     val issue: String? = null,
     val cellIndex: Int? = null,
-    val group: String = "基础参数"
+    val group: String = "基础参数",
+    /** Channel name when this cell belongs to a level × channel thermal table. */
+    val column: String? = null
 ) {
     val inputKey: String get() = cellIndex?.let { "${parameter.name}[$it]" } ?: parameter.name
 }

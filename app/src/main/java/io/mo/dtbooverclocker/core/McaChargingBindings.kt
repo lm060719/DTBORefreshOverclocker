@@ -94,7 +94,8 @@ internal object McaChargingBindings {
                 val label = if (binding.thermal) "$group · 第 ${index / binding.columns.size + 1} 档"
                     else if (column != null) "${binding.parameter.label} · $column" else binding.parameter.label
                 ChargingField(binding.parameter.copy(label = label), true, property.rawValue, value,
-                    cellIndex = if (binding.columns.isEmpty()) null else index, group = group)
+                    cellIndex = if (binding.columns.isEmpty()) null else index, group = group,
+                    column = if (binding.thermal) column else null)
             }
         }
     }
