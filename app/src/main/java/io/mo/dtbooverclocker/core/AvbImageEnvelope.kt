@@ -7,9 +7,10 @@ import java.nio.ByteOrder
 import java.security.MessageDigest
 
 /** Preserves the partition dump layout, including identical AVB footer copies and trailing padding.
- * Only unsigned hash descriptors can be updated without a signing key. Unknown nonzero trailers
- * around an AVB envelope and signed vbmeta fail closed instead of silently producing an incomplete
- * flashable image. Without any AVB structure, bytes after total_size are leftovers of an older DTBO
+ * Hash descriptors are always updated. Signed vbmeta is rebuilt too: its authentication hash is
+ * recomputed, but the vendor RSA signature cannot be, so the output only boots on an unlocked
+ * bootloader. Unknown nonzero trailers around an AVB envelope fail closed instead of silently
+ * producing an incomplete flashable image. Without any AVB structure, bytes after total_size are leftovers of an older DTBO
  * (seen on Realme dumps); the loader never reads them, so rebuild zero-fills them.
  */
 object AvbImageEnvelope {
@@ -58,7 +59,8 @@ object AvbImageEnvelope {
         original: ByteArray, originalTotal: Int, payload: ByteArray,
         logSink: (String) -> Unit = {}
     ): ByteArray {
-        val inspection = validate(original, originalTotal, logSink, "REBUILD_ORIGINAL")
+        val inspection = validateForAnalysis(original, originalTotal, logSink, "REBUILD_ORIGINAL")
+        val signed = inspection.protectionState == AvbProtectionState.SIGNED
         val layout = inspection.layout
         if (layout == null) {
             if (inspection.staleTailBytes > 0) {
@@ -71,11 +73,17 @@ object AvbImageEnvelope {
             }
         }
         val vbmeta = original.copyOfRange(layout.vbmeta, layout.vbmeta + layout.size)
-        val fields = hashFields(vbmeta)
+        val fields = hashFields(vbmeta, allowUnknownDescriptors = signed)
         val vb = buffer(vbmeta)
         fields.forEach { field ->
             vb.putLong(field.descriptor + 16, payload.size.toLong())
             digest(field, payload, payload.size).copyInto(vbmeta, field.digest)
+        }
+        if (signed) {
+            // Keep vbmeta self-consistent; only the RSA signature over it is now stale.
+            val header = parseVbmetaHeader(vbmeta)
+            authenticationDigest(vbmeta, header)?.copyInto(vbmeta, 256 + header.hashOffset)
+            logSink("[AVB][REBUILD] 已签名 AVB (${inspection.algorithm})：已更新 dtbo 哈希与 vbmeta 认证摘要，原签名数据保留")
         }
         // AVB uses 4096-byte image alignment independently of the DTBO table's page_size.
         val newOffset = ((payload.size.toLong() + 4095) / 4096 * 4096)
@@ -89,13 +97,15 @@ object AvbImageEnvelope {
             outputBuffer.putLong(footer + 12, payload.size.toLong())
             outputBuffer.putLong(footer + 20, newOffset)
         }
-        validate(result, payload.size, logSink, "REBUILD_OUTPUT")
+        validate(result, payload.size, logSink, "REBUILD_OUTPUT", allowSigned = signed)
         return result
     }
 
+    /** [allowSigned] accepts a rebuilt signed image whose hashes are consistent but whose RSA signature is stale. */
     fun validate(
-        bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "VALIDATE"
-    ): Inspection = validateInternal(bytes, total, logSink, stage, allowSigned = false)
+        bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "VALIDATE",
+        allowSigned: Boolean = false
+    ): Inspection = validateInternal(bytes, total, logSink, stage, allowSigned)
 
     /**
      * Import-time validation is intentionally less restrictive than rebuild validation.
@@ -128,8 +138,7 @@ object AvbImageEnvelope {
                 }
                 validateAuthenticationHash(vbmeta, header)
                 logSink(
-                    "[WARN][AVB][$stage] 检测到已签名 AVB (${algorithmName(header.algorithmType)}); " +
-                        "允许进入设备树工作区，但修改后的镜像仍需原签名密钥才能生成有效签名"
+                    "[AVB][$stage] 检测到已签名 AVB (${algorithmName(header.algorithmType)})"
                 )
             }
             hashFields(vbmeta, allowUnknownDescriptors = allowSigned).forEach { field ->
@@ -341,17 +350,17 @@ object AvbImageEnvelope {
         }
         require(header.signatureSize > 0) { "AVB 标记为已签名，但签名数据为空" }
 
-        val authBase = 256
-        val auxBase = authBase + header.authenticationSize
-        val storedHash = v.copyOfRange(
-            authBase + header.hashOffset,
-            authBase + header.hashOffset + header.hashSize
-        )
-        val calculated = MessageDigest.getInstance(digestAlgorithm).apply {
+        val storedHash = v.copyOfRange(256 + header.hashOffset, 256 + header.hashOffset + header.hashSize)
+        require(storedHash.contentEquals(authenticationDigest(v, header))) { "AVB vbmeta 认证摘要校验失败" }
+    }
+
+    /** SHA over the vbmeta header and auxiliary block, as stored in the authentication block. */
+    private fun authenticationDigest(v: ByteArray, header: VbmetaHeader): ByteArray? {
+        val digestAlgorithm = authenticationDigestAlgorithm(header.algorithmType) ?: return null
+        return MessageDigest.getInstance(digestAlgorithm).apply {
             update(v, 0, 256)
-            update(v, auxBase, header.auxiliarySize)
+            update(v, 256 + header.authenticationSize, header.auxiliarySize)
         }.digest()
-        require(storedHash.contentEquals(calculated)) { "AVB vbmeta 认证摘要校验失败" }
     }
 
     private fun authenticationDigestAlgorithm(algorithmType: Int): String? = when (algorithmType) {

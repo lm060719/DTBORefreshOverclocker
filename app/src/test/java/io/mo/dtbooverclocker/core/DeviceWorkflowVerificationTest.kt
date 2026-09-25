@@ -35,6 +35,8 @@ class DeviceWorkflowVerificationTest {
 
     @Test fun meizuImageCompletesFullWorkflow() = verifyDevice("meizu21")
 
+    @Test fun xiaomiImageCompletesFullWorkflow() = verifyDevice("小米15ultra镜像")
+
     private class Step(val name: String, val ok: Boolean, val detail: String, val guarded: Boolean = false)
 
     /** A planner refusing an unsafe edit is the intended outcome, not a workflow failure. */
@@ -134,6 +136,7 @@ class DeviceWorkflowVerificationTest {
             require(HashUtils.sha256(exported) == HashUtils.sha256(patch.outputImage)) { "导出副本与打包结果不一致" }
             require(exported.length() == image.length()) { "导出尺寸 ${exported.length()} ≠ 原始 ${image.length()}" }
             val reimported = engine.analyze(exported)
+            if (signed) require(reimported.sourceImage?.avbProtectionState == AvbProtectionState.SIGNED) { "导出镜像的 AVB 结构丢失" }
             require(reimported.dtsFiles.size == reimported.binaryImage.entries.size) { "导出镜像重新导入后反编译不完整" }
             val untouched = workspace.binaryImage.entries.indices.filter { it !in transactions.flatMap { t -> t.entryIndices } }
             require(untouched.all { reimported.binaryImage.entries[it].decodedBytes.contentEquals(workspace.binaryImage.entries[it].decodedBytes) }) {
@@ -159,7 +162,6 @@ class DeviceWorkflowVerificationTest {
             }
             val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings, true)
             staged += tx
-            if (signed) return@step appendRefusal + result.stagedChange.summary + "；" + expectSignedBlock(engine, result.updatedWorkspace, tx)
             packageAndExport("refresh_$target", listOf(tx), result.updatedWorkspace) { re ->
                 val found = re.candidates.filter { it.entryIndex == candidate.entryIndex && it.currentHz == target }
                 require(found.isNotEmpty()) { "重新导入后未找到 ${target}Hz 档位" }
@@ -174,7 +176,6 @@ class DeviceWorkflowVerificationTest {
             } ?: throw GuardRefusal("镜像中没有无 clockrate 的 120Hz 完整时序档位，跳过")
             val result = engine.applyTimingChange(base, candidate, 144, PatchStrategy.BALANCED_BLANKING_TIME, PatchMode.OVERWRITE_EXISTING)
             val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings, true)
-            if (signed) return@step result.stagedChange.summary + "；" + expectSignedBlock(engine, result.updatedWorkspace, tx)
             packageAndExport("clockless_144", listOf(tx), result.updatedWorkspace) { re ->
                 val after = re.candidates.first { it.entryIndex == candidate.entryIndex && it.nodePath == candidate.nodePath }
                 require(after.currentHz == 144 && after.pixelClockHz == null) { "回读 ${after.currentHz}Hz clock=${after.pixelClockHz}" }
@@ -204,7 +205,6 @@ class DeviceWorkflowVerificationTest {
                 .getOrElse { if (it is IllegalArgumentException) throw GuardRefusal("按设计拒绝：${it.message}") else throw it }
             val tx = DeviceTreeTransaction.resolution(result.stagedChange, result.operations)
             staged += tx
-            if (signed) return@step expectSignedBlock(engine, result.updatedWorkspace, tx)
             packageAndExport("resolution_${w}x$h", listOf(tx), result.updatedWorkspace) { re ->
                 val found = re.candidates.filter { it.entryIndex == candidate.entryIndex && it.hActive == w && it.vActive == h }
                 require(found.size == result.stagedChange.affectedNodePaths.size) {
@@ -227,7 +227,6 @@ class DeviceWorkflowVerificationTest {
             val params = current.copy(sliceHeight = newHeight)
             val (updated, tx) = engine.applyDscChange(base, topology.entryIndex, topology.nodePath, params)
             staged += tx
-            if (signed) return@step expectSignedBlock(engine, updated, tx)
             packageAndExport("dsc", listOf(tx), updated) { re ->
                 val after = CapabilityScanner.scan(re).dscTopologies.first { it.entryIndex == topology.entryIndex && it.nodePath == topology.nodePath }
                 require(after.sliceHeight == newHeight) { "重新导入后 slice height=${after.sliceHeight}" }
@@ -250,7 +249,6 @@ class DeviceWorkflowVerificationTest {
             }.firstOrNull() ?: throw GuardRefusal("仅可分析：${nodes.size} 个充电节点中没有可编辑参数")
             val (updated, tx) = engine.applyChargingChange(base, node, mapOf(key to input))
             staged += tx
-            if (signed) return@step expectSignedBlock(engine, updated, tx)
             packageAndExport("charging", listOf(tx), updated) { re ->
                 val after = CapabilityScanner.scan(re).chargingNodes.first { it.entryIndex == node.entryIndex && it.nodePath == node.nodePath }
                 val field = after.fields.first { it.inputKey == key }
@@ -289,11 +287,15 @@ class DeviceWorkflowVerificationTest {
             // Undo the last transaction exactly like MainViewModel.undoLastTransactionInternal.
             current = engine.applyDeviceTreeChanges(current, ops.removeAt(ops.lastIndex).operations.asReversed().map { it.inverse() })
             staged += ops
-            if (signed) return@step expectSignedBlock(engine, current, ops.first())
             packageAndExport("generic", ops.toList(), current) { re ->
                 val redoc = DeviceTreeParser.parse(entry, File(re.rootDir, "dts/entry_$entry.dts").readText())
                 val node = requireNotNull(redoc.findNode(panelPath))
-                require(node.properties.first { it.name == u32.name }.rawValue == newValue) { "${u32.name} 未回写" }
+                // dtc re-emits small cells zero-padded (<0x2> -> <0x02>), so compare values, not text.
+                val written = io.mo.dtbooverclocker.core.devicetree.DtsNumericValueCodec.decodeU32(
+                    node.properties.first { it.name == u32.name }.rawValue)
+                require(written == io.mo.dtbooverclocker.core.devicetree.DtsNumericValueCodec.decodeU32(newValue)) {
+                    "${u32.name} 未回写：${node.properties.first { it.name == u32.name }.rawValue}"
+                }
                 require(node.properties.any { it.name == "dtbo-studio,verify" }) { "新增属性缺失" }
                 require(node.properties.none { it.name == "dtbo-studio,to-delete" }) { "删除属性仍存在" }
                 require(redoc.findNode("$panelPath/dtbo_studio_node") != null) { "新增节点缺失" }
@@ -312,16 +314,14 @@ class DeviceWorkflowVerificationTest {
             val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings, true)
             val scan = kotlinx.coroutines.coroutineScope {
                 val scanJob = async(kotlinx.coroutines.Dispatchers.Default) { CapabilityScanner.scan(result.updatedWorkspace) }
-                if (!signed) engine.packageStaged(result.updatedWorkspace, listOf(tx))
+                engine.packageStaged(result.updatedWorkspace, listOf(tx))
                 scanJob.await()
             }
             val runtime = Runtime.getRuntime()
-            "扫描 ${scan.nodeCount} 节点与打包并发完成；堆上限 ${runtime.maxMemory() / 1048576} MB" +
-                if (signed) "（已签名镜像仅并发扫描与暂存）" else ""
+            "扫描 ${scan.nodeCount} 节点与打包并发完成；堆上限 ${runtime.maxMemory() / 1048576} MB"
         }
 
         step("全部事务合并打包导出") {
-            if (signed) throw GuardRefusal("已签名 AVB：各模块均已验证可暂存，打包按设计被阻止，合并打包跳过")
             // Replay every staged operation on a fresh workspace, as the overview queue would.
             val base = engine.resetWorkspace(workspace)
             val refreshTx = staged.firstOrNull { it.timingChange != null }
@@ -340,11 +340,6 @@ class DeviceWorkflowVerificationTest {
         report(label, steps)
     }
 
-    private suspend fun expectSignedBlock(engine: DtboPatchEngine, ws: DtboWorkspace, tx: DeviceTreeTransaction): String {
-        val failure = runCatching { engine.packageStaged(ws, listOf(tx)) }.exceptionOrNull()
-        require(failure != null) { "已签名 AVB 镜像未被阻止打包" }
-        return "暂存成功；打包按设计被 AVB 签名保护阻止：${failure.message?.take(40)}"
-    }
 
     private fun report(folder: String, steps: List<Step>) {
         println("\n===== $folder =====")

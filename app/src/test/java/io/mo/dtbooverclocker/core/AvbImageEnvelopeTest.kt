@@ -135,7 +135,7 @@ class AvbImageEnvelopeTest {
         }
     }
 
-    @Test fun refusesSignedAndStaleAvbTrailers() {
+    @Test fun refusesMalformedSignedAndStaleAvbTrailers() {
         val raw = fixture()
         val payload = raw.copyOf(128)
         val signed = raw.copyOf().apply { ByteBuffer.wrap(this).putInt(4096 + 28, 1) }
@@ -388,7 +388,7 @@ class AvbImageEnvelopeTest {
         }.message!!.contains("不支持的 AVB footer 版本"))
     }
 
-    @Test fun signedAvbMayEnterAnalysisWorkspaceButRebuildRemainsBlocked() {
+    @Test fun signedAvbRebuildsWithConsistentHashesAndStaleVendorSignature() {
         val raw = signedFixture()
         val logs = mutableListOf<String>()
         val inspection = AvbImageEnvelope.validateForAnalysis(raw, 128, logs::add, "STAGED_INPUT")
@@ -396,21 +396,29 @@ class AvbImageEnvelopeTest {
         assertEquals(AvbProtectionState.SIGNED, inspection.protectionState)
         assertEquals("SHA256_RSA4096", inspection.algorithm)
         assertEquals(1, inspection.validFooters)
-        assertTrue(logs.any { it.contains("允许进入设备树工作区") })
-
-        val strictError = assertThrows(IllegalArgumentException::class.java) {
+        assertTrue(logs.any { it.contains("检测到已签名 AVB (SHA256_RSA4096)") })
+        // Strict validation still reports the image as signed.
+        assertTrue(assertThrows(IllegalArgumentException::class.java) {
             AvbImageEnvelope.validate(raw, 128)
-        }
-        assertTrue(strictError.message!!.contains("AVB 签名"))
+        }.message!!.contains("AVB 签名"))
 
-        val rebuildError = assertThrows(IllegalArgumentException::class.java) {
-            AvbImageEnvelope.rebuild(raw, 128, raw.copyOf(128).apply { this[100] = 7 })
-        }
-        assertTrue(rebuildError.message!!.contains("AVB 签名"))
+        val payload = raw.copyOf(128).apply { this[100] = 7 }
+        val rebuildLogs = mutableListOf<String>()
+        val result = AvbImageEnvelope.rebuild(raw, 128, payload, rebuildLogs::add)
+        assertTrue(rebuildLogs.any { it.contains("已更新 dtbo 哈希与 vbmeta 认证摘要") })
+
+        // New dtbo digest and recomputed authentication hash both verify.
+        val rebuilt = AvbImageEnvelope.validate(result, 128, allowSigned = true)
+        assertEquals(AvbProtectionState.SIGNED, rebuilt.protectionState)
+        assertArrayEquals(payload, result.copyOf(128))
+        val vbmeta = 4096
+        assertTrue(!result.copyOfRange(vbmeta + 256, vbmeta + 288).contentEquals(raw.copyOfRange(vbmeta + 256, vbmeta + 288)))
+        // The vendor RSA signature bytes are kept untouched.
+        assertArrayEquals(raw.copyOfRange(vbmeta + 288, vbmeta + 800), result.copyOfRange(vbmeta + 288, vbmeta + 800))
     }
 
     /** Opt in with -Ddtbo.signedSampleImage=<path to the signed OPlus/OnePlus dtbo_a.img>. */
-    @Test fun reportedSignedOplusImageAnalyzesWithoutWeakeningRebuildSafety() {
+    @Test fun reportedSignedOplusImageAnalyzesAndStaysSignedUnderStrictValidation() {
         val sample = System.getProperty("dtbo.signedSampleImage", "") ?: ""
         org.junit.Assume.assumeTrue("Local signed OPlus AVB sample was not configured", sample.isNotBlank())
         val raw = File(sample).readBytes()

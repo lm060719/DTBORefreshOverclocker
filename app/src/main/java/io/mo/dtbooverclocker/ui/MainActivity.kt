@@ -560,13 +560,6 @@ internal fun ImageSummaryCard(state: MainUiState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (workspace.sourceImage?.avbProtectionState == AvbProtectionState.SIGNED) {
-                Text(
-                    "检测到原厂签名 AVB。当前可正常浏览、搜索和编辑设备树；生成修改镜像时会保持安全拦截，避免输出签名失效的可刷写镜像。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary
-                )
-            }
 
             Text(
                 workspace.inputImage.name,

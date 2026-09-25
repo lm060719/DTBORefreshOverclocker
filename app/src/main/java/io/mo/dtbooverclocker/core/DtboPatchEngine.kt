@@ -393,13 +393,9 @@ class DtboPatchEngine(
     ): PatchReport = withContext(Dispatchers.IO) {
         require(transactions.isNotEmpty()) { "暂存事务列表为空，无需打包" }
 
-        workspace.sourceImage?.let { source ->
-            require(source.avbProtectionState != AvbProtectionState.SIGNED) {
-                "当前 DTBO 使用已签名 AVB${source.avbAlgorithm?.let { " ($it)" }.orEmpty()}。" +
-                    "设备树可以继续浏览和编辑，但修改后原厂签名会失效；" +
-                    "在提供重新签名能力前，已阻止生成可能无法启动的修改镜像。"
-            }
-        }
+        // Anyone able to flash this tool's output has an unlocked bootloader, which tolerates the
+        // stale vendor signature; the hashes inside vbmeta are still rebuilt consistently.
+        val signedSource = workspace.sourceImage?.avbProtectionState == AvbProtectionState.SIGNED
 
         val stagedChanges = transactions.mapNotNull { it.timingChange }
         val moduleStagedChanges = transactions.mapNotNull { it.moduleChange }
@@ -490,7 +486,8 @@ class DtboPatchEngine(
         // Parsed once and shared by every check: partition-sized images (24 MB+) are expensive to hold twice.
         val rebuiltImage = DtboImageCodec.parse(outputImage)
         AvbImageEnvelope.validate(
-            requireNotNull(rebuiltImage.originalBytes), rebuiltImage.metadata.totalSize, logSink, "FINAL_VALIDATE"
+            requireNotNull(rebuiltImage.originalBytes), rebuiltImage.metadata.totalSize, logSink, "FINAL_VALIDATE",
+            allowSigned = signedSource
         )
         rebuiltImage.entries.forEachIndexed { index, entry ->
             val expected = replacementEntries[index] ?: workspace.binaryImage.entries[index].decodedBytes
