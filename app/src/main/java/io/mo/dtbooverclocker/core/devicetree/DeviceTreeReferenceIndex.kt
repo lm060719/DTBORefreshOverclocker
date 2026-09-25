@@ -67,7 +67,7 @@ object DeviceTreeReferenceIndexer
         val nodesByPath = nodes.associateBy { it.path }
 
         val directLabels = nodes
-            .mapNotNull { node -> node.label?.let { it to node.path } }
+            .flatMap { node -> node.labels.map { it to node.path } }
             .toMap()
 
         val symbolLabels = parseSymbols(document, nodesByPath)

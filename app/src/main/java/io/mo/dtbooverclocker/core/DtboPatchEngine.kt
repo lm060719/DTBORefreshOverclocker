@@ -6,6 +6,7 @@ import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.AvbProtectionState
 import io.mo.dtbooverclocker.model.FeatureModuleKind
 import io.mo.dtbooverclocker.model.ModuleStagedChange
+import io.mo.dtbooverclocker.model.DtboBinaryImage
 import io.mo.dtbooverclocker.model.DtboSourceImage
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.PatchMode
@@ -486,6 +487,7 @@ class DtboPatchEngine(
             logSink = logSink
         )
 
+        // Parsed once and shared by every check: partition-sized images (24 MB+) are expensive to hold twice.
         val rebuiltImage = DtboImageCodec.parse(outputImage)
         AvbImageEnvelope.validate(
             requireNotNull(rebuiltImage.originalBytes), rebuiltImage.metadata.totalSize, logSink, "FINAL_VALIDATE"
@@ -496,7 +498,7 @@ class DtboPatchEngine(
         }
         logSink("[OK] 完整镜像尾部与 AVB 摘要校验通过，全部 DTB 回读字节与预期一致")
 
-        verifyMetadataPreserved(workspace, outputImage)
+        verifyMetadataPreserved(workspace, rebuiltImage)
         val timingVerificationEntries = transactions
             .filter {
                 it.kind == DeviceTreeTransactionKind.REFRESH_RATE ||
@@ -505,7 +507,7 @@ class DtboPatchEngine(
             .flatMap { it.entryIndices }
             .toSet()
         verifyAllPatchedTimings(
-            outputImage,
+            rebuiltImage,
             timingVerificationEntries,
             workspace
         )
@@ -567,8 +569,7 @@ class DtboPatchEngine(
         )
     }
 
-    private fun verifyMetadataPreserved(workspace: DtboWorkspace, outputImage: File) {
-        val rebuilt = DtboImageCodec.parse(outputImage)
+    private fun verifyMetadataPreserved(workspace: DtboWorkspace, rebuilt: DtboBinaryImage) {
         require(DtboImageCodec.metadataEquivalent(workspace.metadata, rebuilt.metadata)) {
             "重建后的 DTBO header/entry 关键元数据与原镜像不一致，已阻止输出进入刷写流程"
         }
@@ -580,7 +581,7 @@ class DtboPatchEngine(
     }
 
     private suspend fun verifyAllPatchedTimings(
-        outputImage: File,
+        rebuilt: DtboBinaryImage,
         modifiedEntryIndices: Set<Int>,
         workspace: DtboWorkspace
     ) {
@@ -588,7 +589,6 @@ class DtboPatchEngine(
             deleteRecursively()
             mkdirs()
         }
-        val rebuilt = DtboImageCodec.parse(outputImage)
         for (index in modifiedEntryIndices) {
             val targetEntry = rebuilt.entries.getOrNull(index)
                 ?: error("修补后目标 DTB[$index] 条目缺失")

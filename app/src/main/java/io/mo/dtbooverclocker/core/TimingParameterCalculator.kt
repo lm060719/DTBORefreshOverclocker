@@ -3,6 +3,7 @@ package io.mo.dtbooverclocker.core
 import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.TimingCandidate
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -63,6 +64,14 @@ object TimingParameterCalculator
             strategy
         }
 
+        // Qualcomm DSI makes qcom,mdss-dsi-panel-clockrate optional: without it the driver derives
+        // the link rate from H_total × V_total × refresh × bpp, so the new timing alone scales the clock.
+        val clockDerivedByDriver = candidate.pixelClockHz == null
+        if (clockDerivedByDriver && effectiveStrategy != PatchStrategy.FRAMERATE_ONLY && effectiveStrategy != PatchStrategy.CUSTOM)
+        {
+            warnings += "该档位及其父节点未定义 panel-clockrate：DSI 驱动会按 H_total×V_total×刷新率×bpp 自动推导链路时钟，因此不写入时钟属性。"
+        }
+
         var pixelClockHz: Long? = null
         var vFrontPorch: Int? = null
         var vBackPorch: Int? = null
@@ -78,20 +87,24 @@ object TimingParameterCalculator
 
             PatchStrategy.PIXEL_CLOCK_ONLY ->
             {
+                val ratio = targetHz.toDouble() / candidate.currentHz.toDouble()
                 val oldClock = candidate.pixelClockHz
-                    ?: error("该节点及其父节点均没有可识别的 Pixel Clock 属性，无法使用仅 Pixel Clock 策略")
-                val newClock = (
-                    oldClock.toDouble() * targetHz.toDouble() / candidate.currentHz.toDouble()
-                ).roundToLong()
-                validatePixelClock(newClock)
-                pixelClockHz = newClock
-                changes += "Pixel Clock: $oldClock -> $newClock Hz"
+                if (oldClock == null)
+                {
+                    changes += "链路时钟: 由驱动按新刷新率自动推导 (×${String.format(Locale.US, "%.3f", ratio)})"
+                }
+                else
+                {
+                    val newClock = (oldClock.toDouble() * ratio).roundToLong()
+                    validatePixelClock(newClock)
+                    pixelClockHz = newClock
+                    changes += "Pixel Clock: $oldClock -> $newClock Hz"
+                }
             }
 
             PatchStrategy.BALANCED_BLANKING_TIME ->
             {
                 val oldClock = candidate.pixelClockHz
-                    ?: error("该节点及其父节点均没有可识别的 Pixel Clock 属性，无法执行平衡时序计算")
                 val vActive = requireValue(candidate.vActive, "vActive")
                 val vfp = requireValue(candidate.vFrontPorch, "vFrontPorch")
                 val vbp = requireValue(candidate.vBackPorch, "vBackPorch")
@@ -128,15 +141,21 @@ object TimingParameterCalculator
                 }
 
                 val newVTotal = fixedVertical + newVfp + newVbp
-                val newClock = (
-                    oldClock.toDouble() * ratio * newVTotal.toDouble() / oldVTotal.toDouble()
-                ).roundToLong()
-                validatePixelClock(newClock)
+                val clockRatio = ratio * newVTotal.toDouble() / oldVTotal.toDouble()
+                if (oldClock == null)
+                {
+                    changes += "链路时钟: 由驱动按新时序自动推导 (×${String.format(Locale.US, "%.3f", clockRatio)})"
+                }
+                else
+                {
+                    val newClock = (oldClock.toDouble() * clockRatio).roundToLong()
+                    validatePixelClock(newClock)
+                    pixelClockHz = newClock
+                    changes += "Pixel Clock: $oldClock -> $newClock Hz"
+                }
 
-                pixelClockHz = newClock
                 vFrontPorch = newVfp
                 vBackPorch = newVbp
-                changes += "Pixel Clock: $oldClock -> $newClock Hz"
                 changes += "VFP: $vfp -> $newVfp lines"
                 changes += "VBP: $vbp -> $newVbp lines"
                 warnings += "水平时序保持不变；垂直 sync 宽度保持不变。"

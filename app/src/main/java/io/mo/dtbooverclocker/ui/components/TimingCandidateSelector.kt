@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SettingsEthernet
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -81,6 +82,7 @@ fun TimingCandidateSelector(
     activePanelIdentifier: String? = null,
     activePanelDisplayName: String? = null,
     activePanelSource: String? = null,
+    activeDtboEntries: Set<Int> = emptySet(),
     selectionLabel: String = "选择待超频的原始时序档位：",
     selectFallback: Boolean = true
 ) {
@@ -177,11 +179,15 @@ fun TimingCandidateSelector(
     }
     val selectedInGroup = allGroupCandidates.firstOrNull { it.id == selectedCandidateId }
     var activeEntryIndex by remember(activeGroupKey, entryIndices, selectedCandidateId) {
-        mutableStateOf(selectedInGroup?.entryIndex ?: entryIndices.firstOrNull())
+        mutableStateOf(
+            selectedInGroup?.entryIndex
+                ?: entryIndices.firstOrNull { it in activeDtboEntries }
+                ?: entryIndices.firstOrNull()
+        )
     }
     if (activeEntryIndex !in entryIndices)
     {
-        activeEntryIndex = entryIndices.firstOrNull()
+        activeEntryIndex = entryIndices.firstOrNull { it in activeDtboEntries } ?: entryIndices.firstOrNull()
     }
     val currentGroupCandidates = remember(allGroupCandidates, activeEntryIndex) {
         activeEntryIndex?.let { entry ->
@@ -412,6 +418,35 @@ fun TimingCandidateSelector(
             }
         }
 
+        if (activeGroupKey.classification == PanelClassification.QCOM_REFERENCE ||
+            activeGroupKey.classification == PanelClassification.SIMULATION
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        TimingUtils.NON_PRODUCTION_PANEL_WARNING,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        }
+
         if (entryIndices.size > 1)
         {
             Text(
@@ -431,7 +466,9 @@ fun TimingCandidateSelector(
                             activeEntryIndex = entryIndex
                             allGroupCandidates.firstOrNull { it.entryIndex == entryIndex }?.let { onSelect(it.id) }
                         },
-                        label = { Text("DTB[$entryIndex] · $count 档") }
+                        label = {
+                            Text("DTB[$entryIndex] · $count 档" + if (entryIndex in activeDtboEntries) " · 本机生效" else "")
+                        }
                     )
                 }
             }

@@ -433,7 +433,7 @@ object TimingDeviceTreePlanner
         }
 
         val operations = mutableListOf<DeviceTreeChange>()
-        val deletedLabel = sourceNode.label
+        val deletedLabels = sourceNode.labels
         val deletedName = sourceNode.name
         val replacementNode = remainingSiblings.first()
         val replacementRef = replacementNode.label?.let { "&$it" }
@@ -445,7 +445,7 @@ object TimingDeviceTreePlanner
                 .forEach { property ->
                     val raw = property.rawValue.orEmpty()
                     val referencesDeleted =
-                        (deletedLabel != null && raw.contains("&$deletedLabel")) ||
+                        deletedLabels.any { raw.contains("&$it") } ||
                             raw.contains("&{${candidate.nodePath}}") ||
                             raw.contains("&$deletedName")
 

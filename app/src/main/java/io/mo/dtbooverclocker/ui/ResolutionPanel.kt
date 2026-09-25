@@ -135,7 +135,8 @@ internal fun ResolutionPanel(
                 onSelect = onSelect,
                 activePanelIdentifier = state.activePanelIdentifier,
                 activePanelDisplayName = state.activePanelDisplayName,
-                activePanelSource = state.activePanelSource
+                activePanelSource = state.activePanelSource,
+                activeDtboEntries = state.activeDtboEntries
             )
 
             HorizontalDivider()

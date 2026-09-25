@@ -164,9 +164,10 @@ object TimingUtils {
             .removePrefix("qcom,mdss_dsi_")
             .removePrefix("qcom,")
             .removePrefix("mdss_dsi_")
-        return clean.startsWith("nt37801") ||
-            clean.startsWith("sharp") ||
-            clean.startsWith("vtdr6130")
+        return listOf(
+            "nt37801", "nt37802", "nt35597", "nt35695b", "sharp", "vtdr6130",
+            "r66451", "visionox_r66451", "rdp370f", "dual_rdp370f", "ss_video_psr"
+        ).any(clean::startsWith)
     }
 
     /**
@@ -182,7 +183,8 @@ object TimingUtils {
             .removePrefix("mdss_dsi_")
             .removePrefix("dsi_")
 
-        return Regex("""^o\d+_\d{2,}(?:_|$)""").containsMatchIn(clean) ||
+        // OPlus names production panels by code, e.g. panel_AD296_P_3_A0020_dsc_cmd.
+        return Regex("""^o\d+_\d{2,}(?:_|$)|^panel_[a-z]{2}\d{3}_""").containsMatchIn(clean) ||
             listOf(
                 "oplus_",
                 "oneplus_",
@@ -196,7 +198,8 @@ object TimingUtils {
                 "boe_",
                 "tianma_",
                 "visionox_",
-                "csot_"
+                "csot_",
+                "meizu_"
             ).any(clean::startsWith)
     }
 
@@ -210,6 +213,12 @@ object TimingUtils {
             else -> PanelClassification.UNKNOWN
         }
     }
+
+    const val NON_PRODUCTION_PANEL_WARNING = "非量产屏节点，改后不生效"
+
+    /** Qualcomm reference and simulation panels are never driven on a retail device. */
+    fun isNonProductionPanel(identifier: String): Boolean =
+        classifyPanel(identifier).let { it == PanelClassification.QCOM_REFERENCE || it == PanelClassification.SIMULATION }
 
     /** 兼容旧调用；语义现为“明确识别到的厂商面板”，不再把未知面板算作机型专属。 */
     fun isDeviceSpecific(identifier: String): Boolean = isVendorPanel(identifier)
@@ -238,7 +247,8 @@ object TimingUtils {
      * 紧凑型时钟格式（用于卡片徽标，如 "1,199.9 MHz"）
      */
     fun formatClockCompact(clockHz: Long?): String {
-        if (clockHz == null || clockHz <= 0) return "未定义时钟"
+        // Without panel-clockrate the Qualcomm DSI driver derives the link clock from the timing.
+        if (clockHz == null || clockHz <= 0) return "驱动自动推导"
         val mhz = clockHz / 1_000_000.0
         return String.format(Locale.US, "%,.1f MHz", mhz)
     }
@@ -320,15 +330,17 @@ object TimingUtils {
                 }
 
                 PatchStrategy.PIXEL_CLOCK_ONLY -> {
+                    clockMultiplier = ratio
                     if (originalClock != null) {
                         estimatedClock = (originalClock * ratio).roundToLong()
-                        clockMultiplier = ratio
+                        note = "Pixel Clock 等比缩放 ×${String.format(Locale.US, "%.3f", ratio)}；垂直消隐行数不变"
+                    } else {
+                        note = "未定义 panel-clockrate，链路时钟由驱动按新刷新率自动推导 ×${String.format(Locale.US, "%.3f", ratio)}；垂直消隐行数不变"
                     }
-                    note = "Pixel Clock 等比缩放 ×${String.format(Locale.US, "%.3f", ratio)}；垂直消隐行数不变"
                 }
 
                 PatchStrategy.BALANCED_BLANKING_TIME -> {
-                    if (vActive != null && vfp != null && vbp != null && vsync != null && originalClock != null) {
+                    if (vActive != null && vfp != null && vbp != null && vsync != null) {
                         val fixedVertical = vActive + vsync
                         val porchVertical = vfp + vbp
                         val oldVt = fixedVertical + porchVertical
@@ -349,11 +361,12 @@ object TimingUtils {
                             newVbp = calcVbp
                             val newVt = fixedVertical + calcVfp + calcVbp
                             estimatedVTotal = newVt
-                            estimatedClock = (originalClock.toDouble() * ratio * newVt.toDouble() / oldVt.toDouble()).roundToLong()
-                            note = "平衡消隐：时钟倍率 ×${String.format(Locale.US, "%.3f", k)}，VFP ${candidate.vFrontPorch}→$newVfp, VBP ${candidate.vBackPorch}→$newVbp"
+                            estimatedClock = originalClock?.let { (it.toDouble() * ratio * newVt.toDouble() / oldVt.toDouble()).roundToLong() }
+                            note = (if (originalClock == null) "平衡消隐：未定义 panel-clockrate，驱动按新时序自动推导时钟 ×" else "平衡消隐：时钟倍率 ×") +
+                                "${String.format(Locale.US, "%.3f", k)}，VFP ${candidate.vFrontPorch}→$newVfp, VBP ${candidate.vBackPorch}→$newVbp"
                         } else {
                             // 分母 <= 0 说明超频过高导致无法在正向消隐下求解，回退简单比例
-                            estimatedClock = (originalClock * ratio).roundToLong()
+                            estimatedClock = originalClock?.let { (it * ratio).roundToLong() }
                             clockMultiplier = ratio
                             note = "超频幅度过大，超出消隐时间平衡解范围，已自动降级为等比时钟预估"
                         }
@@ -362,7 +375,8 @@ object TimingUtils {
                         clockMultiplier = ratio
                         note = "该节点缺少完整消隐参数，回退为 Pixel Clock 等比预估"
                     } else {
-                        note = "无可用 Pixel Clock 属性"
+                        clockMultiplier = ratio
+                        note = "缺少完整消隐参数且未定义 panel-clockrate；链路时钟由驱动按新刷新率自动推导"
                     }
                 }
 

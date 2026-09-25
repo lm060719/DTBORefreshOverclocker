@@ -95,7 +95,7 @@ internal fun DscAnalysisPanel(
         workspace.candidates.filter { (it.entryIndex to it.nodePath) in paths }
     }
     val selectedCandidate = dscCandidates.firstOrNull { it.id == state.selectedCandidateId }
-        ?: state.activePanelIdentifier?.let { ActivePanelDetector.findBestMatchCandidate(dscCandidates, it) }
+        ?: state.activePanelIdentifier?.let { ActivePanelDetector.findBestMatchCandidate(dscCandidates, it, state.activeDtboEntries) }
     val initialTopology = topologies.firstOrNull {
         it.entryIndex == selectedCandidate?.entryIndex && it.nodePath == selectedCandidate.nodePath
     } ?: topologies.firstOrNull {
@@ -192,6 +192,7 @@ internal fun DscAnalysisPanel(
                     activePanelIdentifier = state.activePanelIdentifier,
                     activePanelDisplayName = state.activePanelDisplayName,
                     activePanelSource = state.activePanelSource,
+                    activeDtboEntries = state.activeDtboEntries,
                     selectionLabel = "选择要修改 DSC 的时序档位：",
                     selectFallback = false
                 )

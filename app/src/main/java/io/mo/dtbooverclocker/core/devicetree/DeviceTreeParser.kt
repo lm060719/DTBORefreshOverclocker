@@ -5,15 +5,16 @@ object DeviceTreeParser
     private data class MutableNode(
         val name: String,
         val path: String,
-        val label: String?,
+        val labels: List<String>,
         val startOffset: Int,
         val indent: String,
         val properties: MutableList<DeviceTreeProperty> = mutableListOf(),
         val children: MutableList<DeviceTreeNode> = mutableListOf()
     )
 
+    // dtc emits every label of a node on its header line, e.g. `timing_0_37: timing_0_146: timing@0 {`.
     private val nodeStartRegex = Regex(
-        """^(\s*)(?:(?<label>[A-Za-z_][A-Za-z0-9_.-]*):\s*)?(?<name>[/A-Za-z0-9,._@+#-]+)\s*\{\s*$"""
+        """^(\s*)(?<labels>(?:[A-Za-z_][A-Za-z0-9_.-]*:\s*)*)(?<name>[/A-Za-z0-9,._@+#-]+)\s*\{\s*$"""
     )
 
     private val propertyNameRegex = Regex("""^[A-Za-z0-9,._+#?-]+$""")
@@ -83,7 +84,10 @@ object DeviceTreeParser
             if (nodeMatch != null)
             {
                 val name = nodeMatch.groups["name"]!!.value
-                val label = nodeMatch.groups["label"]?.value
+                val labels = nodeMatch.groups["labels"]!!.value
+                    .split(':')
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
                 val parentPath = stack.lastOrNull()?.path
                 val path = when
                 {
@@ -94,7 +98,7 @@ object DeviceTreeParser
                 stack += MutableNode(
                     name = name,
                     path = path,
-                    label = label,
+                    labels = labels,
                     startOffset = lineStart,
                     indent = nodeMatch.groupValues[1]
                 )
@@ -110,7 +114,8 @@ object DeviceTreeParser
                     val node = DeviceTreeNode(
                         name = mutable.name,
                         path = mutable.path,
-                        label = mutable.label,
+                        label = mutable.labels.firstOrNull(),
+                        labels = mutable.labels,
                         properties = mutable.properties.toList(),
                         children = mutable.children.toList(),
                         startOffset = mutable.startOffset,

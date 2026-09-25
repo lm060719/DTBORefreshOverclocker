@@ -80,7 +80,8 @@ data class DeviceTreeNode(
     val startOffset: Int,
     val closeStartOffset: Int,
     val endOffsetExclusive: Int,
-    val indent: String
+    val indent: String,
+    val labels: List<String> = listOfNotNull(label)
 )
 {
     val propertyCount: Int

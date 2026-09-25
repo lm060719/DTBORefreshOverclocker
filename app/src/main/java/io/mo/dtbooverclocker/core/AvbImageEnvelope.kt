@@ -8,7 +8,9 @@ import java.security.MessageDigest
 
 /** Preserves the partition dump layout, including identical AVB footer copies and trailing padding.
  * Only unsigned hash descriptors can be updated without a signing key. Unknown nonzero trailers
- * and signed vbmeta fail closed instead of silently producing an incomplete flashable image.
+ * around an AVB envelope and signed vbmeta fail closed instead of silently producing an incomplete
+ * flashable image. Without any AVB structure, bytes after total_size are leftovers of an older DTBO
+ * (seen on Realme dumps); the loader never reads them, so rebuild zero-fills them.
  */
 object AvbImageEnvelope {
     data class Layout(
@@ -25,7 +27,9 @@ object AvbImageEnvelope {
         // Sorted by position; all accepted copies describe exactly the same vbmeta and payload.
         val footerOffsets: List<Int>,
         val protectionState: AvbProtectionState,
-        val algorithm: String?
+        val algorithm: String?,
+        // Nonzero bytes after total_size in an image without any AVB structure.
+        val staleTailBytes: Int = 0
     ) {
         // A zero-padded image without AVB does not establish a logical envelope boundary.
         val logicalImageSize: Int? get() = layout?.let { it.footer + 64 }
@@ -57,8 +61,8 @@ object AvbImageEnvelope {
         val inspection = validate(original, originalTotal, logSink, "REBUILD_ORIGINAL")
         val layout = inspection.layout
         if (layout == null) {
-            require((originalTotal until original.size).all { original[it] == 0.toByte() }) {
-                "镜像尾部含无法识别的数据，不能丢弃后直接打包"
+            if (inspection.staleTailBytes > 0) {
+                logSink("[WARN][AVB][REBUILD] 原镜像 total_size 之后的 ${inspection.staleTailBytes} 个旧 DTBO 残留字节已在输出中清零")
             }
             // A bare DTBO is allowed to grow; a padded partition dump keeps its capacity.
             require(original.size == originalTotal || payload.size <= original.size) { "新 DTBO 超出原分区镜像容量" }
@@ -152,6 +156,7 @@ object AvbImageEnvelope {
         logSink("[AVB][$stage] $input")
         var candidates = 0
         var valid = 0
+        var staleTailBytes = 0
         var selected: Layout? = null
         val layouts = mutableListOf<Layout>()
         val offsets = mutableListOf<Int>()
@@ -185,8 +190,16 @@ object AvbImageEnvelope {
             logSink("[AVB][$stage] magicCandidates=$candidates, validFooters=$valid" +
                 if (candidates > offsets.size) ", candidate details limited to ${offsets.size}" else "")
             if (candidates == 0) {
-                require((total until bytes.size).all { bytes[it] == 0.toByte() }) {
-                    "未找到 AVBf magic，镜像含未知尾部数据，不能安全重建"
+                staleTailBytes = (total until bytes.size).count { bytes[it] != 0.toByte() }
+                if (staleTailBytes > 0) {
+                    // A vbmeta blob without its footer is a damaged AVB envelope, not DTBO leftovers.
+                    require(indexOf(bytes, VBMETA_MAGIC, total) < 0) {
+                        "未找到 AVBf footer，但尾部含 AVB0 vbmeta 结构，疑似 AVB 尾部损坏，不能安全重建"
+                    }
+                    val first = (total until bytes.size).first { bytes[it] != 0.toByte() }
+                    val last = (bytes.size - 1 downTo total).first { bytes[it] != 0.toByte() }
+                    logSink("[WARN][AVB][$stage] 无 AVB footer，total_size 之后发现 $staleTailBytes 个非零残留字节 " +
+                        "(0x${first.toString(16)}..0x${last.toString(16)})；DTBO 加载只读取 total_size 以内，打包时将清零")
                 }
             } else {
                 require(valid > 0) { "找到 AVBf magic，但没有任何候选通过结构验证" }
@@ -243,7 +256,8 @@ object AvbImageEnvelope {
             valid,
             layouts.map { it.footer },
             protectionState,
-            selectedAlgorithmType?.let(::algorithmName)
+            selectedAlgorithmType?.let(::algorithmName),
+            staleTailBytes
         )
     }
 
@@ -411,4 +425,13 @@ object AvbImageEnvelope {
         }.digest()
 
     private fun buffer(bytes: ByteArray) = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
+
+    private val VBMETA_MAGIC = byteArrayOf(0x41, 0x56, 0x42, 0x30) // "AVB0"
+
+    private fun indexOf(bytes: ByteArray, pattern: ByteArray, from: Int): Int {
+        for (i in from..bytes.size - pattern.size) {
+            if (pattern.indices.all { bytes[i + it] == pattern[it] }) return i
+        }
+        return -1
+    }
 }

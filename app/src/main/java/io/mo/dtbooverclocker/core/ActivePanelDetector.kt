@@ -10,6 +10,12 @@ data class ActivePanelDetectionResult(
     val matchedPanelIdentifier: String? = null
 )
 
+/** DTBO entry indices the bootloader applied on this boot (`androidboot.dtbo_idx`). */
+data class AppliedDtboEntries(
+    val indices: Set<Int>,
+    val source: String
+)
+
 class ActivePanelDetector(
     private val rootDetector: RootDetector
 ) {
@@ -26,6 +32,26 @@ class ActivePanelDetector(
         val vendorResult = detectFromOtherVendors()
         if (vendorResult != null) return vendorResult
 
+        return null
+    }
+
+    /**
+     * Android bootloaders report which DTBO entries they overlaid via `androidboot.dtbo_idx`;
+     * it is the only reliable way to tell apart entries that carry identical panel nodes.
+     */
+    suspend fun detectAppliedDtboEntries(): AppliedDtboEntries? {
+        val sources = listOf(
+            listOf("getprop", "ro.boot.dtbo_idx") to "系统属性 ro.boot.dtbo_idx",
+            listOf("cat", "/proc/bootconfig") to "/proc/bootconfig",
+            listOf("cat", "/proc/cmdline") to "/proc/cmdline"
+        )
+        for ((command, source) in sources) {
+            val result = rootDetector.runRoot(command, timeoutMs = 3000)
+            if (!result.isSuccess) continue
+            val raw = if (command.first() == "getprop") result.stdout.trim() else extractDtboIndexValue(result.stdout)
+            val indices = raw?.let(::parseDtboIndices).orEmpty()
+            if (indices.isNotEmpty()) return AppliedDtboEntries(indices, source)
+        }
         return null
     }
 
@@ -112,6 +138,19 @@ class ActivePanelDetector(
     }
 
     companion object {
+        private val dtboIndexRegex = Regex("""androidboot\.dtbo_idx\s*=\s*"?([0-9][0-9,\s]*)"?""")
+
+        /** Finds the dtbo_idx value in bootconfig (`key = "0,3"`) or cmdline (`key=0,3`) text. */
+        fun extractDtboIndexValue(text: String): String? =
+            dtboIndexRegex.find(text)?.groupValues?.get(1)
+
+        fun parseDtboIndices(raw: String): Set<Int> {
+            val tokens = raw.trim().trim('"').split(',').map(String::trim).filter(String::isNotEmpty)
+            val indices = tokens.mapNotNull(String::toIntOrNull).filter { it >= 0 }
+            // A partially unparsable value is not trusted at all.
+            return if (indices.size == tokens.size) indices.toSet() else emptySet()
+        }
+
         fun normalizeIdentifier(name: String): String {
             return name
                 .removePrefix("qcom,")
@@ -138,23 +177,25 @@ class ActivePanelDetector(
 
         fun findBestMatchCandidate(
             candidates: List<TimingCandidate>,
-            detectedIdentifier: String
+            detectedIdentifier: String,
+            preferredEntries: Set<Int> = emptySet()
         ): TimingCandidate? {
             if (candidates.isEmpty()) return null
             val normDetected = normalizeIdentifier(detectedIdentifier)
 
             val panelGrouped = candidates.groupBy { TimingUtils.parsePanelIdentifier(it.nodePath) }
-            for ((panelId, panelCandidates) in panelGrouped) {
-                if (matchPanel(panelId, normDetected)) {
-                    val normalCandidates = panelCandidates.filterNot { it.hasVendorDynamicMode }
-                    return normalCandidates.find { it.currentHz == 120 }
-                        ?: normalCandidates.find { it.currentHz == 144 }
-                        ?: normalCandidates.maxByOrNull { it.currentHz }
-                        ?: panelCandidates.firstOrNull()
-                }
-            }
-
-            return null
+            // Substring matching alone would pick `..._cmd` for a detected `..._cmd_cphy` panel.
+            val panelCandidates = panelGrouped.entries.firstOrNull { normalizeIdentifier(it.key) == normDetected }?.value
+                ?: panelGrouped.entries.firstOrNull { matchPanel(it.key, normDetected) }?.value
+                ?: return null
+            // The same panel node exists in every DTB entry; only the applied entry takes effect.
+            val entryCandidates = panelCandidates.filter { it.entryIndex in preferredEntries }
+                .ifEmpty { panelCandidates }
+            val normalCandidates = entryCandidates.filterNot { it.hasVendorDynamicMode }
+            return normalCandidates.find { it.currentHz == 120 }
+                ?: normalCandidates.find { it.currentHz == 144 }
+                ?: normalCandidates.maxByOrNull { it.currentHz }
+                ?: entryCandidates.firstOrNull()
         }
     }
 }

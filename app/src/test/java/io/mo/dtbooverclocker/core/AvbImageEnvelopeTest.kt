@@ -135,15 +135,37 @@ class AvbImageEnvelopeTest {
         }
     }
 
-    @Test fun refusesSignedStaleAndUnknownTrailers() {
+    @Test fun refusesSignedAndStaleAvbTrailers() {
         val raw = fixture()
         val payload = raw.copyOf(128)
         val signed = raw.copyOf().apply { ByteBuffer.wrap(this).putInt(4096 + 28, 1) }
         assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.rebuild(signed, 128, payload) }
         val stale = raw.copyOf().apply { this[100] = 1 }
         assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.rebuild(stale, 128, payload) }
-        val unknown = raw.copyOf(200).apply { this[150] = 1 }
-        assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.rebuild(unknown, 128, payload) }
+    }
+
+    @Test fun zeroFillsOldDtboLeftoversWhenNoAvbExists() {
+        // Realme partition dumps keep the end of an older, longer DTBO after total_size.
+        val raw = fixture().copyOf(256).apply { this[150] = 1; this[151] = 2 }
+        val logs = mutableListOf<String>()
+        val inspection = AvbImageEnvelope.validateForAnalysis(raw, 128, logs::add)
+        assertEquals(AvbProtectionState.NONE, inspection.protectionState)
+        assertEquals(2, inspection.staleTailBytes)
+        assertTrue(logs.any { it.contains("残留字节") })
+
+        val payload = raw.copyOf(160).apply { this[100] = 9 }
+        val result = AvbImageEnvelope.rebuild(raw, 128, payload)
+        assertEquals(256, result.size)
+        assertArrayEquals(payload, result.copyOf(160))
+        assertTrue((160 until 256).all { result[it] == 0.toByte() })
+        assertEquals(0, AvbImageEnvelope.validate(result, payload.size).staleTailBytes)
+    }
+
+    @Test fun vbmetaWithoutFooterStillFailsClosed() {
+        val raw = fixture().copyOf(footer)
+        assertTrue(assertThrows(IllegalArgumentException::class.java) {
+            AvbImageEnvelope.validateForAnalysis(raw, 128)
+        }.message!!.contains("AVB0"))
     }
 
     @Test fun refusesOverflowAndOutOfBoundsMetadata() {
@@ -455,10 +477,9 @@ class AvbImageEnvelopeTest {
         assertNull(AvbImageEnvelope.validate(bare, 128).layout)
         assertEquals(128, AvbImageEnvelope.validate(bare, 128).logicalImageSize)
         assertNull(AvbImageEnvelope.validate(bare.copyOf(1024), 128).logicalImageSize)
-        val unknown = bare.copyOf(256).apply { this[150] = 1 }
-        assertTrue(assertThrows(IllegalArgumentException::class.java) {
-            AvbImageEnvelope.validate(unknown, 128)
-        }.message!!.contains("未找到 AVBf magic"))
+        val leftovers = bare.copyOf(256).apply { this[150] = 1 }
+        assertEquals(1, AvbImageEnvelope.validate(leftovers, 128).staleTailBytes)
+        assertNull(AvbImageEnvelope.validate(leftovers, 128).logicalImageSize)
         val mismatch = fixture().apply { ByteBuffer.wrap(this).putLong(footer + 12, 256) }
         assertEquals(1, AvbImageEnvelope.inspect(mismatch, 128).validFooters)
         assertTrue(assertThrows(IllegalArgumentException::class.java) {

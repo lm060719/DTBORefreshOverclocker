@@ -43,4 +43,27 @@ class DeviceTreeParserTest
         assertTrue(property.rawStatement.contains("rate"))
         assertEquals("120", property.displayValue)
     }
+
+    @Test
+    fun parsesNodesCarryingSeveralLabels()
+    {
+        // dtc writes every label of a node on its header, as in OnePlus/Realme DTBOs.
+        val document = DeviceTreeParser.parse(0, """
+            /dts-v1/;
+            / {
+                timing_0_37: timing_0_146: timing@0 {
+                    rate = <0x78>;
+                };
+                sibling {
+                    ref = <&timing_0_146>;
+                };
+            };
+        """.trimIndent())
+
+        assertEquals(listOf("/", "/timing@0", "/sibling"), document.flatten().map { it.path })
+        val timing = requireNotNull(document.findNode("/timing@0"))
+        assertEquals("timing_0_37", timing.label)
+        assertEquals(listOf("timing_0_37", "timing_0_146"), timing.labels)
+        assertEquals("/timing@0", DeviceTreeReferenceIndexer.build(document).labels["timing_0_146"])
+    }
 }

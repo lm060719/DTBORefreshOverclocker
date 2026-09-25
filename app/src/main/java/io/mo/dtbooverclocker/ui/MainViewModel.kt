@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import io.mo.dtbooverclocker.core.ActivePanelDetectionResult
 import io.mo.dtbooverclocker.core.WorkspaceOperationRunner
 import io.mo.dtbooverclocker.core.ActivePanelDetector
+import io.mo.dtbooverclocker.core.AppliedDtboEntries
 import io.mo.dtbooverclocker.core.CapabilityScanner
 import io.mo.dtbooverclocker.core.DtboPatchEngine
 import io.mo.dtbooverclocker.core.DtsTimingPatcher
@@ -44,6 +45,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -171,7 +173,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val image = safetyGuard.extractActiveImage(slot)
                 val workspace = patchEngine.analyze(image, SourceMode.ROOT_PARTITION, slot.blockDevice)
                 val detectedActive = activePanelDetector.detect()
-                applyWorkspace(workspace, SourceMode.ROOT_PARTITION, detectedActive)
+                val appliedDtbo = activePanelDetector.detectAppliedDtboEntries()
+                applyWorkspace(workspace, SourceMode.ROOT_PARTITION, detectedActive, appliedDtbo)
                 refreshCacheSize()
             }.onFailure(::showError)
             setBusy(false)
@@ -289,7 +292,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     operations = result.operations,
                     warnings = result.warnings,
                     directFlashAllowed = result.stagedChange.strategy != PatchStrategy.FRAMERATE_ONLY
-                )
+                ).withPanelWarning(candidate.nodePath)
                 val newTransactions = current.transactions + transaction
                 _state.update {
                     it.copy(
@@ -371,7 +374,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val transaction = DeviceTreeTransaction.resolution(
                     moduleChange = result.stagedChange,
                     operations = result.operations
-                )
+                ).withPanelWarning(candidate.nodePath)
                 val newTransactions = current.transactions + transaction
 
                 _state.update {
@@ -398,7 +401,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val workspace = current.workspace ?: return@launchWorkspaceOperation
             setBusy(true, "正在暂存 DSC 修改…")
             try {
-                val (updatedWorkspace, transaction) = patchEngine.applyDscChange(workspace, entryIndex, nodePath, parameters)
+                val (updatedWorkspace, stagedTransaction) = patchEngine.applyDscChange(workspace, entryIndex, nodePath, parameters)
+                val transaction = stagedTransaction.withPanelWarning(nodePath)
                 _state.update {
                     it.copy(
                         workspace = updatedWorkspace,
@@ -670,11 +674,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } ?: return@launchWorkspaceOperation
 
             setBusy(true, "正在重编译 DTB 并集中打包 DTBO 镜像…")
+            // The capability scan of a large DTBO (40 DTBs / 400k properties) plus the partition-sized
+            // rebuild buffers exceed the default heap together; never let them overlap.
+            val scanInterrupted = capabilityScanJob?.isActive == true
+            if (scanInterrupted) {
+                appendLog("[INFO] 打包前暂停后台能力扫描以释放内存，打包结束后自动重新扫描")
+                capabilityScanJob?.cancelAndJoin()
+            }
             runCatching {
                 patchEngine.packageStaged(
                     workspace = workspace,
                     transactions = current.transactions
                 )
+            }.also {
+                if (scanInterrupted) refreshCapabilities(workspace)
             }.onSuccess { report ->
                 _state.update {
                     it.copy(
@@ -980,8 +993,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun applyWorkspace(
         workspace: DtboWorkspace,
         sourceMode: SourceMode,
-        detectedActive: ActivePanelDetectionResult? = null
+        detectedActive: ActivePanelDetectionResult? = null,
+        appliedDtbo: AppliedDtboEntries? = null
     ) {
+        val entryCount = workspace.binaryImage.entries.size
+        val activeDtboEntries = when {
+            appliedDtbo == null -> {
+                if (sourceMode == SourceMode.ROOT_PARTITION) {
+                    appendLog("[INFO] 未读取到 androidboot.dtbo_idx，无法确定本机生效的 DTB，请手动选择")
+                }
+                emptySet()
+            }
+            appliedDtbo.indices.any { it >= entryCount } -> {
+                appendLog("[WARN] ${appliedDtbo.source} 报告的 DTB 索引 ${appliedDtbo.indices.sorted()} 超出镜像条目数 $entryCount，已忽略")
+                emptySet()
+            }
+            else -> {
+                appendLog("[INFO] 本机生效的 DTB：${appliedDtbo.indices.sorted().joinToString { "DTB[$it]" }}（来源：${appliedDtbo.source}）")
+                appliedDtbo.indices
+            }
+        }
         var activePanelId: String? = null
         var activePanelName: String? = null
         var activePanelSource: String? = null
@@ -990,7 +1021,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (detectedActive != null) {
             val bestCandidate = ActivePanelDetector.findBestMatchCandidate(
                 workspace.candidates,
-                detectedActive.rawIdentifier
+                detectedActive.rawIdentifier,
+                activeDtboEntries
             )
             if (bestCandidate != null) {
                 selectedCandidate = bestCandidate
@@ -1004,7 +1036,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (selectedCandidate == null) {
-            selectedCandidate = workspace.candidates.firstOrNull()
+            selectedCandidate = workspace.candidates.firstOrNull { it.entryIndex in activeDtboEntries }
+                ?: workspace.candidates.firstOrNull()
         }
 
         _state.update {
@@ -1025,12 +1058,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 activePanelIdentifier = activePanelId,
                 activePanelDisplayName = activePanelName,
                 activePanelSource = activePanelSource,
+                activeDtboEntries = activeDtboEntries,
                 capabilityReport = null,
                 capabilityScanInProgress = true,
                 status = if (workspace.candidates.isEmpty()) {
                     "解析完成，但没有找到可识别的 DSI framerate 节点"
                 } else if (activePanelName != null) {
-                    "解析完成：已为您自动匹配并推荐本机在用屏幕 $activePanelName"
+                    "解析完成：已为您自动匹配并推荐本机在用屏幕 $activePanelName" +
+                        selectedCandidate?.entryIndex?.takeIf { it in activeDtboEntries }?.let { "（本机生效 DTB[$it]）" }.orEmpty()
                 } else {
                     "解析完成：${workspace.metadata.entries.size} 个 DTB 条目，${workspace.candidates.size} 个时序候选"
                 }
@@ -1114,6 +1149,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun DeviceTreeTransaction.withPanelWarning(nodePath: String): DeviceTreeTransaction {
+        if (!TimingUtils.isNonProductionPanel(TimingUtils.parsePanelIdentifier(nodePath))) return this
+        appendLog("[WARN] ${TimingUtils.NON_PRODUCTION_PANEL_WARNING}：$nodePath")
+        return copy(warnings = (warnings + TimingUtils.NON_PRODUCTION_PANEL_WARNING).distinct())
+    }
+
     private fun suggestedTarget(currentHz: Int): Int {
         return when {
             currentHz < 60 -> 60
@@ -1175,6 +1216,8 @@ data class MainUiState(
     val activePanelIdentifier: String? = null,
     val activePanelDisplayName: String? = null,
     val activePanelSource: String? = null,
+    // Only set for images extracted from this device's live partition.
+    val activeDtboEntries: Set<Int> = emptySet(),
     val capabilityReport: CapabilityReport? = null,
     val capabilityScanInProgress: Boolean = false,
     val cacheSizeBytes: Long = 0L,

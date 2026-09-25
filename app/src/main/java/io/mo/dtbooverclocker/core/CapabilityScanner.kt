@@ -1,12 +1,13 @@
 package io.mo.dtbooverclocker.core
 
-import io.mo.dtbooverclocker.core.devicetree.DeviceTreeDocument
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeNode
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParser
 import io.mo.dtbooverclocker.model.CapabilityFinding
 import io.mo.dtbooverclocker.model.CapabilityKind
 import io.mo.dtbooverclocker.model.CapabilityReport
 import io.mo.dtbooverclocker.model.CapabilityStatus
+import io.mo.dtbooverclocker.model.ChargingNode
+import io.mo.dtbooverclocker.model.DscTopology
 import io.mo.dtbooverclocker.model.DtboWorkspace
 
 /**
@@ -49,32 +50,30 @@ object CapabilityScanner
     ): CapabilityReport
     {
         val totalStarted = System.nanoTime()
-        val documents = workspace.dtsFiles.mapIndexed { index, file ->
+        // Stream one DTB at a time: a 40-entry DTBO parsed all at once (400k properties) does not fit
+        // in the default Android heap next to a partition-sized packaging job. Every analyzer is
+        // per-document, so results and their order are unchanged.
+        var nodeCount = 0
+        var propertyCount = 0
+        val dscTopologies = mutableListOf<DscTopology>()
+        val chargingNodes = mutableListOf<ChargingNode>()
+        val relatedPaths = signatures.associate { it.kind to LinkedHashSet<String>() }
+        workspace.dtsFiles.forEachIndexed { index, file ->
             checkCancellation()
             val started = System.nanoTime()
-            val text = file.readText()
-            val document = DeviceTreeParser.parse(index, text, checkCancellation)
-            progress(
-                "[CAPABILITY] DTB[$index] 结构解析完成：${document.flatten().size} 节点，" +
-                    "${elapsedMs(started)} ms"
-            )
-            document
+            val document = DeviceTreeParser.parse(index, file.readText(), checkCancellation)
+            val nodes = document.flatten()
+            nodeCount += nodes.size
+            propertyCount += nodes.sumOf { it.properties.size }
+            dscTopologies += DscTopologyAnalyzer.analyze(listOf(document))
+            checkCancellation()
+            chargingNodes += ChargingAnalyzer.analyze(listOf(document))
+            findRelatedPaths(nodes, signatures, checkCancellation).forEach { (kind, paths) ->
+                relatedPaths.getValue(kind) += paths
+            }
+            progress("[CAPABILITY] DTB[$index] 扫描完成：${nodes.size} 节点，${elapsedMs(started)} ms")
         }
-
-        checkCancellation()
-        val flattenStarted = System.nanoTime()
-        val allNodes = documents.flatMap(DeviceTreeDocument::flatten)
-        progress("[CAPABILITY] 节点索引汇总完成：${allNodes.size} 节点，${elapsedMs(flattenStarted)} ms")
-
-        checkCancellation()
-        val dscStarted = System.nanoTime()
-        val dscTopologies = DscTopologyAnalyzer.analyze(documents)
-        progress("[CAPABILITY] DSC 扫描完成：${dscTopologies.size} 个 timing，${elapsedMs(dscStarted)} ms")
-
-        checkCancellation()
-        val chargingStarted = System.nanoTime()
-        val chargingNodes = ChargingAnalyzer.analyze(documents)
-        progress("[CAPABILITY] 充电扫描完成：${chargingNodes.size} 个节点，${elapsedMs(chargingStarted)} ms")
+        progress("[CAPABILITY] DSC ${dscTopologies.size} 个 timing；充电 ${chargingNodes.size} 个节点")
         val editableChargingNodes = chargingNodes.filter { it.editableCount > 0 }
 
         val refreshCount = workspace.candidates.size
@@ -127,10 +126,8 @@ object CapabilityScanner
                 sourceHint = "充电配置也可能位于基础 DTB、vendor_boot 或驱动中；支持已识别参数的暂存、撤销和导出验证。"
             ))
 
-            val signatureStarted = System.nanoTime()
-            val relatedPaths = findRelatedPaths(allNodes, signatures, checkCancellation)
             signatures.forEach { signature ->
-                val matchedPaths = relatedPaths[signature.kind].orEmpty()
+                val matchedPaths = relatedPaths[signature.kind].orEmpty().toList()
                 add(
                     CapabilityFinding(
                         kind = signature.kind,
@@ -142,13 +139,12 @@ object CapabilityScanner
                     )
                 )
             }
-            progress("[CAPABILITY] 关键字能力扫描完成：${elapsedMs(signatureStarted)} ms")
         }
 
         val report = CapabilityReport(
-            scannedEntryCount = documents.size,
-            nodeCount = allNodes.size,
-            propertyCount = allNodes.sumOf { it.properties.size },
+            scannedEntryCount = workspace.dtsFiles.size,
+            nodeCount = nodeCount,
+            propertyCount = propertyCount,
             findings = findings,
             dscTopologies = dscTopologies,
             chargingNodes = chargingNodes
