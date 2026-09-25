@@ -32,7 +32,6 @@ import io.mo.dtbooverclocker.model.ModuleStagedChange
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchReport
 import io.mo.dtbooverclocker.model.PatchStrategy
-import io.mo.dtbooverclocker.model.ResolutionScope
 import io.mo.dtbooverclocker.model.RootState
 import io.mo.dtbooverclocker.model.SlotInfo
 import io.mo.dtbooverclocker.model.SourceMode
@@ -187,12 +186,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 selectedCandidateId = id,
                 targetHz = suggestedTarget(candidate.currentHz),
-                resolutionWidthText = candidate.hActive?.let { width ->
-                    if (width % 4 == 0) (width * 3 / 4).toString() else ""
-                } ?: "",
-                resolutionHeightText = candidate.vActive?.let { height ->
-                    if (height % 4 == 0) (height * 3 / 4).toString() else ""
-                } ?: "",
                 patchReport = null,
                 lastFlash = null
             )
@@ -309,117 +302,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
-    fun setResolutionWidth(value: String)
-    {
-        _state.update {
-            it.copy(
-                resolutionWidthText = value.filter(Char::isDigit),
-                patchReport = null
-            )
-        }
-    }
-
-    fun setResolutionHeight(value: String)
-    {
-        _state.update {
-            it.copy(
-                resolutionHeightText = value.filter(Char::isDigit),
-                patchReport = null
-            )
-        }
-    }
-
-    fun setResolutionScope(scope: ResolutionScope)
-    {
-        _state.update { it.copy(resolutionScope = scope, patchReport = null) }
-    }
-
-    fun applyResolutionPreset(width: Int, height: Int)
-    {
-        _state.update {
-            it.copy(
-                resolutionWidthText = width.toString(),
-                resolutionHeightText = height.toString(),
-                patchReport = null
-            )
-        }
-    }
-
-    fun stageResolutionChange()
-    {
-        launchWorkspaceOperation {
-            val current = _state.value
-            val workspace = current.workspace ?: return@launchWorkspaceOperation showError(
-                IllegalStateException("请先导入或提取 DTBO 镜像")
-            )
-            val candidate = workspace.candidates
-                .firstOrNull { it.id == current.selectedCandidateId }
-                ?: return@launchWorkspaceOperation showError(IllegalStateException("请选择一个带分辨率信息的 DSI 时序节点"))
-
-            val targetWidth = current.resolutionWidthText.toIntOrNull()
-                ?: return@launchWorkspaceOperation showError(IllegalArgumentException("请输入有效的目标宽度"))
-            val targetHeight = current.resolutionHeightText.toIntOrNull()
-                ?: return@launchWorkspaceOperation showError(IllegalArgumentException("请输入有效的目标高度"))
-
-            runCatching {
-                patchEngine.applyResolutionChange(
-                    workspace = workspace,
-                    candidate = candidate,
-                    targetWidth = targetWidth,
-                    targetHeight = targetHeight,
-                    scope = current.resolutionScope
-                )
-            }.onSuccess { result ->
-                val transaction = DeviceTreeTransaction.resolution(
-                    moduleChange = result.stagedChange,
-                    operations = result.operations
-                ).withPanelWarning(candidate.nodePath)
-                val newTransactions = current.transactions + transaction
-
-                _state.update {
-                    it.copy(
-                        workspace = result.updatedWorkspace,
-                        selectedCandidateId = result.selectedCandidateId,
-                        transactions = newTransactions,
-                        patchReport = null,
-                        lastFlash = null,
-                        status = "已暂存分辨率修改：${transaction.summary} (共 ${newTransactions.size} 个事务待打包)"
-                    )
-                }
-                refreshCapabilities(result.updatedWorkspace)
-            }.onFailure(::showError)
-        }
-    }
-
-
-    fun stageDscChange(entryIndex: Int, nodePath: String, parameters: io.mo.dtbooverclocker.model.DscParameters)
-    {
-        if (_state.value.busy) return
-        launchWorkspaceOperation {
-            val current = _state.value
-            val workspace = current.workspace ?: return@launchWorkspaceOperation
-            setBusy(true, "正在暂存 DSC 修改…")
-            try {
-                val (updatedWorkspace, stagedTransaction) = patchEngine.applyDscChange(workspace, entryIndex, nodePath, parameters)
-                val transaction = stagedTransaction.withPanelWarning(nodePath)
-                _state.update {
-                    it.copy(
-                        workspace = updatedWorkspace,
-                        transactions = current.transactions + transaction,
-                        patchReport = null,
-                        lastFlash = null,
-                        status = "已暂存 DSC 修改：${transaction.summary}"
-                    )
-                }
-                refreshCapabilities(updatedWorkspace)
-            } catch (failure: Exception) {
-                showError(failure)
-            } finally {
-                setBusy(false)
-            }
-        }
-    }
 
     fun stageChargingChange(snapshot: io.mo.dtbooverclocker.model.ChargingNode, inputs: Map<String, String>)
     {
@@ -719,7 +601,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "当前没有可刷写的设备树事务。"
             } ?: return@launchWorkspaceOperation
             requireOrReport(current.transactions.all { it.directFlashAllowed }) {
-                "当前事务队列包含仅允许导出验证的修改（例如分辨率或通用设备树编辑），已禁止 Root 直刷。"
+                "当前事务队列包含仅允许导出验证的修改（例如 Charging 或通用设备树编辑），已禁止 Root 直刷。"
             } ?: return@launchWorkspaceOperation
 
             setBusy(true, "正在执行备份、救援包生成与单槽位刷写…")
@@ -1046,12 +928,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 workspace = workspace,
                 selectedCandidateId = selectedCandidate?.id,
                 targetHz = suggestedTarget(selectedCandidate?.currentHz ?: 60),
-                resolutionWidthText = selectedCandidate?.hActive?.let { width ->
-                    if (width % 4 == 0) (width * 3 / 4).toString() else ""
-                } ?: "",
-                resolutionHeightText = selectedCandidate?.vActive?.let { height ->
-                    if (height % 4 == 0) (height * 3 / 4).toString() else ""
-                } ?: "",
                 patchReport = null,
                 transactions = emptyList(),
                 lastFlash = null,
@@ -1111,7 +987,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     appendLog(
                         "[CAPABILITY] 扫描完成：${report.nodeCount} 节点 / ${report.propertyCount} 属性 / " +
-                            "${report.dscTopologies.size} 个 DSC timing"
+                            "${report.chargingNodes.size} 个充电节点"
                     )
                 }.onFailure { throwable ->
                     _state.update { it.copy(capabilityScanInProgress = false) }
@@ -1225,9 +1101,6 @@ data class MainUiState(
     val logFilesSizeBytes: Long = 0L,
     val backups: List<BackupRecord> = emptyList(),
     val backupVerificationStates: Map<String, BackupVerificationState> = emptyMap(),
-    val resolutionWidthText: String = "",
-    val resolutionHeightText: String = "",
-    val resolutionScope: ResolutionScope = ResolutionScope.MATCHING_GROUP,
     val customPixelClockText: String = "",
     val customVfpText: String = "",
     val customVbpText: String = "",

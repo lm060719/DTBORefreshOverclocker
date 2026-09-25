@@ -98,7 +98,7 @@ data class DeviceTreeDocument(
 )
 {
     /**
-     * 设备树文档在能力扫描期间会被 DSC、充电、关键字扫描等多个分析器反复访问。
+     * 设备树文档在能力扫描期间会被充电等分析器反复访问。
      * 旧实现的 findNode() 每次都会从根节点 DFS 整棵树，OPlus/Qualcomm overlay
      * 中大量 __fixups__ 会把复杂度放大到近似 O(N²)。这里一次性建立只读索引。
      */

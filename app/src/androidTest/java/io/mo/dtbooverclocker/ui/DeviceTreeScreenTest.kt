@@ -77,7 +77,7 @@ class DeviceTreeScreenTest {
     fun laterModuleTransactionDisablesGenericUndoAcrossEntries() {
         val generic = DeviceTreeTransaction.generic(SetPropertyChange(0, "/alpha", "value", "<0>", "<1>"))
         val module = DeviceTreeTransaction(
-            kind = DeviceTreeTransactionKind.RESOLUTION, summary = "module edit",
+            kind = DeviceTreeTransactionKind.CHARGING, summary = "module edit",
             operations = listOf(SetPropertyChange(1, "/beta", "value", "<0>", "<1>")),
             risk = DeviceTreeTransactionRisk.EXPORT_ONLY, directFlashAllowed = false
         )

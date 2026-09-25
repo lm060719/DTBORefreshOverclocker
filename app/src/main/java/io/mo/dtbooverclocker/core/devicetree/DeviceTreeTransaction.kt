@@ -7,8 +7,6 @@ import java.util.UUID
 enum class DeviceTreeTransactionKind(val displayName: String)
 {
     REFRESH_RATE("刷新率"),
-    RESOLUTION("分辨率"),
-    DSC("DSC"),
     CHARGING("Charging"),
     GENERIC_EDIT("设备树编辑")
 }
@@ -24,7 +22,7 @@ enum class DeviceTreeTransactionRisk(val displayName: String)
  * 一次用户可感知的设备树逻辑修改事务。
  *
  * 一个事务可以包含多个底层 DeviceTreeChange。MainUiState 以 transactions 作为唯一暂存源，
- * 刷新率、分辨率和通用编辑的旧列表都由事务派生，避免多套状态彼此漂移。
+ * 刷新率、功能模块和通用编辑的旧列表都由事务派生，避免多套状态彼此漂移。
  *
  * directFlashAllowed 是部署安全边界的一部分：只要队列中存在 export-only 事务，
  * 应用就必须禁止 Root 直接刷写。
@@ -75,35 +73,6 @@ data class DeviceTreeTransaction(
                 directFlashAllowed = directFlashAllowed,
                 warnings = warnings,
                 timingChange = stagedChange
-            )
-        }
-
-        fun resolution(
-            moduleChange: ModuleStagedChange,
-            operations: List<DeviceTreeChange>
-        ): DeviceTreeTransaction
-        {
-            return DeviceTreeTransaction(
-                kind = DeviceTreeTransactionKind.RESOLUTION,
-                summary = moduleChange.summary,
-                operations = operations,
-                risk = DeviceTreeTransactionRisk.EXPORT_ONLY,
-                directFlashAllowed = moduleChange.directFlashAllowed,
-                warnings = moduleChange.warnings,
-                moduleChange = moduleChange
-            )
-        }
-
-        fun dsc(moduleChange: ModuleStagedChange, operations: List<DeviceTreeChange>): DeviceTreeTransaction
-        {
-            return DeviceTreeTransaction(
-                kind = DeviceTreeTransactionKind.DSC,
-                summary = moduleChange.summary,
-                operations = operations,
-                risk = DeviceTreeTransactionRisk.EXPORT_ONLY,
-                directFlashAllowed = false,
-                warnings = moduleChange.warnings,
-                moduleChange = moduleChange
             )
         }
 

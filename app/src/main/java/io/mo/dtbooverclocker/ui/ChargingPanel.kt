@@ -317,7 +317,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.Info, null, modifier = Modifier.size(20.dp))
                 Text(
-                    "请按电池和充电芯片规格设置电流、电压。参数合法不代表硬件支持；修改沿用分辨率模块的导出验证流程，暂存后到概览打包。",
+                    "请按电池和充电芯片规格设置电流、电压。参数合法不代表硬件支持；修改仅允许导出验证，暂存后到概览打包。",
                     style = MaterialTheme.typography.bodySmall
                 )
             }

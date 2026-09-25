@@ -9,11 +9,9 @@ import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
 import io.mo.dtbooverclocker.model.AvbProtectionState
 import io.mo.dtbooverclocker.model.CapabilityKind
 import io.mo.dtbooverclocker.model.CapabilityReport
-import io.mo.dtbooverclocker.model.DscParameters
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
-import io.mo.dtbooverclocker.model.ResolutionScope
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 import io.mo.dtbooverclocker.util.HashUtils
 import kotlinx.coroutines.async
@@ -191,46 +189,6 @@ class DeviceWorkflowVerificationTest {
                 "${TimingUtils.parsePanelIdentifier(candidate.nodePath)}: 120→144Hz，VFP ${candidate.vFrontPorch}→${after.vFrontPorch}，" +
                     "VBP ${candidate.vBackPorch}→${after.vBackPorch}" +
                     (transfer?.let { "，MDP 传输 $it→${after.mdpTransferTimeUs} µs" } ?: "") + "，未写入 clockrate，回读确认"
-            }
-        }
-
-        step("分辨率：等比 3/4 + 打包导出") {
-            val base = engine.resetWorkspace(workspace)
-            val candidate = base.candidates.first {
-                it.nodePath == panelMatch.nodePath && it.entryIndex == panelMatch.entryIndex
-            }
-            val w = requireNotNull(candidate.hActive) * 3 / 4
-            val h = requireNotNull(candidate.vActive) * 3 / 4
-            val result = runCatching { engine.applyResolutionChange(base, candidate, w, h, ResolutionScope.MATCHING_GROUP) }
-                .getOrElse { if (it is IllegalArgumentException) throw GuardRefusal("按设计拒绝：${it.message}") else throw it }
-            val tx = DeviceTreeTransaction.resolution(result.stagedChange, result.operations)
-            staged += tx
-            packageAndExport("resolution_${w}x$h", listOf(tx), result.updatedWorkspace) { re ->
-                val found = re.candidates.filter { it.entryIndex == candidate.entryIndex && it.hActive == w && it.vActive == h }
-                require(found.size == result.stagedChange.affectedNodePaths.size) {
-                    "预期 ${result.stagedChange.affectedNodePaths.size} 个档位为 ${w}x$h，实际 ${found.size}"
-                }
-                "${result.stagedChange.summary}; 重新导入确认 ${found.size} 个档位"
-            }
-        }
-
-        step("DSC：修改 slice 参数 + 打包导出") {
-            val base = engine.resetWorkspace(workspace)
-            val topology = CapabilityScanner.scan(base).dscTopologies.firstOrNull { !it.hasErrors }
-                ?: error("没有可编辑的 DSC 节点（共 ${capabilities.dscTopologies.size} 个，均含错误）")
-            val current = DscParameters(topology.version, topology.bitsPerComponent, topology.bitsPerPixel,
-                requireNotNull(topology.sliceWidth), requireNotNull(topology.sliceHeight),
-                topology.slicePerPacket ?: 1, topology.blockPredictionEnabled)
-            val height = requireNotNull(topology.panelHeight)
-            val newHeight = listOf(current.sliceHeight / 2, current.sliceHeight * 2)
-                .firstOrNull { it > 0 && height % it == 0 } ?: error("找不到可替换的 slice height")
-            val params = current.copy(sliceHeight = newHeight)
-            val (updated, tx) = engine.applyDscChange(base, topology.entryIndex, topology.nodePath, params)
-            staged += tx
-            packageAndExport("dsc", listOf(tx), updated) { re ->
-                val after = CapabilityScanner.scan(re).dscTopologies.first { it.entryIndex == topology.entryIndex && it.nodePath == topology.nodePath }
-                require(after.sliceHeight == newHeight) { "重新导入后 slice height=${after.sliceHeight}" }
-                "${topology.nodePath.substringAfterLast('/')}: slice-height ${current.sliceHeight}→$newHeight 已回读确认"
             }
         }
 

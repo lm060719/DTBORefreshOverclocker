@@ -17,14 +17,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import io.mo.dtbooverclocker.model.DscParameters
 import io.mo.dtbooverclocker.model.ChargingNode
 import io.mo.dtbooverclocker.model.CapabilityFinding
 import io.mo.dtbooverclocker.model.CapabilityKind
 import io.mo.dtbooverclocker.model.CapabilityStatus
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
-import io.mo.dtbooverclocker.model.ResolutionScope
 import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -36,7 +34,7 @@ enum class StudioTab(val label: String, val icon: ImageVector) {
     SETTINGS("设置", Icons.Default.Settings)
 }
 
-private enum class StudioModule { REFRESH_RATE, RESOLUTION, DSC, CHARGING }
+private enum class StudioModule { REFRESH_RATE, CHARGING }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,10 +47,6 @@ fun StudioScreen(
     onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit,
     onCustomVbp: (String) -> Unit, onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit,
     onApplySuggestedCustom: () -> Unit, onStageChange: () -> Unit,
-    onResolutionWidth: (String) -> Unit, onResolutionHeight: (String) -> Unit,
-    onResolutionScope: (ResolutionScope) -> Unit, onResolutionPreset: (Int, Int) -> Unit,
-    onStageResolution: () -> Unit,
-    onStageDsc: (Int, String, DscParameters) -> Unit,
     onStageCharging: (ChargingNode, Map<String, String>) -> Unit,
     onSetDeviceTreeProperty: (Int, String, String, String?) -> Unit,
     onAddDeviceTreeProperty: (Int, String, String, String?) -> Unit,
@@ -74,8 +68,7 @@ fun StudioScreen(
             StudioTab.MODULES -> ModulesTab(
                 state, padding, onSelect, onTarget, onStrategy, onPatchMode,
                 onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp,
-                onApplySuggestedCustom, onStageChange, onResolutionWidth, onResolutionHeight,
-                onResolutionScope, onResolutionPreset, onStageResolution, onStageDsc, onStageCharging
+                onApplySuggestedCustom, onStageChange, onStageCharging
             )
             StudioTab.DEVICE_TREE -> DeviceTreeScreen(
                 state = state,
@@ -304,10 +297,7 @@ private fun ModulesTab(
     onStrategy: (PatchStrategy) -> Unit, onPatchMode: (PatchMode) -> Unit,
     onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit, onCustomVbp: (String) -> Unit,
     onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit, onApplySuggestedCustom: () -> Unit,
-    onStageChange: () -> Unit, onResolutionWidth: (String) -> Unit, onResolutionHeight: (String) -> Unit,
-    onResolutionScope: (ResolutionScope) -> Unit, onResolutionPreset: (Int, Int) -> Unit,
-    onStageResolution: () -> Unit,
-    onStageDsc: (Int, String, DscParameters) -> Unit,
+    onStageChange: () -> Unit,
     onStageCharging: (ChargingNode, Map<String, String>) -> Unit
 ) {
     var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
@@ -321,45 +311,15 @@ private fun ModulesTab(
         if (workspace == null) {
             item { WorkspaceRequiredCard() }
         } else {
-            item { Text("显示", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             item { FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 val refreshFinding = state.capabilityReport?.finding(CapabilityKind.REFRESH_RATE)
-                val resolutionFinding = state.capabilityReport?.finding(CapabilityKind.RESOLUTION)
-                val dscFinding = state.capabilityReport?.finding(CapabilityKind.DSC)
-                val brightnessFinding = state.capabilityReport?.finding(CapabilityKind.BRIGHTNESS_HBM)
                 ModuleCard("刷新率", capabilitySubtitle(state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE) { activeModule = if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE }
-                ModuleCard("分辨率", capabilitySubtitle(state, resolutionFinding, workspace.candidates.count { it.hActive != null && it.vActive != null }), Icons.Default.AspectRatio, (resolutionFinding?.matchCount ?: 0) > 0, activeModule == StudioModule.RESOLUTION) { activeModule = if (activeModule == StudioModule.RESOLUTION) null else StudioModule.RESOLUTION }
-                ModuleCard("DSC", capabilitySubtitle(state, dscFinding, 0), Icons.Default.Tune, (dscFinding?.matchCount ?: 0) > 0, activeModule == StudioModule.DSC) { activeModule = if (activeModule == StudioModule.DSC) null else StudioModule.DSC }
-                ModuleCard("亮度 / HBM", capabilitySubtitle(state, brightnessFinding, 0), Icons.Default.Brightness6, false)
-            } }
-            item { Text("硬件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-            item { FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ModuleCard("Thermal", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.THERMAL), 0), Icons.Default.Thermostat, false)
                 ModuleCard("Charging", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING) { activeModule = if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING }
-                ModuleCard("Touch", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.TOUCH), 0), Icons.Default.TouchApp, false)
                 ModuleCard("高级属性", "设备树编辑器 · 始终可用", Icons.Default.Code, false)
             } }
             if (activeModule == StudioModule.REFRESH_RATE && workspace.candidates.isNotEmpty()) {
                 item { HorizontalDivider() }
                 item { TimingPanel(state, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange) }
-            }
-            if (activeModule == StudioModule.RESOLUTION) {
-                item { HorizontalDivider() }
-                item {
-                    ResolutionPanel(
-                        state = state,
-                        onSelect = onSelect,
-                        onWidth = onResolutionWidth,
-                        onHeight = onResolutionHeight,
-                        onScope = onResolutionScope,
-                        onPreset = onResolutionPreset,
-                        onStage = onStageResolution
-                    )
-                }
-            }
-            if (activeModule == StudioModule.DSC) {
-                item { HorizontalDivider() }
-                item { DscAnalysisPanel(state = state, onSelect = onSelect, onStage = onStageDsc) }
             }
             if (activeModule == StudioModule.CHARGING) {
                 item { HorizontalDivider() }
@@ -416,7 +376,7 @@ private fun CapabilityScanCard(state: MainUiState)
                 }
             } else {
                 Text(
-                    "导入 DTBO 后自动识别显示、DSC、亮度/HBM、Thermal、Charging 和 Touch 相关能力。",
+                    "导入 DTBO 后自动识别刷新率时序和 Charging 参数。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -443,7 +403,6 @@ private fun capabilitySubtitle(
     {
         CapabilityStatus.AVAILABLE -> "可用 · ${finding.matchCount} 个"
         CapabilityStatus.ANALYSIS_ONLY -> "可分析 · ${finding.matchCount} 个"
-        CapabilityStatus.DETECTED -> "发现 ${finding.matchCount} 处 · 暂未开放修改"
         CapabilityStatus.NOT_FOUND -> "当前 DTBO 未发现"
     }
 }

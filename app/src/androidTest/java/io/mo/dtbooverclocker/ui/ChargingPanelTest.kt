@@ -35,7 +35,7 @@ class ChargingPanelTest {
     """.trimIndent()
     private val state = mutableStateOf(MainUiState())
     private var staged: Pair<ChargingNode, Map<String, String>>? = null
-    private fun report(text: String = source) = CapabilityReport(1, 3, 3, emptyList(), emptyList(),
+    private fun report(text: String = source) = CapabilityReport(1, 3, 3, emptyList(),
         ChargingAnalyzer.analyze(listOf(DeviceTreeParser.parse(0, text))))
     private fun show(text: String = source): StateRestorationTester {
         val metadata = DtboMetadata("0xd7b7ab1e", 0, 32, 32, 32, 4096, 0, emptyList())

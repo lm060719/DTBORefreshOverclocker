@@ -4,15 +4,12 @@ import android.content.Context
 import android.net.Uri
 import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.AvbProtectionState
-import io.mo.dtbooverclocker.model.FeatureModuleKind
-import io.mo.dtbooverclocker.model.ModuleStagedChange
 import io.mo.dtbooverclocker.model.DtboBinaryImage
 import io.mo.dtbooverclocker.model.DtboSourceImage
 import io.mo.dtbooverclocker.model.DtboWorkspace
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchReport
 import io.mo.dtbooverclocker.model.PatchStrategy
-import io.mo.dtbooverclocker.model.ResolutionScope
 import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.TimingCandidate
@@ -38,15 +35,6 @@ data class TimingApplyResult(
     val updatedWorkspace: DtboWorkspace,
     val selectedCandidateId: String?,
     val stagedChange: StagedChange,
-    val operations: List<DeviceTreeChange>,
-    val changes: List<String>,
-    val warnings: List<String>
-)
-
-data class ResolutionApplyResult(
-    val updatedWorkspace: DtboWorkspace,
-    val selectedCandidateId: String?,
-    val stagedChange: ModuleStagedChange,
     val operations: List<DeviceTreeChange>,
     val changes: List<String>,
     val warnings: List<String>
@@ -263,73 +251,6 @@ class DtboPatchEngine(
     }
 
 
-    suspend fun applyResolutionChange(
-        workspace: DtboWorkspace,
-        candidate: TimingCandidate,
-        targetWidth: Int,
-        targetHeight: Int,
-        scope: ResolutionScope
-    ): ResolutionApplyResult = withContext(Dispatchers.IO) {
-        require(candidate.entryIndex in workspace.extractedEntries.indices) {
-            "候选节点对应的 DTB 索引无效"
-        }
-
-        val plan = ResolutionPlanner.plan(
-            candidate = candidate,
-            targetWidth = targetWidth,
-            targetHeight = targetHeight,
-            scope = scope
-        )
-
-        val updatedWorkspace = commitWorkspaceTexts(workspace, mapOf(candidate.entryIndex to plan.replayedText))
-        val refreshedForEntry = updatedWorkspace.candidates.filter { it.entryIndex == candidate.entryIndex }
-
-        val nextSelectedId = refreshedForEntry
-            .firstOrNull { it.nodePath == candidate.nodePath }
-            ?.id
-            ?: refreshedForEntry.firstOrNull()?.id
-
-        val summary = "分辨率 ${plan.sourceWidth}×${plan.sourceHeight} → ${plan.targetWidth}×${plan.targetHeight} · ${plan.affectedNodePaths.size} 个档位"
-        val staged = ModuleStagedChange(
-            module = FeatureModuleKind.RESOLUTION,
-            entryIndex = candidate.entryIndex,
-            affectedNodePaths = plan.affectedNodePaths,
-            summary = summary,
-            changes = plan.changes,
-            warnings = plan.warnings,
-            directFlashAllowed = plan.directFlashAllowed
-        )
-
-        plan.changes.forEach { logSink("[RESOLUTION] $it") }
-        plan.warnings.forEach { logSink("[WARN][RESOLUTION] $it") }
-        logSink("[OK] 已暂存分辨率模块修改：$summary")
-        ResolutionApplyResult(
-            updatedWorkspace = updatedWorkspace,
-            selectedCandidateId = nextSelectedId,
-            stagedChange = staged,
-            operations = plan.operations,
-            changes = plan.changes,
-            warnings = plan.warnings
-        )
-    }
-
-
-    suspend fun applyDscChange(
-        workspace: DtboWorkspace,
-        entryIndex: Int,
-        nodePath: String,
-        parameters: io.mo.dtbooverclocker.model.DscParameters
-    ): Pair<DtboWorkspace, DeviceTreeTransaction> = withContext(Dispatchers.IO) {
-        require(entryIndex in workspace.extractedEntries.indices) { "DSC 对应的 DTB 索引无效" }
-        val dtsFile = File(workspace.rootDir, "dts/entry_$entryIndex.dts")
-        require(dtsFile.isFile) { "Entry $entryIndex 没有可编辑的 DTS 文件" }
-        val originalText = dtsFile.readText()
-        val plan = DscPlanner.plan(entryIndex, originalText, nodePath, parameters)
-        val updatedWorkspace = commitWorkspaceTexts(workspace, mapOf(entryIndex to plan.replayedText))
-        plan.transaction.operations.forEach { logSink("[DSC] ${it.summary}") }
-        updatedWorkspace to plan.transaction
-    }
-
     suspend fun applyChargingChange(
         workspace: DtboWorkspace,
         snapshot: io.mo.dtbooverclocker.model.ChargingNode,
@@ -497,10 +418,7 @@ class DtboPatchEngine(
 
         verifyMetadataPreserved(workspace, rebuiltImage)
         val timingVerificationEntries = transactions
-            .filter {
-                it.kind == DeviceTreeTransactionKind.REFRESH_RATE ||
-                    it.kind == DeviceTreeTransactionKind.RESOLUTION
-            }
+            .filter { it.kind == DeviceTreeTransactionKind.REFRESH_RATE }
             .flatMap { it.entryIndices }
             .toSet()
         verifyAllPatchedTimings(
@@ -520,7 +438,7 @@ class DtboPatchEngine(
             warnings += "包含仅 Framerate 策略的修改，存在时序不匹配风险，不建议直接刷写。"
         }
         if (moduleStagedChanges.isNotEmpty()) {
-            warnings += "包含功能模块设备树修改；分辨率、DSC 和 Charging 模块当前阶段禁止 Root 直刷，请优先导出并离线验证。"
+            warnings += "包含功能模块设备树修改；Charging 模块当前阶段禁止 Root 直刷，请优先导出并离线验证。"
         }
         if (genericChanges.isNotEmpty()) {
             warnings += "包含通用设备树自由编辑；当前阶段禁止 Root 直刷，请优先导出并离线验证。"

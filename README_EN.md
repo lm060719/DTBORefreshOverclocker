@@ -9,18 +9,15 @@ An Android DTBO (Device Tree Blob Overlay) viewer, editor and rebuilder: import 
 | Module | Capability | Root flash |
 | --- | --- | --- |
 | Refresh rate | Edit, add or delete timing modes; Balanced / Pixel Clock only / Framerate only / Custom | ✅ (except Framerate only) |
-| Resolution | Aspect-preserving downscale with DSC slice and ROI kept consistent | ❌ export only |
-| DSC | Parse and edit version, BPC, BPP, slice parameters, block prediction | ❌ export only |
 | Charging | Edit recognised current, voltage and thermal-table parameters, see [Charging notes](docs/charging.md) | ❌ export only |
 | Device tree | Browse, search, references; add/edit/delete properties, add/clone/rename/delete nodes | ❌ export only |
-| Brightness / Thermal / Touch | Detection only | — |
 
 Every edit goes into a transaction queue, where it can be undone or packaged together with others. Export formats: DTBO image, Recovery flashable ZIP, PC Fastboot bundle.
 
 ## Workflow
 
 1. **Import**: pick a local `dtbo.img`, or extract the active slot's partition with Root.
-2. **Detect**: timing modes, DSC and charging nodes are scanned and grouped by panel. When extracted with Root, the app reads `androidboot.dtbo_idx` and the kernel command line to mark the panel and DTB this device actually uses.
+2. **Detect**: timing modes and charging nodes are scanned and grouped by panel. When extracted with Root, the app reads `androidboot.dtbo_idx` and the kernel command line to mark the panel and DTB this device actually uses.
 3. **Edit**: stage changes from the module pages or the device-tree page.
 4. **Package**: modified DTBs are recompiled, undeclared properties are checked for changes, metadata is verified, then the image is rebuilt.
 5. **Export / flash**: export for offline verification, or Root-flash where allowed (the original partition is backed up first).
