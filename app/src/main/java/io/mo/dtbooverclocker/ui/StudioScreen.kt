@@ -19,13 +19,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import io.mo.dtbooverclocker.model.ChargingNode
 import io.mo.dtbooverclocker.model.CapabilityFinding
 import io.mo.dtbooverclocker.model.CapabilityKind
 import io.mo.dtbooverclocker.model.CapabilityStatus
-import io.mo.dtbooverclocker.model.PatchMode
-import io.mo.dtbooverclocker.model.PatchStrategy
-import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -41,50 +37,32 @@ private enum class StudioModule { REFRESH_RATE, CHARGING }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudioScreen(
-    state: MainUiState, pagerState: PagerState, pageStateHolder: SaveableStateHolder,
-    onImport: () -> Unit, onExtract: () -> Unit, onRefreshEnvironment: () -> Unit,
-    onOpenRollback: () -> Unit, onOpenAdvancedSettings: () -> Unit, onOpenAbout: () -> Unit,
-    onRequestRoot: () -> Unit, onSelect: (String) -> Unit, onTarget: (Int) -> Unit,
-    onStrategy: (PatchStrategy) -> Unit, onPatchMode: (PatchMode) -> Unit,
-    onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit,
-    onCustomVbp: (String) -> Unit, onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit,
-    onApplySuggestedCustom: () -> Unit, onStageChange: () -> Unit,
-    onStageCharging: (ChargingNode, Map<String, String>) -> Unit,
-    onSetDeviceTreeProperty: (Int, String, String, String?) -> Unit,
-    onAddDeviceTreeProperty: (Int, String, String, String?) -> Unit,
-    onDeleteDeviceTreeProperty: (Int, String, String) -> Unit,
-    onAddDeviceTreeNode: (Int, String, String) -> Unit,
-    onCloneDeviceTreeNode: (Int, String, String) -> Unit,
-    onRenameDeviceTreeNode: (Int, String, String) -> Unit,
-    onDeleteDeviceTreeNode: (Int, String) -> Unit,
-    onUndoThroughTransaction: (String) -> Unit,
-    onUndoLastTransaction: () -> Unit,
-    onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit,
-    onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onModuleZip: () -> Unit, onFlash: () -> Unit, onFlashModule: () -> Unit,
-    onExportBackup: (File) -> Unit, onExportRescue: (File) -> Unit, onScreenshot: () -> Unit,
-    onCopy: (String) -> Unit, onClearLogs: () -> Unit
+    state: MainUiState,
+    pagerState: PagerState,
+    pageStateHolder: SaveableStateHolder,
+    navigation: NavigationActions,
+    workspace: WorkspaceActions,
+    timing: TimingActions,
+    deviceTree: DeviceTreeActions,
+    output: OutputActions
 ) {
-    StudioNavigation(pagerState, pageStateHolder, !state.busy, onOpenRollback, onRefreshEnvironment) { tab, padding ->
+    StudioNavigation(pagerState, pageStateHolder, !state.busy, navigation.onOpenRollback, navigation.onRefreshEnvironment) { tab, padding ->
         when (tab) {
-            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onUndoLastTransaction, onSavePatched, onRecoveryZip, onFastbootBundle, onModuleZip, onFlash, onFlashModule, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
-            StudioTab.MODULES -> ModulesTab(
-                state, padding, onSelect, onTarget, onStrategy, onPatchMode,
-                onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp,
-                onApplySuggestedCustom, onStageChange, onStageCharging
-            )
+            StudioTab.OVERVIEW -> OverviewTab(state, padding, workspace, output)
+            StudioTab.MODULES -> ModulesTab(state, padding, timing)
             StudioTab.DEVICE_TREE -> DeviceTreeScreen(
                 state = state,
                 contentPadding = padding,
-                onSetProperty = onSetDeviceTreeProperty,
-                onAddProperty = onAddDeviceTreeProperty,
-                onDeleteProperty = onDeleteDeviceTreeProperty,
-                onAddNode = onAddDeviceTreeNode,
-                onCloneNode = onCloneDeviceTreeNode,
-                onRenameNode = onRenameDeviceTreeNode,
-                onDeleteNode = onDeleteDeviceTreeNode,
-                onUndoThroughTransaction = onUndoThroughTransaction
+                onSetProperty = deviceTree.onSetProperty,
+                onAddProperty = deviceTree.onAddProperty,
+                onDeleteProperty = deviceTree.onDeleteProperty,
+                onAddNode = deviceTree.onAddNode,
+                onCloneNode = deviceTree.onCloneNode,
+                onRenameNode = deviceTree.onRenameNode,
+                onDeleteNode = deviceTree.onDeleteNode,
+                onUndoThroughTransaction = workspace.onUndoThroughTransaction
             )
-            StudioTab.SETTINGS -> SettingsHubTab(state, padding, onRequestRoot, onRefreshEnvironment, onOpenRollback, onOpenAdvancedSettings, onOpenAbout)
+            StudioTab.SETTINGS -> SettingsHubTab(state, padding, navigation)
         }
     }
 }
@@ -145,25 +123,21 @@ internal fun StudioNavigation(
 
 @Composable
 private fun OverviewTab(
-    state: MainUiState, padding: PaddingValues, onImport: () -> Unit, onExtract: () -> Unit,
-    onPackage: () -> Unit, onReset: () -> Unit, onUndoLastTransaction: () -> Unit,
-    onSavePatched: (File) -> Unit, onRecoveryZip: () -> Unit,
-    onFastbootBundle: () -> Unit, onModuleZip: () -> Unit, onFlash: () -> Unit, onFlashModule: () -> Unit, onExportBackup: (File) -> Unit,
-    onExportRescue: (File) -> Unit, onScreenshot: () -> Unit, onCopy: (String) -> Unit, onClearLogs: () -> Unit
+    state: MainUiState, padding: PaddingValues, workspace: WorkspaceActions, output: OutputActions
 ) {
     LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         item(key = "top") { Spacer(Modifier.height(2.dp)) }
         item(key = "hero") { StudioHeroCard(state) }
-        item(key = "source") { SourceCard(state, onImport, onExtract) }
+        item(key = "source") { SourceCard(state, workspace.onImport, workspace.onExtract) }
         if (state.workspace != null) {
             item(key = "summary") { ImageSummaryCard(state) }
             if (state.transactions.isNotEmpty()) item(key = "transactions") {
-                TransactionQueueCard(state, onPackage, onReset, onUndoLastTransaction)
+                TransactionQueueCard(state, workspace.onPackage, workspace.onReset, workspace.onUndoLastTransaction)
             }
         }
-        state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onModuleZip, onFlash, onFlashModule) } }
-        state.lastFlash?.let { flash -> item(key = "rescue") { RescueMemoCard(state, onCopy, { onExportBackup(flash.backupFile) }, { onExportRescue(flash.rescueZip) }, onScreenshot) } }
-        item(key = "terminal") { TerminalCard(state.logs, onClearLogs) }
+        state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { output.onSavePatched(report.outputImage) }, output.onRecoveryZip, output.onFastbootBundle, output.onModuleZip, output.onFlash, output.onFlashModule) } }
+        state.lastFlash?.let { flash -> item(key = "rescue") { RescueMemoCard(state, output.onCopy, { output.onExportBackup(flash.backupFile) }, { output.onExportRescue(flash.rescueZip) }, output.onScreenshot) } }
+        item(key = "terminal") { TerminalCard(state.logs, output.onClearLogs) }
         item(key = "status") { Text(state.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Spacing.xl)) }
     }
 }
@@ -219,12 +193,7 @@ private fun StudioHeroCard(state: MainUiState) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModulesTab(
-    state: MainUiState, padding: PaddingValues, onSelect: (String) -> Unit, onTarget: (Int) -> Unit,
-    onStrategy: (PatchStrategy) -> Unit, onPatchMode: (PatchMode) -> Unit,
-    onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit, onCustomVbp: (String) -> Unit,
-    onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit, onApplySuggestedCustom: () -> Unit,
-    onStageChange: () -> Unit,
-    onStageCharging: (ChargingNode, Map<String, String>) -> Unit
+    state: MainUiState, padding: PaddingValues, timing: TimingActions
 ) {
     var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
     val workspace = state.workspace
@@ -245,11 +214,11 @@ private fun ModulesTab(
             } }
             if (activeModule == StudioModule.REFRESH_RATE && workspace.candidates.isNotEmpty()) {
                 item { HorizontalDivider() }
-                item { TimingPanel(state, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange) }
+                item { TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange) }
             }
             if (activeModule == StudioModule.CHARGING) {
                 item { HorizontalDivider() }
-                item(key = "charging_panel") { ChargingPanel(state, onStageCharging) }
+                item(key = "charging_panel") { ChargingPanel(state, timing.onStageCharging) }
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
@@ -346,7 +315,7 @@ private fun WorkspaceRequiredCard() {
 }
 
 @Composable
-private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, onRequestRoot: () -> Unit, onRefreshEnvironment: () -> Unit, onOpenRollback: () -> Unit, onOpenAdvancedSettings: () -> Unit, onOpenAbout: () -> Unit) {
+private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigation: NavigationActions) {
     LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         item { Spacer(Modifier.height(2.dp)) }
         item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
@@ -354,13 +323,13 @@ private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, onRequest
             Text(if (state.rootState.granted) "Root 已授权" else state.rootState.detail)
             Text(state.slotInfo?.blockDevice ?: "分区路径检测中", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                if (!state.rootState.granted) OutlinedButton(onRequestRoot, enabled = state.rootState.suPresent) { Icon(Icons.Default.Lock, null); Spacer(Modifier.width(6.dp)); Text("请求 Root") }
-                OutlinedButton(onRefreshEnvironment) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text("重新探测") }
+                if (!state.rootState.granted) OutlinedButton(navigation.onRequestRoot, enabled = state.rootState.suPresent) { Icon(Icons.Default.Lock, null); Spacer(Modifier.width(6.dp)); Text("请求 Root") }
+                OutlinedButton(navigation.onRefreshEnvironment) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text("重新探测") }
             }
         } } }
-        item { SettingsEntry(Icons.Default.Restore, "备份与恢复", "已保存 " + state.backups.size + " 个 DTBO 备份", onOpenRollback) }
-        item { SettingsEntry(Icons.Default.Settings, "高级设置", "缓存、日志与维护选项", onOpenAdvancedSettings) }
-        item { SettingsEntry(Icons.Default.Info, "关于 DTBO Studio", "版本、项目说明与免责声明", onOpenAbout) }
+        item { SettingsEntry(Icons.Default.Restore, "备份与恢复", "已保存 " + state.backups.size + " 个 DTBO 备份", navigation.onOpenRollback) }
+        item { SettingsEntry(Icons.Default.Settings, "高级设置", "缓存、日志与维护选项", navigation.onOpenAdvancedSettings) }
+        item { SettingsEntry(Icons.Default.Info, "关于 DTBO Studio", "版本、项目说明与免责声明", navigation.onOpenAbout) }
     }
 }
 
