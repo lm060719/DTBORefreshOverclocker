@@ -157,6 +157,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     var pendingBinary by remember { mutableStateOf<File?>(null) }
     var pendingZip by remember { mutableStateOf<File?>(null) }
     var showFlashDialog by remember { mutableStateOf(false) }
+    var flashViaModule by remember { mutableStateOf(false) }
 
     val openImage = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -313,7 +314,20 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                         saveZip.launch(file.name)
                     }
                 },
-                onFlash = { showFlashDialog = true },
+                onModuleZip = {
+                    viewModel.prepareModuleZip { file ->
+                        pendingZip = file
+                        saveZip.launch(file.name)
+                    }
+                },
+                onFlash = {
+                    flashViaModule = false
+                    showFlashDialog = true
+                },
+                onFlashModule = {
+                    flashViaModule = true
+                    showFlashDialog = true
+                },
                 onExportBackup = { file ->
                     pendingBinary = file
                     saveBinary.launch(file.name)
@@ -366,10 +380,11 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
         DangerousFlashDialog(
             targetHz = state.targetHz,
             partition = state.slotInfo?.blockDevice.orEmpty(),
+            viaModule = flashViaModule,
             onDismiss = { showFlashDialog = false },
             onConfirm = {
                 showFlashDialog = false
-                viewModel.flashPatched()
+                viewModel.flashPatched(viaModule = flashViaModule)
             }
         )
     }
@@ -1196,7 +1211,9 @@ internal fun OutputCard(
     onSavePatched: () -> Unit,
     onRecoveryZip: () -> Unit,
     onFastbootBundle: () -> Unit,
-    onFlash: () -> Unit
+    onModuleZip: () -> Unit,
+    onFlash: () -> Unit,
+    onFlashModule: () -> Unit
 ) {
     val report = state.patchReport ?: return
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -1225,6 +1242,9 @@ internal fun OutputCard(
             OutlinedButton(onClick = onFastbootBundle, modifier = Modifier.fillMaxWidth()) {
                 Text("导出 PC Fastboot 一键包")
             }
+            OutlinedButton(onClick = onModuleZip, modifier = Modifier.fillMaxWidth()) {
+                Text("导出 KernelSU / Magisk 模块")
+            }
 
             val canFlash = state.rootState.granted && state.transactions.isNotEmpty()
             Button(
@@ -1236,6 +1256,19 @@ internal fun OutputCard(
                 Spacer(Modifier.width(8.dp))
                 Text("直接刷写当前槽位")
             }
+            Button(
+                onClick = onFlashModule,
+                enabled = canFlash,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.FlashOn, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("制作成模块并刷入")
+            }
+            Text(
+                "模块方式通过 KernelSU / Magisk / APatch 安装，安装时写入当前槽位；在管理器中移除模块并重启即可自动恢复原 DTBO。",
+                style = MaterialTheme.typography.labelSmall
+            )
             if (!canFlash) {
                 Text(
                     "直接刷写需要 Root 授权。",
@@ -1340,6 +1373,7 @@ internal fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
 private fun DangerousFlashDialog(
     targetHz: Int,
     partition: String,
+    viaModule: Boolean,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -1364,6 +1398,9 @@ private fun DangerousFlashDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("目标：$partition")
                 Text("本应用只写当前目标槽位。写入前会强制备份、SHA-256 校验并生成 Rescue Zip。")
+                if (viaModule) {
+                    Text("将打包为模块并交给 KernelSU / Magisk / APatch 安装，由模块完成写入；移除模块并重启会自动写回原 DTBO。")
+                }
                 Text("请输入目标刷新率 $targetHz，或输入大写 FLASH：")
                 OutlinedTextField(
                     value = confirmation,
@@ -1381,7 +1418,7 @@ private fun DangerousFlashDialog(
         },
         confirmButton = {
             Button(onClick = onConfirm, enabled = enabled) {
-                Text("确认单槽位刷写")
+                Text(if (viaModule) "确认以模块刷入" else "确认单槽位刷写")
             }
         },
         dismissButton = {

@@ -58,13 +58,13 @@ fun StudioScreen(
     onUndoThroughTransaction: (String) -> Unit,
     onUndoLastTransaction: () -> Unit,
     onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit,
-    onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onFlash: () -> Unit,
+    onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onModuleZip: () -> Unit, onFlash: () -> Unit, onFlashModule: () -> Unit,
     onExportBackup: (File) -> Unit, onExportRescue: (File) -> Unit, onScreenshot: () -> Unit,
     onCopy: (String) -> Unit, onClearLogs: () -> Unit
 ) {
     StudioNavigation(pagerState, pageStateHolder, !state.busy, onOpenRollback, onRefreshEnvironment) { tab, padding ->
         when (tab) {
-            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onUndoLastTransaction, onSavePatched, onRecoveryZip, onFastbootBundle, onFlash, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
+            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onUndoLastTransaction, onSavePatched, onRecoveryZip, onFastbootBundle, onModuleZip, onFlash, onFlashModule, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
             StudioTab.MODULES -> ModulesTab(
                 state, padding, onSelect, onTarget, onStrategy, onPatchMode,
                 onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp,
@@ -146,7 +146,7 @@ private fun OverviewTab(
     state: MainUiState, padding: PaddingValues, onImport: () -> Unit, onExtract: () -> Unit,
     onPackage: () -> Unit, onReset: () -> Unit, onUndoLastTransaction: () -> Unit,
     onSavePatched: (File) -> Unit, onRecoveryZip: () -> Unit,
-    onFastbootBundle: () -> Unit, onFlash: () -> Unit, onExportBackup: (File) -> Unit,
+    onFastbootBundle: () -> Unit, onModuleZip: () -> Unit, onFlash: () -> Unit, onFlashModule: () -> Unit, onExportBackup: (File) -> Unit,
     onExportRescue: (File) -> Unit, onScreenshot: () -> Unit, onCopy: (String) -> Unit, onClearLogs: () -> Unit
 ) {
     LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -159,7 +159,7 @@ private fun OverviewTab(
                 TransactionQueueCard(state, onPackage, onReset, onUndoLastTransaction)
             }
         }
-        state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onFlash) } }
+        state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onModuleZip, onFlash, onFlashModule) } }
         state.lastFlash?.let { flash -> item(key = "rescue") { RescueMemoCard(state, onCopy, { onExportBackup(flash.backupFile) }, { onExportRescue(flash.rescueZip) }, onScreenshot) } }
         item(key = "terminal") { TerminalCard(state.logs, onClearLogs) }
         item(key = "status") { Text(state.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 24.dp)) }

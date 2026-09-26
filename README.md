@@ -12,7 +12,7 @@ Android DTBO（Device Tree Blob Overlay）的查看、编辑与重建工具：�
 | Charging | 编辑已识别的电流、电压、温控表等参数，见 [Charging 参数说明](docs/charging.md) | ✅ |
 | 设备树 | 节点浏览、搜索、引用关系；属性增删改，节点新增/克隆/重命名/删除 | ✅ |
 
-所有修改先进入事务队列，可撤销、合并打包。导出方式：DTBO 镜像、Recovery 刷机包、PC Fastboot 包。
+所有修改先进入事务队列，可撤销、合并打包。导出方式：DTBO 镜像、Recovery 刷机包、PC Fastboot 包、KernelSU / Magisk / APatch 模块（安装时写入当前槽位，移除模块并重启即自动恢复原 DTBO；也可在应用内“制作成模块并刷入”）。
 
 ## 使用流程
 

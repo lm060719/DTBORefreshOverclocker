@@ -601,7 +601,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         stageTimingChange()
     }
 
-    fun flashPatched() {
+    fun flashPatched(viaModule: Boolean = false) {
         launchWorkspaceOperation {
             val current = _state.value
             val report = current.patchReport
@@ -612,21 +612,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 "当前没有可刷写的设备树事务。"
             } ?: return@launchWorkspaceOperation
 
-            setBusy(true, "正在执行备份、救援包生成与单槽位刷写…")
+            setBusy(true, if (viaModule) "正在备份并以模块方式刷入…" else "正在执行备份、救援包生成与单槽位刷写…")
             runCatching {
-                safetyGuard.flashPatchedImage(report, slot)
+                if (viaModule) {
+                    safetyGuard.installPatchedModule(report, slot, moduleSummary(current))
+                } else {
+                    safetyGuard.flashPatchedImage(report, slot)
+                }
             }.onSuccess { result ->
                 loadBackups()
                 _state.update {
                     it.copy(
                         lastFlash = result,
-                        status = "刷写完成并通过回读校验"
+                        status = if (viaModule) {
+                            "模块已安装并通过回读校验，重启后生效；移除模块并重启即可恢复原 DTBO"
+                        } else {
+                            "刷写完成并通过回读校验"
+                        }
                     )
                 }
             }.onFailure(::showError)
             setBusy(false)
         }
     }
+
+    fun prepareModuleZip(onReady: (File) -> Unit) {
+        launchWorkspaceOperation {
+            val current = _state.value
+            val patched = current.patchReport?.outputImage
+                ?: return@launchWorkspaceOperation showError(IllegalStateException("请先生成修补镜像"))
+
+            setBusy(true, "正在生成 KernelSU / Magisk 模块…")
+            runCatching {
+                safetyGuard.generateModuleZip(patched, moduleSummary(current))
+            }.onSuccess(onReady).onFailure(::showError)
+            setBusy(false)
+        }
+    }
+
+    private fun moduleSummary(state: MainUiState): String =
+        state.transactions.joinToString("; ") { it.summary }
 
     fun prepareRecoveryZip(onReady: (File) -> Unit) {
         launchWorkspaceOperation {

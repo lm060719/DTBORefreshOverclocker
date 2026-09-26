@@ -12,7 +12,7 @@ An Android DTBO (Device Tree Blob Overlay) viewer, editor and rebuilder: import 
 | Charging | Edit recognised current, voltage and thermal-table parameters, see [Charging notes](docs/charging.md) | ✅ |
 | Device tree | Browse, search, references; add/edit/delete properties, add/clone/rename/delete nodes | ✅ |
 
-Every edit goes into a transaction queue, where it can be undone or packaged together with others. Export formats: DTBO image, Recovery flashable ZIP, PC Fastboot bundle.
+Every edit goes into a transaction queue, where it can be undone or packaged together with others. Export formats: DTBO image, Recovery flashable ZIP, PC Fastboot bundle, KernelSU / Magisk / APatch module (flashes the active slot on install; removing the module and rebooting restores the original DTBO; can also be installed from the app via "flash as module").
 
 ## Workflow
 

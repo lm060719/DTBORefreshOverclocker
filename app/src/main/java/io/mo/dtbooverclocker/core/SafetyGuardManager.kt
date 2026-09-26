@@ -18,8 +18,6 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 import kotlin.math.ceil
 
 class SafetyGuardManager(
@@ -49,6 +47,77 @@ class SafetyGuardManager(
     suspend fun flashPatchedImage(
         report: PatchReport,
         slot: SlotInfo
+    ): FlashResult = guardedFlash(report, slot) {
+        logSink("[SAFE] 第 3/3 层：仅写入当前目标 ${slot.blockDevice}；不会触碰另一槽位")
+        require(ddWrite(report.outputImage, slot.blockDevice)) { "物理写入失败；原始备份与 Rescue Zip 已保留" }
+    }
+
+    /**
+     * 打包成 KernelSU / Magisk / APatch 模块并用当前 Root 管理器安装。
+     * 模块 customize.sh 负责写入活跃槽位；本函数前后仍执行与直刷相同的备份、救砖包与回读校验。
+     */
+    suspend fun installPatchedModule(
+        report: PatchReport,
+        slot: SlotInfo,
+        summary: String
+    ): FlashResult = guardedFlash(report, slot) {
+        val manager = detectModuleManager()
+            ?: error("未检测到 KernelSU / Magisk / APatch，无法以模块方式刷入")
+        val zip = generateModuleZip(report.outputImage, summary)
+        logSink("[SAFE] 第 3/3 层：通过 ${manager.displayName} 安装模块，由模块写入 ${slot.blockDevice}")
+        val result = rootDetector.runRoot(manager.installCommand(zip.absolutePath), timeoutMs = 180_000)
+        (result.stdout + "\n" + result.stderr).lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .forEach { logSink("[MODULE] $it") }
+        require(result.isSuccess) { "${manager.displayName} 模块安装失败 (exit=${result.exitCode})；原始备份与 Rescue Zip 已保留" }
+    }
+
+    suspend fun generateModuleZip(
+        patchedImage: File,
+        summary: String,
+        outputName: String = "DTBO_Module.zip"
+    ): File = withContext(Dispatchers.IO) {
+        val output = FlashPackageBuilder.writeModuleZip(
+            output = File(context.filesDir, "module_bundles/$outputName"),
+            patchedImage = patchedImage,
+            summary = summary,
+            versionCode = (System.currentTimeMillis() / 1000L).toInt()
+        )
+        logSink("[OK] 已生成 KernelSU / Magisk 模块：${output.absolutePath}")
+        output
+    }
+
+    enum class ModuleManager(val displayName: String) {
+        KERNELSU("KernelSU"),
+        APATCH("APatch"),
+        MAGISK("Magisk");
+
+        fun installCommand(zip: String): List<String> = when (this) {
+            KERNELSU -> listOf("/data/adb/ksud", "module", "install", zip)
+            APATCH -> listOf("/data/adb/apd", "module", "install", zip)
+            MAGISK -> listOf("magisk", "--install-module", zip)
+        }
+    }
+
+    suspend fun detectModuleManager(): ModuleManager? {
+        val probe = rootDetector.runRoot(
+            listOf(
+                "sh", "-c",
+                "if [ -x /data/adb/ksud ]; then echo KERNELSU; " +
+                    "elif [ -x /data/adb/apd ]; then echo APATCH; " +
+                    "elif command -v magisk >/dev/null 2>&1; then echo MAGISK; fi"
+            ),
+            timeoutMs = 10_000
+        )
+        val name = probe.stdout.trim().lineSequence().lastOrNull().orEmpty()
+        return ModuleManager.entries.firstOrNull { it.name == name }
+    }
+
+    private suspend fun guardedFlash(
+        report: PatchReport,
+        slot: SlotInfo,
+        write: suspend () -> Unit
     ): FlashResult = withContext(Dispatchers.IO) {
         validateBlockPath(slot.blockDevice)
         require(report.outputImage.isFile && report.outputImage.length() >= 32) {
@@ -110,10 +179,7 @@ class SafetyGuardManager(
         require(rescueExternal.size > 0L) { "救砖 Zip 外部落盘失败，已阻止刷写" }
 
         val patchedHash = HashUtils.sha256(report.outputImage)
-        logSink("[SAFE] 第 3/3 层：仅写入当前目标 ${slot.blockDevice}；不会触碰另一槽位")
-
-        val write = ddWrite(report.outputImage, slot.blockDevice)
-        require(write) { "物理写入失败；原始备份与 Rescue Zip 已保留" }
+        write()
 
         val verifyFile = File(context.cacheDir, "flash_guard/readback_${System.currentTimeMillis()}.img")
         val blockCount = ceil(report.outputImage.length() / 4096.0).toLong().coerceAtLeast(1L)
@@ -166,50 +232,14 @@ class SafetyGuardManager(
         outputName: String = "DTBO_Patched_Recovery.zip"
     ): File = withContext(Dispatchers.IO) {
         validateBlockPath(slot.blockDevice)
-        require(patchedImage.isFile && patchedImage.length() >= 32) { "修补 DTBO 镜像无效" }
-
-        val outputDir = File(context.filesDir, "recovery_flash_bundles").apply { mkdirs() }
-        val output = File(outputDir, outputName)
-        val patchedHash = HashUtils.sha256(patchedImage)
-
-        val updater = buildString {
-            appendLine("#!/sbin/sh")
-            appendLine("OUTFD=\"\$2\"")
-            appendLine("ZIPFILE=\"\$3\"")
-            appendLine("TARGET=\"${slot.blockDevice}\"")
-            appendLine("TMP=\"/tmp/dtbo_patched.img\"")
-            appendLine("ui_print() { echo \"ui_print \$1\" > /proc/self/fd/\$OUTFD; echo \"ui_print\" > /proc/self/fd/\$OUTFD; }")
-            appendLine("ui_print \"DTBO Refresh Overclocker\"")
-            appendLine("ui_print \"Flashing ONLY: \$TARGET\"")
-            appendLine("unzip -p \"\$ZIPFILE\" dtbo_patched.img > \"\$TMP\" || exit 20")
-            appendLine("dd if=\"\$TMP\" of=\"\$TARGET\" bs=4M conv=fsync 2>/dev/null || dd if=\"\$TMP\" of=\"\$TARGET\" bs=4M || exit 21")
-            appendLine("sync")
-            appendLine("ui_print \"Flash complete. Image SHA-256: $patchedHash\"")
-            appendLine("exit 0")
-        }
-
-        ZipOutputStream(FileOutputStream(output)).use { zip ->
-            zip.putTextEntry("META-INF/com/google/android/update-binary", updater)
-            zip.putTextEntry(
-                "META-INF/com/google/android/updater-script",
-                "ui_print(\"DTBO patched package; update-binary handles flashing.\");\n"
-            )
-            zip.putTextEntry(
-                "README.txt",
-                buildString {
-                    appendLine("DTBO Refresh Overclocker patched Recovery package")
-                    appendLine("Target block: ${slot.blockDevice}")
-                    appendLine("Patched SHA-256: $patchedHash")
-                    appendLine("This package writes ONLY this one DTBO partition.")
-                    appendLine("Recovery compatibility varies; verify your recovery supports legacy update-binary ZIPs.")
-                }
-            )
-            zip.putNextEntry(ZipEntry("dtbo_patched.img"))
-            patchedImage.inputStream().use { it.copyTo(zip) }
-            zip.closeEntry()
-        }
-
-        require(output.isFile && output.length() > 0L) { "Recovery 刷机 Zip 生成失败" }
+        val output = FlashPackageBuilder.writeRecoveryZip(
+            output = File(context.filesDir, "recovery_flash_bundles/$outputName"),
+            image = patchedImage,
+            imageEntryName = FlashPackageBuilder.PATCHED_IMAGE,
+            partition = slot.fastbootPartition,
+            title = "Flashing patched DTBO",
+            readme = listOf("DTBO Refresh Overclocker patched Recovery package")
+        )
         logSink("[OK] 已生成单槽位 Recovery 刷机 Zip：${output.absolutePath}")
         output
     }
@@ -220,50 +250,17 @@ class SafetyGuardManager(
         outputName: String = "DTBO_Recovery_Rescue.zip"
     ): File = withContext(Dispatchers.IO) {
         validateBlockPath(slot.blockDevice)
-        require(originalImage.isFile && originalImage.length() >= 32) { "原始 DTBO 备份无效" }
-
-        val outputDir = File(context.filesDir, "rescue").apply { mkdirs() }
-        val output = File(outputDir, outputName)
-        val backupHash = HashUtils.sha256(originalImage)
-
-        val updater = buildString {
-            appendLine("#!/sbin/sh")
-            appendLine("OUTFD=\"\$2\"")
-            appendLine("ZIPFILE=\"\$3\"")
-            appendLine("TARGET=\"${slot.blockDevice}\"")
-            appendLine("TMP=\"/tmp/dtbo_backup.img\"")
-            appendLine("ui_print() { echo \"ui_print \$1\" > /proc/self/fd/\$OUTFD; echo \"ui_print\" > /proc/self/fd/\$OUTFD; }")
-            appendLine("ui_print \"DTBO Refresh Overclocker Rescue\"")
-            appendLine("ui_print \"Target: \$TARGET\"")
-            appendLine("unzip -p \"\$ZIPFILE\" dtbo_backup.img > \"\$TMP\" || exit 10")
-            appendLine("dd if=\"\$TMP\" of=\"\$TARGET\" bs=4M conv=fsync 2>/dev/null || dd if=\"\$TMP\" of=\"\$TARGET\" bs=4M || exit 11")
-            appendLine("sync")
-            appendLine("ui_print \"Restore complete. SHA-256 expected: $backupHash\"")
-            appendLine("exit 0")
-        }
-
-        ZipOutputStream(FileOutputStream(output)).use { zip ->
-            zip.putTextEntry("META-INF/com/google/android/update-binary", updater)
-            zip.putTextEntry(
-                "META-INF/com/google/android/updater-script",
-                "ui_print(\"DTBO Rescue package; update-binary handles flashing.\");\n"
+        val output = FlashPackageBuilder.writeRecoveryZip(
+            output = File(context.filesDir, "rescue/$outputName"),
+            image = originalImage,
+            imageEntryName = FlashPackageBuilder.BACKUP_IMAGE,
+            partition = slot.fastbootPartition,
+            title = "Restoring original DTBO",
+            readme = listOf(
+                "DTBO Refresh Overclocker rescue package",
+                "Never modify it to flash both A/B slots at once."
             )
-            zip.putTextEntry(
-                "RESCUE_README.txt",
-                buildString {
-                    appendLine("DTBO Refresh Overclocker rescue package")
-                    appendLine("Target block: ${slot.blockDevice}")
-                    appendLine("Backup SHA-256: $backupHash")
-                    appendLine("This package intentionally writes only one DTBO partition.")
-                    appendLine("Never modify it to flash both A/B slots at once.")
-                }
-            )
-            zip.putNextEntry(ZipEntry("dtbo_backup.img"))
-            originalImage.inputStream().use { it.copyTo(zip) }
-            zip.closeEntry()
-        }
-
-        require(output.isFile && output.length() > 0L) { "Recovery Zip 生成失败" }
+        )
         logSink("[OK] 已生成 Recovery Rescue Zip：${output.absolutePath}")
         output
     }
@@ -274,64 +271,13 @@ class SafetyGuardManager(
         originalImage: File? = null,
         outputName: String = "DTBO_Fastboot_Bundle.zip"
     ): File = withContext(Dispatchers.IO) {
-        require(patchedImage.isFile && patchedImage.length() >= 32) { "修补镜像无效" }
-        originalImage?.let { require(it.isFile) { "原始镜像不存在" } }
-
-        val outputDir = File(context.filesDir, "fastboot_bundles").apply { mkdirs() }
-        val output = File(outputDir, outputName)
-        val partition = slot.fastbootPartition
-
-        val flashBat = """@echo off
-            |echo DTBO Refresh Overclocker - flashing ONLY $partition
-            |fastboot devices
-            |fastboot flash $partition dtbo_patched.img
-            |if errorlevel 1 goto fail
-            |echo Flash complete. Reboot manually after checking the output.
-            |pause
-            |exit /b 0
-            |:fail
-            |echo Flash failed. DO NOT flash the opposite slot.
-            |pause
-            |exit /b 1
-        """.trimMargin()
-
-        val flashSh = """#!/bin/sh
-            |set -eu
-            |echo "DTBO Refresh Overclocker - flashing ONLY $partition"
-            |fastboot devices
-            |fastboot flash "$partition" dtbo_patched.img
-            |echo "Flash complete. Reboot manually after checking the output."
-        """.trimMargin()
-
-        val rollbackLine = "fastboot flash $partition dtbo_backup.img"
-        val opposite = slot.oppositeFastbootSlot?.let { "fastboot --set-active=$it" }
-
-        ZipOutputStream(FileOutputStream(output)).use { zip ->
-            zip.putTextEntry("flash_patched.bat", flashBat)
-            zip.putTextEntry("flash_patched.sh", flashSh)
-            zip.putTextEntry(
-                "README.txt",
-                buildString {
-                    appendLine("Target partition: $partition")
-                    appendLine("This bundle NEVER flashes both slots.")
-                    appendLine("Rollback: $rollbackLine")
-                    opposite?.let { appendLine("Emergency alternate-slot boot: $it") }
-                }
-            )
-
-            zip.putNextEntry(ZipEntry("dtbo_patched.img"))
-            patchedImage.inputStream().use { it.copyTo(zip) }
-            zip.closeEntry()
-
-            if (originalImage != null) {
-                zip.putNextEntry(ZipEntry("dtbo_backup.img"))
-                originalImage.inputStream().use { it.copyTo(zip) }
-                zip.closeEntry()
-                zip.putTextEntry("rollback.bat", "@echo off\n$rollbackLine\npause\n")
-                zip.putTextEntry("rollback.sh", "#!/bin/sh\nset -eu\n$rollbackLine\n")
-            }
-        }
-
+        val output = FlashPackageBuilder.writeFastbootBundle(
+            output = File(context.filesDir, "fastboot_bundles/$outputName"),
+            patchedImage = patchedImage,
+            originalImage = originalImage,
+            partition = slot.fastbootPartition,
+            oppositeSlot = slot.oppositeFastbootSlot
+        )
         logSink("[OK] 已生成 Fastboot 一键包：${output.absolutePath}")
         output
     }
@@ -441,11 +387,5 @@ class SafetyGuardManager(
         }
         commands += "fastboot flash ${slot.fastbootPartition} $backupName"
         return commands
-    }
-
-    private fun ZipOutputStream.putTextEntry(name: String, content: String) {
-        putNextEntry(ZipEntry(name))
-        write(content.toByteArray(Charsets.UTF_8))
-        closeEntry()
     }
 }
