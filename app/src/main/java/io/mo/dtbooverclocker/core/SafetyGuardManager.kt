@@ -26,22 +26,40 @@ class SafetyGuardManager(
     private val logSink: (String) -> Unit = {},
     val backupManager: BackupManager = BackupManager(context, rootDetector, logSink)
 ) {
-    suspend fun extractActiveImage(slot: SlotInfo): File = withContext(Dispatchers.IO) {
+    suspend fun extractActiveImage(slot: SlotInfo): ImageCache.CachedImage = withContext(Dispatchers.IO) {
         validateBlockPath(slot.blockDevice)
         requireRoot()
+        val cache = ImageCache(File(context.cacheDir, IMAGE_CACHE_DIR))
 
-        val dir = File(context.cacheDir, "root_extract").apply { mkdirs() }
-        val output = File(dir, "dtbo_${slot.suffix.ifBlank { "single" }}_${System.currentTimeMillis()}.img")
-        val result = rootDetector.runRoot(
-            listOf("dd", "if=${slot.blockDevice}", "of=${output.absolutePath}", "bs=4M")
-        )
-        require(result.isSuccess && output.isFile && output.length() >= 32) {
-            "从 ${slot.blockDevice} 提取 DTBO 失败：${result.stderr.ifBlank { result.stdout }.takeLast(1500)}"
+        // 先对块设备算 MD5，命中缓存时无需再 dd 整个分区
+        val partitionMd5 = rootDetector.runRoot(listOf("md5sum", slot.blockDevice), timeoutMs = 60_000)
+            .takeIf { it.isSuccess }
+            ?.stdout?.trim()?.substringBefore(' ')?.lowercase()
+            ?.takeIf { it.matches(Regex("^[0-9a-f]{32}$")) }
+        partitionMd5?.let(cache::find)?.let { cached ->
+            logSink("[CACHE] ${slot.blockDevice} MD5=$partitionMd5 与缓存一致，跳过提取，直接使用缓存：${cached.absolutePath}")
+            return@withContext ImageCache.CachedImage(cached, partitionMd5, reused = true)
         }
-        logSink("[IMAGE][ROOT_DUMP] source=${slot.blockDevice}, file=${output.absolutePath}, " +
-            "input_size=${output.length()}, input_sha256=${HashUtils.sha256(output)}")
-        logSink("[OK] 已提取当前活跃槽位镜像：${output.absolutePath}")
-        output
+
+        val incoming = cache.newIncomingFile()
+        try {
+            val result = rootDetector.runRoot(
+                listOf("dd", "if=${slot.blockDevice}", "of=${incoming.absolutePath}", "bs=4M")
+            )
+            require(result.isSuccess && incoming.isFile && incoming.length() >= 32) {
+                "从 ${slot.blockDevice} 提取 DTBO 失败：${result.stderr.ifBlank { result.stdout }.takeLast(1500)}"
+            }
+            val cached = cache.admit(incoming)
+            logSink("[IMAGE][ROOT_DUMP] source=${slot.blockDevice}, file=${cached.file.absolutePath}, " +
+                "input_size=${cached.file.length()}, input_md5=${cached.md5}, input_sha256=${HashUtils.sha256(cached.file)}")
+            logSink(
+                if (cached.reused) "[CACHE] 提取镜像 MD5=${cached.md5} 与缓存一致，直接使用缓存"
+                else "[OK] 已提取当前活跃槽位镜像：${cached.file.absolutePath}"
+            )
+            cached
+        } finally {
+            incoming.delete()
+        }
     }
 
     suspend fun flashPatchedImage(

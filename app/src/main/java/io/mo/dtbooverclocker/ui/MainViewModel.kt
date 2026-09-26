@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.mo.dtbooverclocker.core.ActivePanelDetectionResult
+import io.mo.dtbooverclocker.core.ImageCache
 import io.mo.dtbooverclocker.core.WorkspaceOperationRunner
 import io.mo.dtbooverclocker.core.ActivePanelDetector
 import io.mo.dtbooverclocker.core.AppliedDtboEntries
@@ -152,11 +153,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             setBusy(true, "正在导入并解析 DTBO…")
             runCatching {
                 val image = patchEngine.importImage(uri)
-                val workspace = patchEngine.analyze(image)
+                val workspace = patchEngine.analyze(image.file)
                 val detectedActive = if (_state.value.rootState.granted) {
                     activePanelDetector.detect()
                 } else null
                 applyWorkspace(workspace, SourceMode.LOCAL_IMAGE, detectedActive)
+                noteCacheHit(image)
                 refreshCacheSize()
             }.onFailure(::showError)
             setBusy(false)
@@ -174,14 +176,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(rootState = root, slotInfo = slot) }
 
                 val image = safetyGuard.extractActiveImage(slot)
-                val workspace = patchEngine.analyze(image, SourceMode.ROOT_PARTITION, slot.blockDevice)
+                val workspace = patchEngine.analyze(image.file, SourceMode.ROOT_PARTITION, slot.blockDevice)
                 val detectedActive = activePanelDetector.detect()
                 val appliedDtbo = activePanelDetector.detectAppliedDtboEntries()
                 applyWorkspace(workspace, SourceMode.ROOT_PARTITION, detectedActive, appliedDtbo)
+                noteCacheHit(image)
                 refreshCacheSize()
             }.onFailure(::showError)
             setBusy(false)
         }
+    }
+
+    private fun noteCacheHit(image: ImageCache.CachedImage) {
+        if (!image.reused) return
+        _state.update { it.copy(status = "镜像 MD5 与缓存一致，已直接使用缓存镜像（MD5 ${image.md5.take(8)}…）；${it.status}") }
     }
 
     fun selectCandidate(id: String) {

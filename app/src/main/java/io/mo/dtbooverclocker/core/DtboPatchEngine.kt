@@ -40,21 +40,30 @@ data class TimingApplyResult(
     val warnings: List<String>
 )
 
+const val IMAGE_CACHE_DIR = "images"
+
 class DtboPatchEngine(
     private val context: Context,
     private val executor: NativeToolExecutor,
     private val logSink: (String) -> Unit = {}
 ) {
-    suspend fun importImage(uri: Uri): File = withContext(Dispatchers.IO) {
-        val importDir = File(context.cacheDir, "imports").apply { mkdirs() }
-        val output = File(importDir, "dtbo_${System.currentTimeMillis()}.img")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            output.outputStream().use { out -> input.copyTo(out) }
-        } ?: error("无法打开所选 content:// URI")
-
-        require(output.length() >= 32) { "导入文件过小，不像有效 DTBO 镜像" }
-        logSink("[INFO] 已将 SAF 文件复制到私有缓存：${output.absolutePath}")
-        output
+    suspend fun importImage(uri: Uri): ImageCache.CachedImage = withContext(Dispatchers.IO) {
+        val cache = ImageCache(File(context.cacheDir, IMAGE_CACHE_DIR))
+        val incoming = cache.newIncomingFile()
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                incoming.outputStream().use { out -> input.copyTo(out) }
+            } ?: error("无法打开所选 content:// URI")
+            val cached = cache.admit(incoming)
+            if (cached.reused) {
+                logSink("[CACHE] 导入镜像 MD5=${cached.md5} 与缓存一致，直接使用缓存：${cached.file.absolutePath}")
+            } else {
+                logSink("[INFO] 已将 SAF 文件存入镜像缓存 (MD5=${cached.md5})：${cached.file.absolutePath}")
+            }
+            cached
+        } finally {
+            incoming.delete()
+        }
     }
 
     suspend fun exportFile(source: File, targetUri: Uri) = withContext(Dispatchers.IO) {
