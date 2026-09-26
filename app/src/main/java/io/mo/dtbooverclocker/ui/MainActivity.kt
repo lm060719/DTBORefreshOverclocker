@@ -186,7 +186,6 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 },
                 onNavigateToAbout = { currentScreen = AppScreen.ABOUT },
                 onNavigateToRollback = { currentScreen = AppScreen.ROLLBACK },
-                onRequestRoot = viewModel::requestRoot,
                 onRefreshEnvironment = viewModel::refreshEnvironment,
                 onRefreshCacheSize = viewModel::refreshCacheSize,
                 onClearAllCache = viewModel::clearAllCache,

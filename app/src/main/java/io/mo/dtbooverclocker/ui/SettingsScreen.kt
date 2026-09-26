@@ -1,8 +1,5 @@
 package io.mo.dtbooverclocker.ui
 
-import io.mo.dtbooverclocker.ui.components.HintText
-import io.mo.dtbooverclocker.ui.components.StatusPill
-import io.mo.dtbooverclocker.ui.components.Tone
 import android.widget.Toast
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.activity.compose.BackHandler
@@ -11,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,10 +25,8 @@ import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -70,7 +64,6 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToAbout: () -> Unit,
     onNavigateToRollback: () -> Unit = {},
-    onRequestRoot: () -> Unit,
     onRefreshEnvironment: () -> Unit,
     onRefreshCacheSize: () -> Unit,
     onClearAllCache: (onCleared: (Long) -> Unit) -> Unit,
@@ -116,85 +109,6 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.lg)
         ) {
             item { Spacer(Modifier.height(4.dp)) }
-
-            // 1. Environment Status Section
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(Spacing.lg),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
-                        ) {
-                            Icon(
-                                Icons.Default.Security,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                "环境状态",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
-                        ) {
-                            if (state.rootState.granted) {
-                                StatusPill("Root 已授权 (自动保持)", tone = Tone.Success, icon = Icons.Default.Lock)
-                            } else {
-                                StatusPill("Root 未授权", tone = Tone.Warning, icon = Icons.Default.Lock)
-                            }
-                            state.slotInfo?.let { slot ->
-                                StatusPill(slot.label)
-                            }
-                        }
-
-                        if (!state.rootState.granted) {
-                            HintText(state.rootState.detail)
-                        }
-
-                        Text(
-                            text = state.slotInfo?.blockDevice ?: "分区路径：检测中",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
-                        ) {
-                            if (!state.rootState.granted) {
-                                OutlinedButton(
-                                    onClick = onRequestRoot,
-                                    enabled = state.rootState.suPresent,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("请求 Root 授权")
-                                }
-                            }
-
-                            OutlinedButton(
-                                onClick = onRefreshEnvironment,
-                                modifier = if (!state.rootState.granted) Modifier.weight(1f) else Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("重新探测环境")
-                            }
-                        }
-                    }
-                }
-            }
 
             // 1.5 Rollback & Backup Management Entry
             item {

@@ -353,7 +353,8 @@ private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigatio
                 }
             ) {
                 if (!state.rootState.granted) HintText(state.rootState.detail)
-                KeyValueRow("DTBO 分区", state.slotInfo?.blockDevice ?: "分区路径检测中", monospace = true)
+                state.slotInfo?.let { KeyValueRow("当前槽位", it.label) }
+                KeyValueRow("DTBO 分区",state.slotInfo?.blockDevice ?: "分区路径检测中", monospace = true)
                 ActionRow {
                     if (!state.rootState.granted) OutlinedButton(navigation.onRequestRoot, enabled = state.rootState.suPresent) { IconLabel(Icons.Default.Lock, "请求 Root") }
                     OutlinedButton(navigation.onRefreshEnvironment) { IconLabel(Icons.Default.Refresh, "重新探测") }
