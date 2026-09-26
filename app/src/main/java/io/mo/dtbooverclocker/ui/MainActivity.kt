@@ -1,5 +1,12 @@
 package io.mo.dtbooverclocker.ui
 
+import io.mo.dtbooverclocker.ui.components.dangerButtonColors
+import io.mo.dtbooverclocker.ui.components.NoticeBanner
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.Surface
+import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.layout.widthIn
 import android.app.Activity
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import android.content.ClipData
@@ -19,8 +26,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -300,17 +305,25 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f)),
             contentAlignment = Alignment.Center
         ) {
-            Card {
-                Row(
-                    modifier = Modifier.padding(Spacing.xl),
-                    verticalAlignment = Alignment.CenterVertically
+            Card(
+                modifier = Modifier.padding(Spacing.xl).widthIn(max = 320.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.xl),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.lg)
                 ) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 3.dp
+                        modifier = Modifier.size(40.dp),
+                        strokeWidth = 4.dp
                     )
-                    Spacer(Modifier.width(14.dp))
-                    Text(state.status)
+                    Text(
+                        state.status,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
         }
@@ -361,32 +374,41 @@ private fun DangerousFlashDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+        icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
         title = { Text("高危操作：写入物理 DTBO 分区") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                Text("目标：$partition")
-                Text("本应用只写当前目标槽位。写入前会强制备份、SHA-256 校验并生成 Rescue Zip。")
-                if (viaModule) {
-                    Text("将打包为模块并交给 KernelSU / Magisk / APatch 安装，由模块完成写入；移除模块并重启会自动写回原 DTBO。")
+                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+                    Text(
+                        "目标：$partition",
+                        modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
-                Text("请输入目标刷新率 $targetHz，或输入大写 FLASH：")
+                Text("本应用只写当前目标槽位。写入前会强制备份、SHA-256 校验并生成 Rescue Zip。", style = MaterialTheme.typography.bodyMedium)
+                if (viaModule) {
+                    NoticeBanner("将打包为模块并交给 KernelSU / Magisk / APatch 安装，由模块完成写入；移除模块并重启会自动写回原 DTBO。")
+                }
+                Text("请输入目标刷新率 $targetHz，或输入大写 FLASH：", style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = confirmation,
                     onValueChange = { confirmation = it },
                     singleLine = true,
+                    isError = confirmation.isNotBlank() && !semanticMatch,
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (seconds > 0) {
                     Text(
                         "确认按钮将在 $seconds 秒后解锁",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onConfirm, enabled = enabled) {
+            Button(onClick = onConfirm, enabled = enabled, colors = dangerButtonColors()) {
                 Text(if (viaModule) "确认以模块刷入" else "确认单槽位刷写")
             }
         },
