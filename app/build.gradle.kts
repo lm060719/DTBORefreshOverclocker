@@ -14,8 +14,8 @@ android {
         applicationId = "io.mo.dtbooverclocker"
         minSdk = 26
         targetSdk = 37
-        versionCode = 5
-        versionName = "1.1.5"
+        versionCode = 6
+        versionName = "1.1.6"
 
         // Includes uncommitted source edits, unlike a git commit alone. Stable across identical builds.
         val sourceDigest = MessageDigest.getInstance("SHA-256")
