@@ -16,6 +16,8 @@ Android DTBO（Device Tree Blob Overlay）的查看、编辑与重建工具：�
 
 ## 使用流程
 
+第一次使用请先看 [新手教程：刷新率超频与温控表修改](docs/guide.md)。
+
 1. **导入**：选择本地 `dtbo.img`，或用 Root 提取当前槽位分区。
 2. **识别**：自动扫描时序档位、充电节点，并按面板分组。Root 提取时会读取 `androidboot.dtbo_idx` 与内核启动参数，标出本机在用面板和生效的 DTB。
 3. **修改**：在功能模块或设备树页面暂存修改。
