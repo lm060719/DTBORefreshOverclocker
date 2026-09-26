@@ -200,63 +200,6 @@ private fun TransactionQueueCard(
     }
 }
 
-@Composable
-private fun ModuleStagedChangesCard(
-    state: MainUiState,
-    onPackage: () -> Unit,
-    onReset: () -> Unit
-)
-{
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Text(
-                "功能模块修改 · ${state.moduleStagedChanges.size} 项",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            state.moduleStagedChanges.takeLast(4).forEach { change ->
-                Text(
-                    "• ${change.module.displayName}: ${change.summary}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
-                OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeviceTreeStagedChangesCard(
-    state: MainUiState,
-    onPackage: () -> Unit,
-    onReset: () -> Unit
-) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            Text(
-                "通用设备树修改 · ${state.deviceTreeChanges.size} 项",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            state.deviceTreeChanges.takeLast(4).forEach { change ->
-                Text(
-                    "• ${change.summary}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
-                OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
-            }
-        }
-    }
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StudioHeroCard(state: MainUiState) {
