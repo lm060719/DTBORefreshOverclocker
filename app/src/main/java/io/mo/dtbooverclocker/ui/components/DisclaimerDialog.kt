@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.ui.components
 
 import androidx.activity.compose.BackHandler
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dangerous
@@ -85,7 +85,7 @@ fun DisclaimerDialog(
         ),
         icon = {
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.errorContainer,
                 modifier = Modifier.size(48.dp)
             ) {
@@ -102,7 +102,7 @@ fun DisclaimerDialog(
         title = {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 Text(
                     text = "风险提示与使用须知",
@@ -123,7 +123,7 @@ fun DisclaimerDialog(
                     .fillMaxWidth()
                     .heightIn(max = 400.dp)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
                 // 欢迎语
                 Text(
@@ -180,9 +180,9 @@ fun DisclaimerDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(MaterialTheme.shapes.small)
                             .clickable { isChecked = !isChecked }
-                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                            .padding(vertical = Spacing.sm, horizontal = Spacing.xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
@@ -245,15 +245,15 @@ private fun DisclaimerSection(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = containerColor),
-        shape = RoundedCornerShape(10.dp)
+        shape = MaterialTheme.shapes.small
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.padding(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 Icon(
                     imageVector = icon,

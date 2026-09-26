@@ -1,20 +1,29 @@
 package io.mo.dtbooverclocker.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material3.Surface
+import io.mo.dtbooverclocker.ui.components.EmptyState
+import io.mo.dtbooverclocker.ui.components.HintText
+import io.mo.dtbooverclocker.ui.components.NoticeBanner
+import io.mo.dtbooverclocker.ui.components.SectionCard
+import io.mo.dtbooverclocker.ui.components.Tone
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import androidx.compose.foundation.clickable
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
@@ -28,23 +37,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
-import io.mo.dtbooverclocker.core.devicetree.DeviceTreeDiff
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeDocument
-import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
-import io.mo.dtbooverclocker.core.devicetree.DeviceTreeNames
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeNode
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParseWarning
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParser
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeProperty
-import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReference
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceIndex
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceIndexer
-import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceKind
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
 import io.mo.dtbooverclocker.core.devicetree.allowedNodePaths
-import io.mo.dtbooverclocker.core.devicetree.DeviceTreeValueCodec
-import io.mo.dtbooverclocker.core.devicetree.NumberBase
-import io.mo.dtbooverclocker.core.devicetree.PropertyType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -74,7 +75,7 @@ private data class CachedDocumentLoad(
     val result: DocumentLoadResult
 )
 
-private data class StagedChangeRow(
+internal data class StagedChangeRow(
     val transaction: DeviceTreeTransaction,
     val change: DeviceTreeChange,
     val laterTransactionCount: Int
@@ -85,7 +86,7 @@ private data class TreeRow(
     val depth: Int
 )
 
-private enum class NodeEditMode
+internal enum class NodeEditMode
 {
     ADD_CHILD,
     CLONE,
@@ -265,41 +266,35 @@ fun DeviceTreeScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding)
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(contentPadding),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = Spacing.xs, bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
     ) {
-        item { Spacer(Modifier.height(2.dp)) }
-
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    "设备树",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "层级浏览、节点详情与类型化属性编辑。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Column(
+                Modifier.padding(start = Spacing.xs, end = Spacing.xs, bottom = Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+            ) {
+                Text("设备树", style = MaterialTheme.typography.headlineSmall)
+                HintText("层级浏览、节点详情与类型化属性编辑。")
             }
         }
 
         if (workspace == null)
         {
             item {
-                Card(Modifier.fillMaxWidth()) {
-                    Text(
-                        "请先在“概览”加载一个 DTBO 工作区。",
-                        modifier = Modifier.padding(18.dp)
-                    )
-                }
+                EmptyState(
+                    Icons.Default.FolderOpen,
+                    "还没有工作区",
+                    "请先在“概览”加载一个 DTBO 工作区。"
+                )
             }
         }
         else
         {
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+              SectionCard(Modifier.padding(bottom = Spacing.sm)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     items(workspace.metadata.entries.size, key = { it }) { index ->
                         val available = File(workspace.rootDir, "dts/entry_$index.dts").isFile
                         FilterChip(
@@ -314,21 +309,16 @@ fun DeviceTreeScreen(
                         )
                     }
                 }
-            }
-
-            item {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
                     leadingIcon = { Icon(Icons.Default.Search, null) },
                     label = { Text("搜索节点 / 属性 / 值") },
                     singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
-
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     items(DeviceTreeSearchScope.entries, key = { it.name }) { scope ->
                         FilterChip(
                             selected = searchScope == scope,
@@ -337,18 +327,16 @@ fun DeviceTreeScreen(
                         )
                     }
                 }
+              }
             }
 
             item {
                 when
                 {
                     loaded.loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                    loaded.error != null -> Text(
-                        "设备树读取失败：${loaded.error}",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    document == null -> Text("该 Entry 无法反编译为可编辑 DTS。")
-                    else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    loaded.error != null -> NoticeBanner("设备树读取失败：${loaded.error}", tone = Tone.Danger)
+                    document == null -> NoticeBanner("该 Entry 无法反编译为可编辑 DTS。", tone = Tone.Warning)
+                    else -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(
                             "Entry $entry · ${loaded.nodes.size} 个节点 · 当前显示 ${visibleRows.size} · " +
                                 "${referenceIndex?.references?.size ?: 0} 条引用",
@@ -356,11 +344,7 @@ fun DeviceTreeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         loaded.referenceError?.let { referenceError ->
-                            Text(
-                                "引用索引已降级：$referenceError。节点浏览和属性编辑仍可继续使用。",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
+                            NoticeBanner("引用索引已降级：$referenceError。节点浏览和属性编辑仍可继续使用。", tone = Tone.Warning)
                         }
                         ParseWarningsText(document.warnings)
 
@@ -387,7 +371,7 @@ fun DeviceTreeScreen(
                         {
                             Row(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                             ) {
                                 TextButton(
                                     onClick = {
@@ -424,14 +408,13 @@ fun DeviceTreeScreen(
             {
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(start = Spacing.xs, top = Spacing.sm, bottom = Spacing.xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             if (!filteredMode) "节点树" else "筛选结果",
                             modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            style = MaterialTheme.typography.titleMedium
                         )
                         if (filteredMode)
                         {
@@ -449,6 +432,7 @@ fun DeviceTreeScreen(
                         row = row,
                         expanded = row.node.path in expandedSet,
                         selected = selectedNodePath == row.node.path,
+                        modified = row.node.path in modifiedNodePaths,
                         searchMode = filteredMode,
                         onToggle = {
                             if (row.node.children.isNotEmpty())
@@ -472,12 +456,11 @@ fun DeviceTreeScreen(
 
                 if (changesForEntry.isNotEmpty())
                 {
-                    item { HorizontalDivider() }
                     item {
                         Text(
                             "暂存 Diff · ${changesForEntry.size} 个底层设备树操作",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            modifier = Modifier.padding(start = Spacing.xs, top = Spacing.lg, bottom = Spacing.xs),
+                            style = MaterialTheme.typography.titleMedium
                         )
                     }
                     items(stagedChangesForEntry, key = { it.change.id }) { row ->
@@ -500,7 +483,6 @@ fun DeviceTreeScreen(
             }
         }
 
-        item { Spacer(Modifier.height(24.dp)) }
     }
 
     if (showNodeSheet && selectedNode != null)
@@ -709,1010 +691,107 @@ private fun TreeNodeCard(
     row: TreeRow,
     expanded: Boolean,
     selected: Boolean,
+    modified: Boolean,
     searchMode: Boolean,
     onToggle: () -> Unit,
     onOpen: () -> Unit
 ) {
     val node = row.node
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            // Deep fixup paths would otherwise push the node name off a phone-width screen.
-            .padding(start = if (searchMode) 0.dp else (minOf(row.depth, MAX_INDENT_DEPTH) * 12).dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected)
-            {
-                MaterialTheme.colorScheme.primaryContainer
-            }
-            else
-            {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            }
-        )
+    val scheme = MaterialTheme.colorScheme
+    val indent = if (searchMode) 0 else minOf(row.depth, MAX_INDENT_DEPTH)
+    Row(
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpen)
-                .padding(vertical = 7.dp, horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // 缩进引导线：每级一条细线，深层路径不至于把节点名挤出屏幕。
+        repeat(indent) {
+            Box(Modifier.width(12.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Box(Modifier.width(1.dp).fillMaxHeight().background(scheme.outlineVariant))
+            }
+        }
+        Surface(
+            modifier = Modifier.weight(1f),
+            shape = MaterialTheme.shapes.medium,
+            color = if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
+            border = if (selected) BorderStroke(1.dp, scheme.primary) else null
         ) {
-            if (node.children.isNotEmpty() && !searchMode)
-            {
-                IconButton(
-                    onClick = onToggle,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
-                        contentDescription = if (expanded) "折叠节点" else "展开节点"
-                    )
-                }
-            }
-            else
-            {
-                Spacer(Modifier.width(36.dp))
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpen)
+                    .padding(vertical = Spacing.xs, horizontal = Spacing.xs),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        node.name,
-                        modifier = Modifier.weight(1f, fill = false),
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    node.label?.let {
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "$it:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                if (node.children.isNotEmpty() && !searchMode)
+                {
+                    IconButton(
+                        onClick = onToggle,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                            contentDescription = if (expanded) "折叠节点" else "展开节点"
                         )
                     }
                 }
+                else
+                {
+                    Spacer(Modifier.width(36.dp))
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            node.name,
+                            modifier = Modifier.weight(1f, fill = false),
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        node.label?.let {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "$it:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.primary
+                            )
+                        }
+                        if (modified)
+                        {
+                            Spacer(Modifier.width(6.dp))
+                            Box(Modifier.size(8.dp).background(AppTheme.status.warning, CircleShape))
+                        }
+                    }
+                    Text(
+                        node.path,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 Text(
-                    node.path,
-                    fontFamily = FontFamily.Monospace,
+                    buildString {
+                        if (!searchMode && row.depth > MAX_INDENT_DEPTH) append("L${row.depth} · ")
+                        append("${node.propertyCount}P · ${node.childCount}N")
+                    },
+                    modifier = Modifier.padding(end = Spacing.sm),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = scheme.onSurfaceVariant
                 )
             }
-
-            Text(
-                buildString {
-                    if (!searchMode && row.depth > MAX_INDENT_DEPTH) append("L${row.depth} · ")
-                    append("${node.propertyCount}P · ${node.childCount}N")
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
 
 private const val MAX_INDENT_DEPTH = 6
-
-@Composable
-private fun NodeDetailSheet(
-    node: DeviceTreeNode,
-    onOpenChild: (DeviceTreeNode) -> Unit,
-    onEdit: (DeviceTreeProperty) -> Unit,
-    onDelete: (DeviceTreeProperty) -> Unit,
-    onAdd: () -> Unit,
-    onAddChild: () -> Unit,
-    onClone: () -> Unit,
-    onRename: () -> Unit,
-    onDeleteNode: () -> Unit,
-    referenceIndex: DeviceTreeReferenceIndex?,
-    onNavigateReference: (String) -> Unit
-) {
-    // Lazy: __symbols__ / __fixups__ nodes can carry thousands of properties and references.
-    val listState = remember(node.path) { LazyListState() }
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 680.dp),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item(key = "header") {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    node.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    node.path,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                node.label?.let {
-                    Text(
-                        "Label · $it",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Text(
-                    "${node.propertyCount} 个直接属性 · ${node.childCount} 个直接子节点",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                OutlinedButton(
-                    onClick = onAdd,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Add, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("新增属性")
-                }
-
-                Text(
-                    "节点操作",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AssistChip(
-                        onClick = onAddChild,
-                        label = { Text("新增子节点") }
-                    )
-                    if (node.path != "/")
-                    {
-                        AssistChip(
-                            onClick = onClone,
-                            label = { Text("克隆节点") }
-                        )
-                        AssistChip(
-                            onClick = onRename,
-                            label = { Text("重命名") }
-                        )
-                        AssistChip(
-                            onClick = onDeleteNode,
-                            label = { Text("删除节点") }
-                        )
-                    }
-                }
-            }
-        }
-
-        referenceItems(
-            node = node,
-            referenceIndex = referenceIndex,
-            onNavigate = onNavigateReference
-        )
-
-        if (node.children.isNotEmpty())
-        {
-            item(key = "children-title") {
-                Text(
-                    "子节点",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            items(node.children, key = { "child:${it.startOffset}" }) { child ->
-                OutlinedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenChild(child) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                child.name,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "${child.propertyCount}P · ${child.childCount}N",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Icon(Icons.Default.KeyboardArrowRight, "进入子节点")
-                    }
-                }
-            }
-        }
-
-        item(key = "properties-title") {
-            Text(
-                "属性",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-
-        if (node.properties.isEmpty())
-        {
-            item(key = "properties-empty") {
-                Text(
-                    "该节点没有直接属性。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        else
-        {
-            items(node.properties, key = { "property:${it.startOffset}" }) { property ->
-                PropertyCard(
-                    property = property,
-                    onEdit = { onEdit(property) },
-                    onDelete = { onDelete(property) }
-                )
-            }
-        }
-    }
-}
-
-private fun LazyListScope.referenceItems(
-    node: DeviceTreeNode,
-    referenceIndex: DeviceTreeReferenceIndex?,
-    onNavigate: (String) -> Unit
-)
-{
-    if (referenceIndex == null)
-    {
-        return
-    }
-
-    val aliases = referenceIndex.labelsOf(node.path)
-    val phandles = referenceIndex.phandlesOf(node.path)
-    val outgoing = referenceIndex.outgoing(node.path)
-    val incoming = referenceIndex.incoming(node.path)
-
-    if (aliases.isEmpty() && phandles.isEmpty() && outgoing.isEmpty() && incoming.isEmpty())
-    {
-        return
-    }
-
-    item(key = "references-header") {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            HorizontalDivider()
-            Text(
-                "引用关系",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            if (aliases.isNotEmpty())
-            {
-                Text(
-                    "Label · " + aliases.joinToString { "&$it" },
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            if (phandles.isNotEmpty())
-            {
-                Text(
-                    "Phandle · " + phandles.joinToString { "0x" + it.toString(16) },
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-
-    if (outgoing.isNotEmpty())
-    {
-        item(key = "references-outgoing") {
-            Text(
-                "引用出去 · ${outgoing.size}",
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-        items(outgoing.size) { index ->
-            ReferenceCard(
-                reference = outgoing[index],
-                incoming = false,
-                onNavigate = onNavigate
-            )
-        }
-    }
-
-    if (incoming.isNotEmpty())
-    {
-        item(key = "references-incoming") {
-            Text(
-                "被引用 · ${incoming.size}",
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-        items(incoming.size) { index ->
-            ReferenceCard(
-                reference = incoming[index],
-                incoming = true,
-                onNavigate = onNavigate
-            )
-        }
-    }
-}
-
-@Composable
-private fun ReferenceCard(
-    reference: DeviceTreeReference,
-    incoming: Boolean,
-    onNavigate: (String) -> Unit
-)
-{
-    val target = if (incoming)
-    {
-        reference.sourceNodePath
-    }
-    else
-    {
-        reference.targetNodePath
-    }
-    val kind = when (reference.kind)
-    {
-        DeviceTreeReferenceKind.LABEL -> "Label 引用"
-        DeviceTreeReferenceKind.PATH -> "路径引用"
-        DeviceTreeReferenceKind.LOCAL_FIXUP -> "本地 Fixup 引用"
-        DeviceTreeReferenceKind.EXTERNAL_FIXUP -> "外部 Fixup"
-        DeviceTreeReferenceKind.NUMERIC_CANDIDATE -> "数值 phandle 候选"
-    }
-
-    OutlinedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (target != null)
-                {
-                    Modifier.clickable { onNavigate(target) }
-                }
-                else
-                {
-                    Modifier
-                }
-            )
-    ) {
-        Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    if (incoming)
-                    {
-                        "${reference.sourceNodePath}/${reference.propertyName}"
-                    }
-                    else
-                    {
-                        "${reference.propertyName} · ${reference.token}"
-                    },
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    buildString {
-                        append(kind)
-                        append(" · ")
-                        append(
-                            if (reference.resolved)
-                            {
-                                reference.targetNodePath
-                            }
-                            else if (reference.kind == DeviceTreeReferenceKind.EXTERNAL_FIXUP)
-                            {
-                                "基础设备树外部符号"
-                            }
-                            else
-                            {
-                                "未解析"
-                            }
-                        )
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (reference.kind == DeviceTreeReferenceKind.NUMERIC_CANDIDATE)
-                    {
-                        MaterialTheme.colorScheme.tertiary
-                    }
-                    else
-                    {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-            if (target != null)
-            {
-                Icon(Icons.Default.KeyboardArrowRight, "跳转到引用节点")
-            }
-        }
-    }
-}
-
-@Composable
-private fun NodeNameDialog(
-    mode: NodeEditMode,
-    node: DeviceTreeNode,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-)
-{
-    val initial = when (mode)
-    {
-        NodeEditMode.ADD_CHILD -> ""
-        NodeEditMode.CLONE -> node.name + "_copy"
-        NodeEditMode.RENAME -> node.name
-    }
-    var name by remember(mode, node.path) { mutableStateOf(initial) }
-    val nameError = DeviceTreeNames.nodeNameError(name)
-        ?: when
-        {
-            mode == NodeEditMode.RENAME && name == node.name -> "新节点名与原节点名相同"
-            mode == NodeEditMode.ADD_CHILD && node.children.any { it.name == name } -> "已存在同名子节点"
-            else -> null
-        }
-    val valid = nameError == null
-
-    val title = when (mode)
-    {
-        NodeEditMode.ADD_CHILD -> "新增子节点"
-        NodeEditMode.CLONE -> "克隆节点"
-        NodeEditMode.RENAME -> "重命名节点"
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    node.path,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.labelSmall
-                )
-                if (mode == NodeEditMode.CLONE)
-                {
-                    Text(
-                        "克隆会复制整个节点子树。当前阶段包含 label、phandle 或 linux,phandle 的子树会被安全阻止，避免重复节点身份。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.trim() },
-                    label = { Text("节点名") },
-                    // An empty field is simply unfinished input, not an error worth shouting about.
-                    isError = name.isNotEmpty() && nameError != null,
-                    supportingText = {
-                        Text(
-                            nameError?.takeIf { name.isNotEmpty() }
-                                ?: "支持 unit-address，例如 timing@3、panel@ae94000"
-                        )
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(name) },
-                enabled = valid
-            ) {
-                Text("暂存修改")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
-    )
-}
-
-private fun parentPathForUi(path: String): String
-{
-    if (path == "/")
-    {
-        return "/"
-    }
-    val parent = path.substringBeforeLast('/')
-    return parent.ifEmpty { "/" }
-}
-
-@Composable
-private fun PropertyCard(
-    property: DeviceTreeProperty,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
-) {
-    OutlinedCard(Modifier.fillMaxWidth()) {
-        Column(
-            Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    property.name,
-                    modifier = Modifier.weight(1f),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    DeviceTreeValueCodec.displayName(property.type),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (DeviceTreeValueCodec.supportsTypedEditor(property.type, property.rawValue))
-                    {
-                        MaterialTheme.colorScheme.primary
-                    }
-                    else
-                    {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-
-            Text(
-                property.displayValue.ifBlank { "<boolean>" },
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Text(
-                property.rawStatement,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                if (property.type != PropertyType.BOOLEAN)
-                {
-                    TextButton(onClick = onEdit) {
-                        Icon(Icons.Default.Edit, null)
-                        Spacer(Modifier.width(5.dp))
-                        Text("编辑")
-                    }
-                }
-                else
-                {
-                    Text(
-                        "Boolean 无值，删除即关闭",
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 8.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                TextButton(onClick = onDelete) {
-                    Icon(Icons.Default.DeleteOutline, null)
-                    Spacer(Modifier.width(5.dp))
-                    Text("删除")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PropertyEditorDialog(
-    node: DeviceTreeNode,
-    property: DeviceTreeProperty?,
-    adding: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: (String, String?) -> Unit
-) {
-    val addTypes = remember {
-        listOf(
-            PropertyType.U32,
-            PropertyType.STRING,
-            PropertyType.STRING_LIST,
-            PropertyType.CELLS,
-            PropertyType.BYTE_ARRAY,
-            PropertyType.BOOLEAN,
-            PropertyType.UNKNOWN
-        )
-    }
-
-    var name by remember(property, adding) {
-        mutableStateOf(property?.name.orEmpty())
-    }
-    var selectedType by remember(property, adding) {
-        mutableStateOf(property?.type ?: PropertyType.U32)
-    }
-    var numberBase by remember(property, adding) {
-        mutableStateOf(DeviceTreeValueCodec.preferredNumberBase(property))
-    }
-    var rawMode by remember(property, adding) {
-        mutableStateOf(property != null && !DeviceTreeValueCodec.supportsTypedEditor(property.type, property.rawValue))
-    }
-    var typedText by remember(property, adding) {
-        mutableStateOf(
-            DeviceTreeValueCodec.editableText(
-                property?.type ?: PropertyType.U32,
-                property?.rawValue,
-                DeviceTreeValueCodec.preferredNumberBase(property)
-            )
-        )
-    }
-    var rawText by remember(property, adding) {
-        mutableStateOf(property?.rawValue.orEmpty())
-    }
-
-    val nameError = if (adding)
-    {
-        val trimmedName = name.trim()
-        DeviceTreeNames.propertyNameError(trimmedName)
-            ?: "属性已存在".takeIf { node.properties.any { it.name == trimmedName } }
-    }
-    else
-    {
-        null
-    }
-    val typedSupported = DeviceTreeValueCodec.supportsTypedEditor(selectedType, if (rawMode) rawText.takeIf { it.isNotBlank() } else property?.rawValue)
-    val useRaw = rawMode || !typedSupported
-    val validationError = remember(selectedType, typedText, rawText, useRaw)
-    {
-        if (useRaw)
-        {
-            if (selectedType == PropertyType.BOOLEAN)
-            {
-                null
-            }
-            else if (rawText.trim().isEmpty())
-            {
-                "Raw DTS 值不能为空"
-            }
-            else
-            {
-                DeviceTreeEditor.rawValueError(rawText)
-            }
-        }
-        else
-        {
-            DeviceTreeValueCodec.validate(selectedType, typedText)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (adding) "新增属性" else "编辑属性") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 500.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    node.path,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.labelSmall
-                )
-
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    enabled = adding,
-                    label = { Text("属性名") },
-                    isError = adding && name.isNotEmpty() && nameError != null,
-                    supportingText = nameError?.takeIf { adding && name.isNotEmpty() }?.let { error ->
-                        { Text(error) }
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (adding)
-                {
-                    Text(
-                        "属性类型",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        addTypes.forEach { type ->
-                            FilterChip(
-                                selected = selectedType == type,
-                                onClick = {
-                                    selectedType = type
-                                    rawMode = !DeviceTreeValueCodec.supportsTypedEditor(type)
-                                },
-                                label = { Text(DeviceTreeValueCodec.displayName(type)) }
-                            )
-                        }
-                    }
-                }
-                else
-                {
-                    Text(
-                        "类型 · ${DeviceTreeValueCodec.displayName(selectedType)}",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                if (typedSupported && selectedType != PropertyType.BOOLEAN)
-                {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                "Raw DTS 模式",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Text(
-                                "关闭时由编辑器自动生成 DTS 语法",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = rawMode,
-                            onCheckedChange = { enabled ->
-                                if (enabled) {
-                                    runCatching { DeviceTreeValueCodec.encode(selectedType, typedText, numberBase) }
-                                        .onSuccess { rawText = it.orEmpty(); rawMode = true }
-                                } else {
-                                    typedText = DeviceTreeValueCodec.editableText(selectedType, rawText, numberBase)
-                                    rawMode = false
-                                }
-                            }
-                        )
-                    }
-                }
-
-                if (!useRaw && selectedType == PropertyType.U32)
-                {
-                    Text(
-                        "输出进制",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = numberBase == NumberBase.DECIMAL,
-                            onClick = { numberBase = NumberBase.DECIMAL },
-                            label = { Text("十进制") }
-                        )
-                        FilterChip(
-                            selected = numberBase == NumberBase.HEX,
-                            onClick = { numberBase = NumberBase.HEX },
-                            label = { Text("HEX") }
-                        )
-                    }
-                }
-
-                if (selectedType == PropertyType.BOOLEAN && !useRaw)
-                {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    ) {
-                        Text(
-                            "Boolean 属性只有“存在 / 不存在”，没有数值。新增后会生成：$name;",
-                            modifier = Modifier.padding(12.dp)
-                        )
-                    }
-                }
-                else if (useRaw)
-                {
-                    OutlinedTextField(
-                        value = rawText,
-                        onValueChange = { rawText = it },
-                        label = { Text("Raw DTS 值") },
-                        supportingText = {
-                            Text("例如 <0x78>、\"qcom,panel\"、<&label>、[01 ff]")
-                        },
-                        minLines = 2,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                else
-                {
-                    TypedValueField(
-                        type = selectedType,
-                        value = typedText,
-                        onValueChange = { typedText = it }
-                    )
-                }
-
-                validationError?.let {
-                    Text(
-                        it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-
-                if (!useRaw)
-                {
-                    val preview = runCatching {
-                        DeviceTreeValueCodec.encode(selectedType, typedText, numberBase)
-                    }.getOrNull()
-                    Text(
-                        "DTS 预览：$name${preview?.let { " = $it" } ?: ""};",
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val rawValue = if (useRaw)
-                    {
-                        if (selectedType == PropertyType.BOOLEAN)
-                        {
-                            null
-                        }
-                        else
-                        {
-                            rawText.trim().removeSuffix(";").trim().takeIf { it.isNotEmpty() }
-                        }
-                    }
-                    else
-                    {
-                        DeviceTreeValueCodec.encode(selectedType, typedText, numberBase)
-                    }
-                    onConfirm(name.trim(), rawValue)
-                },
-                enabled = nameError == null && validationError == null
-            ) {
-                Text("暂存修改")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
-    )
-}
-
-@Composable
-private fun TypedValueField(
-    type: PropertyType,
-    value: String,
-    onValueChange: (String) -> Unit
-) {
-    when (type)
-    {
-        PropertyType.STRING ->
-        {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                label = { Text("字符串") },
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        PropertyType.STRING_LIST ->
-        {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                label = { Text("字符串列表") },
-                supportingText = { Text("每行一项，保存时自动生成带引号列表") },
-                minLines = 3,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        PropertyType.U32 ->
-        {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                label = { Text("U32 数值") },
-                supportingText = { Text("可输入 144 或 0x90，范围 0～4294967295") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        PropertyType.U64,
-        PropertyType.CELLS ->
-        {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                label = { Text("Cell 列表") },
-                supportingText = { Text("使用空格分隔，例如 0x1 0x2 144") },
-                minLines = 2,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        PropertyType.BYTE_ARRAY ->
-        {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValueChange,
-                label = { Text("Byte Array") },
-                supportingText = { Text("两位 HEX，空格分隔，例如 01 ff a0") },
-                minLines = 2,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        PropertyType.BOOLEAN,
-        PropertyType.PHANDLE,
-        PropertyType.UNKNOWN -> Unit
-    }
-}
-
-@Composable
-private fun ChangeCard(
-    row: StagedChangeRow,
-    undoEnabled: Boolean,
-    onUndo: () -> Unit
-) {
-    val change = row.change
-    Card(Modifier.fillMaxWidth()) {
-        Column(
-            Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                DeviceTreeDiff.render(change),
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Row {
-                Icon(Icons.Default.History, null)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    if (row.laterTransactionCount == 0)
-                    {
-                        "${row.transaction.kind.displayName} · 最近事务，可直接撤销"
-                    }
-                    else
-                    {
-                        "${row.transaction.kind.displayName} · 撤销会连带之后的 ${row.laterTransactionCount} 个事务"
-                    },
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                TextButton(onClick = onUndo, enabled = undoEnabled) {
-                    Text(if (row.laterTransactionCount == 0) "撤销" else "撤销到此处")
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun ParseWarningsText(warnings: List<DeviceTreeParseWarning>)
@@ -1723,7 +802,7 @@ private fun ParseWarningsText(warnings: List<DeviceTreeParseWarning>)
     }
     // An unrecognised node header can shift every later node, so it deserves the error colour.
     val structural = warnings.any { it.reason.contains("节点头") }
-    Text(
+    NoticeBanner(
         buildString {
             append("解析提示：${warnings.size} 处语句未被编辑器识别，树中看不到它们，但 dtc 编译时仍会生效。")
             warnings.take(3).forEach { warning ->
@@ -1734,8 +813,7 @@ private fun ParseWarningsText(warnings: List<DeviceTreeParseWarning>)
                 append("\n…")
             }
         },
-        style = MaterialTheme.typography.labelSmall,
-        color = if (structural) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+        tone = if (structural) Tone.Danger else Tone.Warning
     )
 }
 

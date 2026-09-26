@@ -1,6 +1,8 @@
 package io.mo.dtbooverclocker.ui
 
 import android.widget.Toast
+import io.mo.dtbooverclocker.ui.theme.Spacing
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -31,7 +32,6 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HistoryEdu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TouchApp
@@ -62,7 +62,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -132,7 +131,7 @@ fun RollbackScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(24.dp),
+                    .padding(Spacing.xl),
                 onManualBackupClick = { showManualBackupDialog = true }
             )
         } else {
@@ -140,7 +139,7 @@ fun RollbackScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = Spacing.lg),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
                 item {
@@ -183,7 +182,7 @@ fun RollbackScreen(
             onDismissRequest = { showManualBackupDialog = false },
             title = { Text("手动备份当前 DTBO 镜像") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
                         "将通过 Root 读取当前活跃分区 (${state.slotInfo?.blockDevice ?: "未检测到槽位"}) 并保存为回滚镜像。",
                         style = MaterialTheme.typography.bodyMedium
@@ -234,21 +233,20 @@ fun RollbackScreen(
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
                         "您即将把选定的备份镜像物理写入设备分区，此操作将覆盖当前的 DTBO 分区！",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
                     Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
-                        ),
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            modifier = Modifier.padding(Spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
                         ) {
                             Text("• 目标分区：${state.slotInfo?.blockDevice ?: record.blockDevice}", style = MaterialTheme.typography.bodySmall)
                             Text("• 备份文件：${record.fileName}", style = MaterialTheme.typography.bodySmall)
@@ -336,13 +334,12 @@ private fun RollbackHeaderCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-        )
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -358,12 +355,12 @@ private fun RollbackHeaderCard(
                     )
                 }
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = MaterialTheme.shapes.medium,
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
                         text = "共 $totalCount 个备份",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -449,11 +446,12 @@ private fun TimelineBackupItem(
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
             ) {
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
                     // Header: Tag + Time
                     Row(
@@ -462,7 +460,7 @@ private fun TimelineBackupItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = MaterialTheme.shapes.extraSmall,
                             color = if (record.backupType == BackupType.AUTO) {
                                 MaterialTheme.colorScheme.primaryContainer
                             } else {
@@ -471,7 +469,7 @@ private fun TimelineBackupItem(
                         ) {
                             Text(
                                 text = record.backupType.displayName,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = if (record.backupType == BackupType.AUTO) {
@@ -490,7 +488,7 @@ private fun TimelineBackupItem(
                     }
 
                     // System info
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
                         Text(
                             text = record.fileName,
                             style = MaterialTheme.typography.bodyMedium,
@@ -507,13 +505,13 @@ private fun TimelineBackupItem(
 
                     // Metadata details box
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                            modifier = Modifier.padding(Spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
                         ) {
                             InfoRow(label = "系统版本", value = record.androidVersion)
                             InfoRow(label = "系统固件", value = record.buildDisplay)
@@ -525,13 +523,13 @@ private fun TimelineBackupItem(
 
                     // MD5 Verification Section
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = MaterialTheme.shapes.small,
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.padding(Spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -582,7 +580,7 @@ private fun TimelineBackupItem(
                                     BackupVerificationStatus.VERIFYING -> {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                                         ) {
                                             CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                                             Text(
@@ -595,26 +593,26 @@ private fun TimelineBackupItem(
                                     BackupVerificationStatus.MATCHED -> {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
                                         ) {
                                             Icon(
                                                 Icons.Default.CheckCircle,
                                                 contentDescription = null,
-                                                tint = Color(0xFF2E7D32),
+                                                tint = AppTheme.status.success,
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Text(
                                                 text = "MD5 校验通过 (一致)",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFF2E7D32)
+                                                color = AppTheme.status.success
                                             )
                                         }
                                     }
                                     BackupVerificationStatus.MISMATCH -> {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
                                         ) {
                                             Icon(
                                                 Icons.Default.Error,
@@ -633,7 +631,7 @@ private fun TimelineBackupItem(
                                     BackupVerificationStatus.FILE_MISSING -> {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
                                         ) {
                                             Icon(
                                                 Icons.Default.Warning,
@@ -666,7 +664,7 @@ private fun TimelineBackupItem(
                     // 3 Actions: Export, Flash, Delete
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedButton(
@@ -759,7 +757,7 @@ private fun EmptyRollbackState(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 16.dp)
+            modifier = Modifier.padding(horizontal = Spacing.lg)
         )
         Spacer(Modifier.height(24.dp))
         Button(onClick = onManualBackupClick) {
