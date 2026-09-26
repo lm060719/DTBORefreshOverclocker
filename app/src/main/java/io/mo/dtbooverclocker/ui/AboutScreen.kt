@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.mo.dtbooverclocker.BuildConfig
 import io.mo.dtbooverclocker.ui.components.UpdateCheckDialog
+import io.mo.dtbooverclocker.ui.i18n.I18n
 import io.mo.dtbooverclocker.update.GitHubUpdateChecker
 
 private const val GITHUB_REPO_URL = GitHubUpdateChecker.REPOSITORY_URL
@@ -66,6 +67,7 @@ private const val GITHUB_REPO_URL = GitHubUpdateChecker.REPOSITORY_URL
 @Composable
 fun AboutScreen(onNavigateBack: () -> Unit) {
     BackHandler(onBack = onNavigateBack)
+    val strings = I18n.current
     val context = LocalContext.current
     var showDisclaimerDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
@@ -73,12 +75,12 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("关于", fontWeight = FontWeight.SemiBold) },
+                title = { Text(strings.aboutTitle, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回设置"
+                            contentDescription = strings.backToSettings
                         )
                     }
                 }
@@ -141,12 +143,12 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 Text(
-                    text = "DTBO Studio",
+                    text = strings.appName,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Android DTBO / Device Tree 分析、编辑与安全重构工具",
+                    text = strings.appSubtitle,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -175,7 +177,7 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
             ) {
                 Icon(Icons.Default.SystemUpdate, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
-                Text("检测更新")
+                Text(strings.checkUpdate)
             }
 
             // Source Code Section
@@ -198,7 +200,7 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "开源仓库",
+                            text = strings.openSourceRepo,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -221,14 +223,14 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_REPO_URL))
                                     context.startActivity(intent)
                                 } catch (_: Throwable) {
-                                    Toast.makeText(context, "未找到可用浏览器", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, strings.noBrowserFound, Toast.LENGTH_SHORT).show()
                                 }
                             },
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
-                            Text("查看源码")
+                            Text(strings.viewSource)
                         }
 
                         OutlinedButton(
@@ -236,12 +238,12 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 val clip = ClipData.newPlainText("DTBO Source Repo", GITHUB_REPO_URL)
                                 clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "仓库链接已复制", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, strings.repoLinkCopied, Toast.LENGTH_SHORT).show()
                             }
                         ) {
                             Icon(Icons.Default.ContentCopy, contentDescription = null)
                             Spacer(Modifier.width(4.dp))
-                            Text("复制")
+                            Text(strings.copy)
                         }
                     }
                 }
@@ -267,17 +269,14 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "核心架构与安全",
+                            text = strings.coreArchTitle,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
 
                     Text(
-                        text = "• 纯 Kotlin DTBO 编解码引擎：完整支持 v0/v1/v2 规范、自动校验元数据并保留压缩条目。\n" +
-                                "• 三层防砖保障：强制物理分区完整备份、离线 Recovery 救砖包预生成、写后回读 SHA-256 自动回滚。\n" +
-                                "• 单槽位物理隔离：严格仅操作当前活跃 A/B 槽位，杜绝双槽破坏。\n" +
-                                "• 多种时序调整策略：支持平衡消隐时间 (Blanking Time)、仅像素时钟、仅帧率等调校模式。",
+                        text = strings.coreArchContent,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.3
@@ -305,14 +304,14 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                             tint = MaterialTheme.colorScheme.error
                         )
                         Text(
-                            text = "免责声明与风险须知",
+                            text = strings.disclaimerCardTitle,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
 
                     Text(
-                        text = "本软件属于高危底层硬件调试工具。使用前请确保您已完整知悉屏幕黑屏、Bootloop 及硬件损耗风险，并具备独立救砖能力。",
+                        text = strings.disclaimerCardBody,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -323,14 +322,14 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                     ) {
                         Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("查看完整免责声明")
+                        Text(strings.viewFullDisclaimer)
                     }
                 }
             }
 
             // License & Disclaimer
             Text(
-                text = "本应用为开源工具，仅供设备所有者与系统开发者进行屏幕显示测试与超频研究。使用物理刷写功能存在一定风险，请务必保管好预生成的备份救砖文件。",
+                text = strings.licenseNotice,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.sm)

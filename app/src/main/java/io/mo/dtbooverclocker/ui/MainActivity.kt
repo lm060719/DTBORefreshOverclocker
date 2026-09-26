@@ -71,6 +71,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalConfiguration
+import io.mo.dtbooverclocker.model.AppLanguage
+import io.mo.dtbooverclocker.ui.i18n.AppStrings
+import io.mo.dtbooverclocker.ui.i18n.I18n
+import io.mo.dtbooverclocker.ui.i18n.LocalStrings
+import io.mo.dtbooverclocker.util.LocaleHelper
+
 enum class AppScreen {
     MAIN,
     ROLLBACK,
@@ -79,12 +87,44 @@ enum class AppScreen {
 }
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        val prefs = newBase.getSharedPreferences("dtbo_prefs", Context.MODE_PRIVATE)
+        val lang = AppLanguage.fromCode(prefs.getString("app_language", null))
+        super.attachBaseContext(LocaleHelper.applyLocale(newBase, lang))
+    }
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            AppTheme {
-                DtboOverclockerApp()
+            val viewModel: MainViewModel = viewModel()
+            val state by viewModel.state.collectAsState()
+            val context = LocalContext.current
+            val strings = remember(state.appLanguage) { I18n.getStrings(state.appLanguage) }
+            val currentLocale = remember(state.appLanguage) { LocaleHelper.getEffectiveLocale(state.appLanguage) }
+
+            LaunchedEffect(state.appLanguage) {
+                LocaleHelper.updateSystemLocale(context, state.appLanguage)
+            }
+
+            val configuration = LocalConfiguration.current
+            val localizedConfiguration = remember(configuration, currentLocale) {
+                android.content.res.Configuration(configuration).apply {
+                    setLocale(currentLocale)
+                }
+            }
+            val localizedContext = remember(context, currentLocale) {
+                context.createConfigurationContext(localizedConfiguration)
+            }
+
+            CompositionLocalProvider(
+                LocalStrings provides strings,
+                LocalConfiguration provides localizedConfiguration,
+                LocalContext provides localizedContext
+            ) {
+                AppTheme {
+                    DtboOverclockerApp(viewModel)
+                }
             }
         }
     }
@@ -96,6 +136,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val activity = context as Activity
+    val strings = I18n.current
 
     var pendingBinary by remember { mutableStateOf<File?>(null) }
     var pendingZip by remember { mutableStateOf<File?>(null) }
@@ -127,7 +168,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     val saveScreenshot = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("image/png")
     ) { uri ->
-        if (uri != null) captureWindowToPng(activity, uri)
+        if (uri != null) captureWindowToPng(activity, uri, strings)
     }
 
     val saveLogs = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -192,7 +233,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
                     saveLogs.launch("DTBO_Log_${timestamp}.txt")
                 },
-                onClearAllLogs = viewModel::clearLogFiles
+                onClearAllLogs = viewModel::clearLogFiles,
+                onSetLanguage = viewModel::setAppLanguage
             )
         }
         AppScreen.ABOUT -> {
@@ -288,7 +330,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     onScreenshot = {
                         saveScreenshot.launch("DTBO_rescue_memo_${System.currentTimeMillis()}.png")
                     },
-                    onCopy = { text -> copyText(context, "DTBO rollback", text) },
+                    onCopy = { text -> copyText(context, "DTBO rollback", text, strings.copied) },
                     onClearLogs = viewModel::clearLogs
                 )
             )
@@ -356,6 +398,7 @@ private fun DangerousFlashDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    val strings = I18n.current
     var seconds by remember { mutableIntStateOf(5) }
     var confirmation by remember { mutableStateOf("") }
 
@@ -372,22 +415,22 @@ private fun DangerousFlashDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-        title = { Text("高危操作：写入物理 DTBO 分区") },
+        title = { Text(strings.flashDangerousTitle) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
                     Text(
-                        "目标：$partition",
+                        strings.flashTarget(partition),
                         modifier = Modifier.fillMaxWidth().padding(Spacing.md),
                         fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Text("本应用只写当前目标槽位。写入前会强制备份、SHA-256 校验并生成 Rescue Zip。", style = MaterialTheme.typography.bodyMedium)
+                Text(strings.flashWarningBody, style = MaterialTheme.typography.bodyMedium)
                 if (viaModule) {
-                    NoticeBanner("将打包为模块并交给 KernelSU / Magisk / APatch 安装，由模块完成写入；移除模块并重启会自动写回原 DTBO。")
+                    NoticeBanner(strings.flashViaModuleNotice)
                 }
-                Text("请输入目标刷新率 $targetHz，或输入大写 FLASH：", style = MaterialTheme.typography.bodyMedium)
+                Text(strings.flashConfirmPrompt(targetHz), style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = confirmation,
                     onValueChange = { confirmation = it },
@@ -397,7 +440,7 @@ private fun DangerousFlashDialog(
                 )
                 if (seconds > 0) {
                     Text(
-                        "确认按钮将在 $seconds 秒后解锁",
+                        strings.flashButtonCountdown(seconds),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -406,25 +449,25 @@ private fun DangerousFlashDialog(
         },
         confirmButton = {
             Button(onClick = onConfirm, enabled = enabled, colors = dangerButtonColors()) {
-                Text(if (viaModule) "确认以模块刷入" else "确认单槽位刷写")
+                Text(if (viaModule) strings.confirmModuleFlash else strings.confirmSlotFlash)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(strings.cancel) }
         }
     )
 }
 
-private fun copyText(context: Context, label: String, text: String) {
+private fun copyText(context: Context, label: String, text: String, tip: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
-    Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
 }
 
-private fun captureWindowToPng(activity: Activity, uri: Uri) {
+private fun captureWindowToPng(activity: Activity, uri: Uri, strings: AppStrings) {
     val view = activity.window.decorView
     if (view.width <= 0 || view.height <= 0) {
-        Toast.makeText(activity, "当前窗口尺寸无效", Toast.LENGTH_SHORT).show()
+        Toast.makeText(activity, strings.windowSizeInvalid, Toast.LENGTH_SHORT).show()
         return
     }
 
@@ -434,7 +477,7 @@ private fun captureWindowToPng(activity: Activity, uri: Uri) {
         bitmap,
         { result ->
             if (result != PixelCopy.SUCCESS) {
-                Toast.makeText(activity, "截图失败：PixelCopy=$result", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, strings.screenshotFailed(result), Toast.LENGTH_SHORT).show()
                 bitmap.recycle()
                 return@request
             }
@@ -449,7 +492,7 @@ private fun captureWindowToPng(activity: Activity, uri: Uri) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         activity,
-                        if (success) "截图已保存" else "截图写入失败",
+                        if (success) strings.screenshotSaved else strings.screenshotWriteFailed,
                         Toast.LENGTH_SHORT
                     ).show()
                 }

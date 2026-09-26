@@ -1,16 +1,29 @@
 package io.mo.dtbooverclocker.model
 
+import io.mo.dtbooverclocker.ui.i18n.AppStrings
+
 enum class CapabilityKind(val displayName: String)
 {
     REFRESH_RATE("刷新率"),
-    CHARGING("Charging")
+    CHARGING("Charging");
+
+    fun getDisplayName(strings: AppStrings): String = when (this) {
+        REFRESH_RATE -> strings.capabilityRefreshRate
+        CHARGING -> strings.capabilityCharging
+    }
 }
 
 enum class CapabilityStatus(val displayName: String)
 {
     AVAILABLE("可用"),
     ANALYSIS_ONLY("可分析"),
-    NOT_FOUND("未发现")
+    NOT_FOUND("未发现");
+
+    fun getDisplayName(strings: AppStrings): String = when (this) {
+        AVAILABLE -> strings.capabilityAvailable
+        ANALYSIS_ONLY -> strings.capabilityAnalysisOnly
+        NOT_FOUND -> strings.capabilityNotFound
+    }
 }
 
 data class CapabilityFinding(

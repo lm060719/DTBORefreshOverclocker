@@ -72,6 +72,7 @@ import io.mo.dtbooverclocker.model.BackupRecord
 import io.mo.dtbooverclocker.model.BackupType
 import io.mo.dtbooverclocker.model.BackupVerificationState
 import io.mo.dtbooverclocker.model.BackupVerificationStatus
+import io.mo.dtbooverclocker.ui.i18n.I18n
 import io.mo.dtbooverclocker.util.StorageUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,6 +90,7 @@ fun RollbackScreen(
     BackHandler(onBack = onNavigateBack)
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
+    val strings = I18n.current
 
     var showManualBackupDialog by remember { mutableStateOf(false) }
     var pendingFlashRecord by remember { mutableStateOf<BackupRecord?>(null) }
@@ -99,9 +101,9 @@ fun RollbackScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("镜像回滚", fontWeight = FontWeight.SemiBold)
+                        Text(strings.rollbackTitle, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "DTBO 分区备份时间轴与还原",
+                            strings.rollbackSubtitle,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -111,16 +113,16 @@ fun RollbackScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回主页"
+                            contentDescription = strings.cancel
                         )
                     }
                 },
                 actions = {
                     IconButton(onClick = { showManualBackupDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "手动备份当前分区")
+                        Icon(Icons.Default.Add, contentDescription = strings.manualBackup)
                     }
                     IconButton(onClick = onRefresh) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新备份列表")
+                        Icon(Icons.Default.Refresh, contentDescription = strings.refreshBackups)
                     }
                 }
             )
@@ -145,8 +147,8 @@ fun RollbackScreen(
                 item {
                     RollbackHeaderCard(
                         totalCount = state.backups.size,
-                        slotLabel = state.slotInfo?.label ?: "未知槽位",
-                        blockDevice = state.slotInfo?.blockDevice ?: "未知分区",
+                        slotLabel = state.slotInfo?.label ?: "Unknown",
+                        blockDevice = state.slotInfo?.blockDevice ?: "dtbo",
                         onManualBackupClick = { showManualBackupDialog = true }
                     )
                     Spacer(Modifier.height(16.dp))
@@ -164,7 +166,7 @@ fun RollbackScreen(
                         onVerifyMd5 = { onVerifyMd5(record) },
                         onCopyMd5 = {
                             clipboard.setText(AnnotatedString(record.recordedMd5))
-                            Toast.makeText(context, "MD5 已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, strings.md5Copied, Toast.LENGTH_SHORT).show()
                         },
                         onExport = { onExportBackup(record) },
                         onFlash = { pendingFlashRecord = record },
@@ -180,18 +182,18 @@ fun RollbackScreen(
         var manualDesc by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showManualBackupDialog = false },
-            title = { Text("手动备份当前 DTBO 镜像") },
+            title = { Text(strings.manualBackupTitle) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
-                        "将通过 Root 读取当前活跃分区 (${state.slotInfo?.blockDevice ?: "未检测到槽位"}) 并保存为回滚镜像。",
+                        strings.manualBackupDialogBody(state.slotInfo?.blockDevice ?: "dtbo"),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     OutlinedTextField(
                         value = manualDesc,
                         onValueChange = { manualDesc = it },
-                        label = { Text("备份说明备注（可选）") },
-                        placeholder = { Text("例如：刷入 144Hz 前的原厂基准") },
+                        label = { Text(strings.backupDescLabel) },
+                        placeholder = { Text(strings.backupDescPlaceholder) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -203,17 +205,18 @@ fun RollbackScreen(
                         onManualBackup(manualDesc)
                     }
                 ) {
-                    Text("立即备份")
+                    Text(strings.backupNow)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showManualBackupDialog = false }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )
     }
 
+    // Dangerous Flash Rollback Confirmation Dialog
     // Dangerous Flash Rollback Confirmation Dialog
     pendingFlashRecord?.let { record ->
         AlertDialog(
@@ -221,13 +224,13 @@ fun RollbackScreen(
             icon = {
                 Icon(
                     Icons.Default.Warning,
-                    contentDescription = "高风险警示",
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.error
                 )
             },
             title = {
                 Text(
-                    "确认回滚刷入 DTBO 镜像？",
+                    strings.flashThisBackupTitle,
                     color = MaterialTheme.colorScheme.error,
                     fontWeight = FontWeight.Bold
                 )
@@ -235,7 +238,7 @@ fun RollbackScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
-                        "您即将把选定的备份镜像物理写入设备分区，此操作将覆盖当前的 DTBO 分区！",
+                        strings.confirmRollbackFlashWarning,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -248,16 +251,16 @@ fun RollbackScreen(
                             modifier = Modifier.padding(Spacing.md),
                             verticalArrangement = Arrangement.spacedBy(Spacing.xs)
                         ) {
-                            Text("• 目标分区：${state.slotInfo?.blockDevice ?: record.blockDevice}", style = MaterialTheme.typography.bodySmall)
-                            Text("• 备份文件：${record.fileName}", style = MaterialTheme.typography.bodySmall)
-                            Text("• 备份时间：${record.formattedTime}", style = MaterialTheme.typography.bodySmall)
-                            Text("• 备份系统：${record.androidVersion}", style = MaterialTheme.typography.bodySmall)
-                            Text("• 系统版本：${record.buildDisplay}", style = MaterialTheme.typography.bodySmall)
-                            Text("• 记录 MD5：${record.recordedMd5}", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                            Text(strings.rollbackTargetPartition(state.slotInfo?.blockDevice ?: record.blockDevice), style = MaterialTheme.typography.bodySmall)
+                            Text(strings.rollbackBackupFile(record.fileName), style = MaterialTheme.typography.bodySmall)
+                            Text(strings.rollbackBackupTime(record.formattedTime), style = MaterialTheme.typography.bodySmall)
+                            Text(strings.rollbackAndroidVersion(record.androidVersion), style = MaterialTheme.typography.bodySmall)
+                            Text(strings.rollbackBuildDisplay(record.buildDisplay), style = MaterialTheme.typography.bodySmall)
+                            Text(strings.rollbackRecordedMd5(record.recordedMd5), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                         }
                     }
                     Text(
-                        "写入后系统将自动进行写后回读 MD5 校验以确保完整性。请确保电量充足，刷写过程中请勿断电或重启手机。",
+                        strings.rollbackVerifyNotice,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -275,12 +278,12 @@ fun RollbackScreen(
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("确认回滚刷入")
+                    Text(strings.confirmRollbackFlashBtn)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingFlashRecord = null }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )
@@ -293,13 +296,13 @@ fun RollbackScreen(
             icon = {
                 Icon(
                     Icons.Default.DeleteOutline,
-                    contentDescription = "删除确认",
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.error
                 )
             },
-            title = { Text("删除此备份？") },
+            title = { Text(strings.deleteBackupTitle) },
             text = {
-                Text("确定要删除镜像 ${record.fileName} 吗？删除后本地文件与元数据将永久移除，无法再用于一键回滚。")
+                Text(strings.deleteBackupBody(record.fileName))
             },
             confirmButton = {
                 Button(
@@ -313,12 +316,12 @@ fun RollbackScreen(
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("确认删除")
+                    Text(strings.confirm)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDeleteRecord = null }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )
@@ -332,6 +335,7 @@ private fun RollbackHeaderCard(
     blockDevice: String,
     onManualBackupClick: () -> Unit
 ) {
+    val strings = I18n.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -347,9 +351,9 @@ private fun RollbackHeaderCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("备份镜像库", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(strings.backupRepo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        "当前槽位: $slotLabel ($blockDevice)",
+                        strings.currentSlotSubtitle(slotLabel, blockDevice),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -359,7 +363,7 @@ private fun RollbackHeaderCard(
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
                     Text(
-                        text = "共 $totalCount 个备份",
+                        text = strings.totalBackupsCount(totalCount),
                         modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
@@ -376,7 +380,7 @@ private fun RollbackHeaderCard(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("手动备份当前手机 DTBO 镜像")
+                Text(strings.manualBackupCurrentPartition)
             }
         }
     }
@@ -393,6 +397,7 @@ private fun TimelineBackupItem(
     onFlash: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val strings = I18n.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -419,7 +424,7 @@ private fun TimelineBackupItem(
             ) {
                 Icon(
                     nodeIcon,
-                    contentDescription = record.backupType.displayName,
+                    contentDescription = record.backupType.getDisplayName(strings),
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(16.dp)
                 )
@@ -468,7 +473,7 @@ private fun TimelineBackupItem(
                             }
                         ) {
                             Text(
-                                text = record.backupType.displayName,
+                                text = record.backupType.getDisplayName(strings),
                                 modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
@@ -513,11 +518,11 @@ private fun TimelineBackupItem(
                             modifier = Modifier.padding(Spacing.md),
                             verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
                         ) {
-                            InfoRow(label = "系统版本", value = record.androidVersion)
-                            InfoRow(label = "系统固件", value = record.buildDisplay)
-                            InfoRow(label = "设备机型", value = record.deviceModel)
-                            InfoRow(label = "备份槽位", value = "${record.slot} (${record.blockDevice})")
-                            InfoRow(label = "文件大小", value = StorageUtils.formatFileSize(record.fileSizeBytes))
+                            InfoRow(label = strings.infoRowAndroidVersion, value = record.androidVersion)
+                            InfoRow(label = strings.infoRowBuildDisplay, value = record.buildDisplay)
+                            InfoRow(label = strings.infoRowDeviceModel, value = record.deviceModel)
+                            InfoRow(label = strings.infoRowBackupSlot, value = "${record.slot} (${record.blockDevice})")
+                            InfoRow(label = strings.infoRowFileSize, value = StorageUtils.formatFileSize(record.fileSizeBytes))
                         }
                     }
 
@@ -557,7 +562,7 @@ private fun TimelineBackupItem(
                                 ) {
                                     Icon(
                                         Icons.Default.ContentCopy,
-                                        contentDescription = "复制 MD5",
+                                        contentDescription = "${strings.copy} MD5",
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -572,7 +577,7 @@ private fun TimelineBackupItem(
                                 when (verificationState.status) {
                                     BackupVerificationStatus.UNCHECKED -> {
                                         Text(
-                                            text = "未校验完整性",
+                                            text = strings.md5Unchecked,
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -584,7 +589,7 @@ private fun TimelineBackupItem(
                                         ) {
                                             CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                                             Text(
-                                                text = "正在校验 MD5…",
+                                                text = strings.md5Verifying,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
@@ -602,7 +607,7 @@ private fun TimelineBackupItem(
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Text(
-                                                text = "MD5 校验通过 (一致)",
+                                                text = strings.md5Matched,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = AppTheme.status.success
@@ -621,7 +626,7 @@ private fun TimelineBackupItem(
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Text(
-                                                text = verificationState.message ?: "MD5 不一致",
+                                                text = verificationState.message ?: strings.md5Mismatch,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = MaterialTheme.colorScheme.error
@@ -640,7 +645,7 @@ private fun TimelineBackupItem(
                                                 modifier = Modifier.size(16.dp)
                                             )
                                             Text(
-                                                text = "备份镜像文件已丢失",
+                                                text = strings.md5FileMissing,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = MaterialTheme.colorScheme.error
@@ -655,7 +660,7 @@ private fun TimelineBackupItem(
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                     modifier = Modifier.height(30.dp)
                                 ) {
-                                    Text("验证 MD5", style = MaterialTheme.typography.labelSmall)
+                                    Text(strings.verifyMd5, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -674,7 +679,7 @@ private fun TimelineBackupItem(
                         ) {
                             Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("导出", style = MaterialTheme.typography.labelSmall)
+                            Text(strings.export, style = MaterialTheme.typography.labelSmall)
                         }
 
                         Button(
@@ -688,7 +693,7 @@ private fun TimelineBackupItem(
                         ) {
                             Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("刷入", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            Text(strings.flash, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         }
 
                         OutlinedButton(
@@ -701,7 +706,7 @@ private fun TimelineBackupItem(
                         ) {
                             Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("删除", style = MaterialTheme.typography.labelSmall)
+                            Text(strings.delete, style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -734,6 +739,7 @@ private fun EmptyRollbackState(
     modifier: Modifier = Modifier,
     onManualBackupClick: () -> Unit
 ) {
+    val strings = I18n.current
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -747,13 +753,13 @@ private fun EmptyRollbackState(
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "暂无备份镜像",
+            text = strings.noBackups,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "在直接刷入超频镜像前，系统会自动备份当前活跃槽位分区；您也可以随时手动备份当前手机 DTBO 分区以便日后回滚。",
+            text = strings.noBackupsHint,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -763,7 +769,7 @@ private fun EmptyRollbackState(
         Button(onClick = onManualBackupClick) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("立即手动备份当前镜像")
+            Text(strings.emptyBackupsBtn)
         }
     }
 }

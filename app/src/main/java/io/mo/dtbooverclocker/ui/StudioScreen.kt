@@ -35,11 +35,21 @@ import io.mo.dtbooverclocker.ui.components.Tone
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
+import io.mo.dtbooverclocker.ui.i18n.AppStrings
+import io.mo.dtbooverclocker.ui.i18n.I18n
+
 enum class StudioTab(val label: String, val icon: ImageVector) {
     OVERVIEW("概览", Icons.Default.Dashboard),
     MODULES("功能模块", Icons.Default.Apps),
     DEVICE_TREE("设备树", Icons.Default.AccountTree),
-    SETTINGS("设置", Icons.Default.Settings)
+    SETTINGS("设置", Icons.Default.Settings);
+
+    fun getLabel(strings: AppStrings): String = when (this) {
+        OVERVIEW -> strings.tabOverview
+        MODULES -> strings.tabModules
+        DEVICE_TREE -> strings.tabDeviceTree
+        SETTINGS -> strings.tabSettings
+    }
 }
 
 private enum class StudioModule { REFRESH_RATE, CHARGING }
@@ -87,17 +97,18 @@ internal fun StudioNavigation(
     onRefreshEnvironment: () -> Unit,
     content: @Composable (StudioTab, PaddingValues) -> Unit
 ) {
+    val strings = I18n.current
     val selectedTab = StudioTab.entries[pagerState.currentPage]
     val scope = rememberCoroutineScope()
     var navigationJob by remember { mutableStateOf<Job?>(null) }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Column { Text("DTBO Studio", fontWeight = FontWeight.SemiBold); Text(selectedTab.label, style = MaterialTheme.typography.labelSmall) } },
+                title = { Column { Text("DTBO Studio", fontWeight = FontWeight.SemiBold); Text(selectedTab.getLabel(strings), style = MaterialTheme.typography.labelSmall) } },
                 actions = {
                     if (selectedTab != StudioTab.SETTINGS) {
-                        IconButton(onClick = onOpenRollback, enabled = enabled) { Icon(Icons.Default.Restore, "备份与恢复") }
-                        IconButton(onClick = onRefreshEnvironment, enabled = enabled) { Icon(Icons.Default.Refresh, "刷新环境") }
+                        IconButton(onClick = onOpenRollback, enabled = enabled) { Icon(Icons.Default.Restore, strings.backupAndRestore) }
+                        IconButton(onClick = onRefreshEnvironment, enabled = enabled) { Icon(Icons.Default.Refresh, strings.refreshEnvironment) }
                     }
                 }
             )
@@ -111,7 +122,7 @@ internal fun StudioNavigation(
                         navigationJob = scope.launch { pagerState.animateScrollToPage(tab.ordinal) }
                     },
                     icon = { Icon(tab.icon, null) },
-                    label = { Text(tab.label) },
+                    label = { Text(tab.getLabel(strings)) },
                     enabled = enabled
                 )
             } }
@@ -162,9 +173,10 @@ private fun TransactionQueueCard(
     onReset: () -> Unit,
     onUndoLastTransaction: () -> Unit
 ) {
+    val strings = I18n.current
     SectionCard(
-        title = "设备树事务 · ${state.transactions.size} 个",
-        subtitle = "${state.transactions.sumOf { it.operationCount }} 个底层操作待打包",
+        title = strings.dtTransactions(state.transactions.size),
+        subtitle = strings.dtOperationsPending(state.transactions.sumOf { it.operationCount }),
         icon = Icons.Default.PendingActions,
         tone = Tone.Primary
     ) {
@@ -183,11 +195,11 @@ private fun TransactionQueueCard(
             }
         }
         Button(onClick = onPackage, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-            IconLabel(Icons.Default.Build, "集中打包")
+            IconLabel(Icons.Default.Build, strings.packageBatch)
         }
         ActionRow {
-            OutlinedButton(onClick = onUndoLastTransaction, enabled = !state.busy) { Text("撤销最近事务") }
-            TextButton(onClick = onReset, enabled = !state.busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("全部重置") }
+            OutlinedButton(onClick = onUndoLastTransaction, enabled = !state.busy) { Text(strings.undoLastTransaction) }
+            TextButton(onClick = onReset, enabled = !state.busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(strings.resetAll) }
         }
     }
 }
@@ -196,6 +208,7 @@ private fun TransactionQueueCard(
 private fun ModulesTab(
     state: MainUiState, padding: PaddingValues, timing: TimingActions
 ) {
+    val strings = I18n.current
     var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
     val workspace = state.workspace
     LazyColumn(
@@ -205,8 +218,8 @@ private fun ModulesTab(
     ) {
         item {
             Column(Modifier.padding(horizontal = Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                Text("功能模块", style = MaterialTheme.typography.headlineSmall)
-                HintText("功能模块负责生成经过约束验证的设备树事务；能力扫描只负责发现，不会自动把检测结果变成写入。")
+                Text(strings.modulesTitle, style = MaterialTheme.typography.headlineSmall)
+                HintText(strings.modulesSubtitle)
             }
         }
         if (workspace != null) {
@@ -216,17 +229,17 @@ private fun ModulesTab(
             item {
                 EmptyState(
                     Icons.Default.FolderOpen,
-                    "还没有工作区",
-                    "先到“概览”导入 dtbo.img，或在 Root 设备上提取当前 DTBO 分区。"
+                    strings.noWorkspaceYet,
+                    strings.noWorkspaceHint
                 )
             }
         } else {
             item {
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     val refreshFinding = state.capabilityReport?.finding(CapabilityKind.REFRESH_RATE)
-                    ModuleCard("刷新率", capabilitySubtitle(state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE, Modifier.weight(1f)) { activeModule = if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE }
-                    ModuleCard("Charging", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING, Modifier.weight(1f)) { activeModule = if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING }
-                    ModuleCard("高级属性", "设备树编辑器 · 始终可用", Icons.Default.Code, false, modifier = Modifier.weight(1f))
+                    ModuleCard(strings.moduleRefreshRate, capabilitySubtitle(strings, state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE, Modifier.weight(1f)) { activeModule = if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE }
+                    ModuleCard(strings.moduleCharging, capabilitySubtitle(strings, state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING, Modifier.weight(1f)) { activeModule = if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING }
+                    ModuleCard(strings.moduleAdvancedProps, strings.moduleEditorAlwaysAvailable, Icons.Default.Code, false, modifier = Modifier.weight(1f))
                 }
             }
             if (activeModule == StudioModule.REFRESH_RATE && workspace.candidates.isNotEmpty()) {
@@ -242,15 +255,16 @@ private fun ModulesTab(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CapabilityScanCard(state: MainUiState) {
+    val strings = I18n.current
     val report = state.capabilityReport
     val (statusText, statusTone) = when {
-        state.capabilityScanInProgress -> "扫描中…" to Tone.Warning
-        report != null -> "已完成" to Tone.Success
-        else -> "等待扫描" to Tone.Neutral
+        state.capabilityScanInProgress -> strings.scanning to Tone.Warning
+        report != null -> strings.scanCompleted to Tone.Success
+        else -> strings.waitingForScan to Tone.Neutral
     }
     SectionCard(
-        title = "设备树能力扫描",
-        subtitle = report?.let { "${it.scannedEntryCount} 个 DTB · ${it.nodeCount} 个节点 · ${it.propertyCount} 个属性" },
+        title = strings.capabilityScan,
+        subtitle = report?.let { strings.scanStats(it.scannedEntryCount, it.nodeCount, it.propertyCount) },
         icon = Icons.Default.Radar,
         trailing = { StatusPill(statusText, tone = statusTone) }
     ) {
@@ -264,7 +278,7 @@ private fun CapabilityScanCard(state: MainUiState) {
             ) {
                 report.findings.forEach { finding ->
                     StatusPill(
-                        "${finding.kind.displayName}: ${finding.status.displayName} ${finding.matchCount}",
+                        "${finding.kind.getDisplayName(strings)}: ${finding.status.getDisplayName(strings)} ${finding.matchCount}",
                         tone = when (finding.status) {
                             CapabilityStatus.AVAILABLE -> Tone.Success
                             CapabilityStatus.ANALYSIS_ONLY -> Tone.Primary
@@ -274,12 +288,13 @@ private fun CapabilityScanCard(state: MainUiState) {
                 }
             }
         } else {
-            HintText("导入 DTBO 后自动识别刷新率时序和 Charging 参数。")
+            HintText(strings.scanHint)
         }
     }
 }
 
 private fun capabilitySubtitle(
+    strings: AppStrings,
     state: MainUiState,
     finding: CapabilityFinding?,
     fallbackCount: Int
@@ -287,17 +302,17 @@ private fun capabilitySubtitle(
 {
     if (state.capabilityScanInProgress && finding == null)
     {
-        return "扫描中…"
+        return strings.scanning
     }
     if (finding == null)
     {
-        return if (fallbackCount > 0) "$fallbackCount 个候选" else "等待能力扫描"
+        return if (fallbackCount > 0) strings.candidatesCount(fallbackCount) else strings.waitingForScan
     }
     return when (finding.status)
     {
-        CapabilityStatus.AVAILABLE -> "可用 · ${finding.matchCount} 个"
-        CapabilityStatus.ANALYSIS_ONLY -> "可分析 · ${finding.matchCount} 个"
-        CapabilityStatus.NOT_FOUND -> "当前 DTBO 未发现"
+        CapabilityStatus.AVAILABLE -> strings.statusAvailable(finding.matchCount)
+        CapabilityStatus.ANALYSIS_ONLY -> strings.statusAnalysisOnly(finding.matchCount)
+        CapabilityStatus.NOT_FOUND -> strings.statusNotFound
     }
 }
 
@@ -338,6 +353,7 @@ private fun ModuleCard(
 
 @Composable
 private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigation: NavigationActions) {
+    val strings = I18n.current
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
         contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = Spacing.xs, bottom = Spacing.xl),
@@ -345,24 +361,24 @@ private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigatio
     ) {
         item {
             SectionCard(
-                title = "环境状态",
+                title = strings.envStatus,
                 icon = Icons.Default.PhoneAndroid,
                 trailing = {
-                    if (state.rootState.granted) StatusPill("Root 已授权", tone = Tone.Success)
-                    else StatusPill("未授权", tone = Tone.Warning)
+                    if (state.rootState.granted) StatusPill(strings.rootGrantedPill, tone = Tone.Success)
+                    else StatusPill(strings.rootNotGrantedPill, tone = Tone.Warning)
                 }
             ) {
                 if (!state.rootState.granted) HintText(state.rootState.detail)
-                state.slotInfo?.let { KeyValueRow("当前槽位", it.label) }
-                KeyValueRow("DTBO 分区",state.slotInfo?.blockDevice ?: "分区路径检测中", monospace = true)
+                state.slotInfo?.let { KeyValueRow(strings.currentSlot, it.label) }
+                KeyValueRow(strings.dtboPartition, state.slotInfo?.blockDevice ?: strings.detectingPartition, monospace = true)
                 ActionRow {
-                    if (!state.rootState.granted) OutlinedButton(navigation.onRequestRoot, enabled = state.rootState.suPresent) { IconLabel(Icons.Default.Lock, "请求 Root") }
-                    OutlinedButton(navigation.onRefreshEnvironment) { IconLabel(Icons.Default.Refresh, "重新探测") }
+                    if (!state.rootState.granted) OutlinedButton(navigation.onRequestRoot, enabled = state.rootState.suPresent) { IconLabel(Icons.Default.Lock, strings.requestRoot) }
+                    OutlinedButton(navigation.onRefreshEnvironment) { IconLabel(Icons.Default.Refresh, strings.reprobe) }
                 }
             }
         }
-        item { NavigationEntry(Icons.Default.Restore, "备份与恢复", "已保存 " + state.backups.size + " 个 DTBO 备份", navigation.onOpenRollback) }
-        item { NavigationEntry(Icons.Default.Settings, "高级设置", "缓存、日志与维护选项", navigation.onOpenAdvancedSettings) }
-        item { NavigationEntry(Icons.Default.Info, "关于 DTBO Studio", "版本、项目说明与免责声明", navigation.onOpenAbout) }
+        item { NavigationEntry(Icons.Default.Restore, strings.backupAndRestore, strings.backupCountSubtitle(state.backups.size), navigation.onOpenRollback) }
+        item { NavigationEntry(Icons.Default.Settings, strings.advancedSettings, strings.advancedSettingsSubtitle, navigation.onOpenAdvancedSettings) }
+        item { NavigationEntry(Icons.Default.Info, strings.aboutStudio, strings.aboutStudioSubtitle, navigation.onOpenAbout) }
     }
 }

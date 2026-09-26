@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.model
 
+import io.mo.dtbooverclocker.ui.i18n.AppStrings
 import java.io.File
 
 enum class SourceMode {
@@ -29,7 +30,21 @@ enum class PatchStrategy(val displayName: String, val description: String) {
     CUSTOM(
         "自定义参数",
         "手动指定 Pixel Clock、垂直前肩 (VFP)、垂直后肩 (VBP) 及水平消隐等时序参数。"
-    )
+    );
+
+    fun getDisplayName(strings: AppStrings): String = when (this) {
+        BALANCED_BLANKING_TIME -> strings.strategyBalancedName
+        PIXEL_CLOCK_ONLY -> strings.strategyPixelClockName
+        FRAMERATE_ONLY -> strings.strategyFramerateName
+        CUSTOM -> strings.strategyCustomName
+    }
+
+    fun getDescription(strings: AppStrings): String = when (this) {
+        BALANCED_BLANKING_TIME -> strings.strategyBalancedDesc
+        PIXEL_CLOCK_ONLY -> strings.strategyPixelClockDesc
+        FRAMERATE_ONLY -> strings.strategyFramerateDesc
+        CUSTOM -> strings.strategyCustomDesc
+    }
 }
 
 enum class PatchMode(val displayName: String, val description: String) {
@@ -44,7 +59,19 @@ enum class PatchMode(val displayName: String, val description: String) {
     DELETE_EXISTING(
         "删除指定档位",
         "从设备树中彻底移除所选的时序档位节点（需保留至少一个档位以供显示驱动初始化）。"
-    )
+    );
+
+    fun getDisplayName(strings: AppStrings): String = when (this) {
+        OVERWRITE_EXISTING -> strings.patchModeOverwriteName
+        APPEND_NEW -> strings.patchModeAppendName
+        DELETE_EXISTING -> strings.patchModeDeleteName
+    }
+
+    fun getDescription(strings: AppStrings): String = when (this) {
+        OVERWRITE_EXISTING -> strings.patchModeOverwriteDesc
+        APPEND_NEW -> strings.patchModeAppendDesc
+        DELETE_EXISTING -> strings.patchModeDeleteDesc
+    }
 }
 
 data class CustomTimingParams(

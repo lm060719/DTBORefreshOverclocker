@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.core.ChargingAnalyzer
 import io.mo.dtbooverclocker.core.ThermalTableAdjuster
 import io.mo.dtbooverclocker.model.ChargingField
+import io.mo.dtbooverclocker.ui.i18n.I18n
 import java.math.BigDecimal
 
 /** A descending thermal property laid out as levels × channels; [cells] index the editor's field list in cell order. */
@@ -57,6 +58,7 @@ internal fun ThermalTableEditor(
     enabled: Boolean,
     onChange: (Map<Int, String>) -> Unit
 ) {
+    val strings = I18n.current
     val unit = fields[table.cells.first()].parameter.unit
     val linkGroups = remember(table) {
         ThermalTableAdjuster.identicalColumns((0 until table.levels).map { level ->
@@ -74,17 +76,16 @@ internal fun ThermalTableEditor(
 
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-            Text("${table.title} · ${table.levels} 档 × ${table.columns.size} 通道（$unit）",
+            Text(strings.thermalTableSummary(table.title, table.levels, table.columns.size, unit),
                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text("第 1 档限流最宽松，档位越高温度越高、限流越严格。左右滑动查看全部通道。",
+            Text(strings.thermalTableDesc,
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (canLink) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("联动相同通道", style = MaterialTheme.typography.labelLarge)
+                        Text(strings.linkSameChannels, style = MaterialTheme.typography.labelLarge)
                         Text(
-                            linkGroups.filter { it.size > 1 }.joinToString("；") { group -> group.joinToString(" / ") { table.columns[it] } } +
-                                " 原值完全相同，合并为一列同时修改",
+                            strings.linkSameChannelsDesc(linkGroups.filter { it.size > 1 }.joinToString("；") { group -> group.joinToString(" / ") { table.columns[it] } }),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -94,7 +95,7 @@ internal fun ThermalTableEditor(
 
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                 Column {
-                    HeaderCell("档位", null)
+                    HeaderCell(strings.levelHeader, null)
                     repeat(table.levels) { level ->
                         Box(Modifier.size(44.dp, CELL_HEIGHT), contentAlignment = Alignment.Center) {
                             Text("${level + 1}", style = MaterialTheme.typography.labelLarge)
@@ -103,7 +104,7 @@ internal fun ThermalTableEditor(
                 }
                 displayColumns.forEach { members ->
                     Column {
-                        HeaderCell(table.columns[members.first()], if (members.size > 1) "+${members.size - 1} 列联动" else null)
+                        HeaderCell(table.columns[members.first()], if (members.size > 1) strings.columnsLinked(members.size - 1) else null)
                         repeat(table.levels) { level ->
                             val index = table.cell(level, members.first())
                             TableCell(
@@ -119,7 +120,7 @@ internal fun ThermalTableEditor(
                 }
             }
             if (table.columns.indices.any { column -> (0 until table.levels).any { invalid(it, column) } }) {
-                Text("红框：数值无效，或高于上一档。同一通道的后一档不能高于前一档。",
+                Text(strings.redBoxWarning,
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
 
@@ -128,7 +129,7 @@ internal fun ThermalTableEditor(
                 onClick = { onChange(table.cells.associateWith { original[it] }) },
                 enabled = enabled && table.cells.any { values[it] != original[it] },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("恢复本表原值") }
+            ) { Text(strings.restoreTableOriginal) }
         }
     }
 }
@@ -142,6 +143,7 @@ private fun BatchAdjust(
     enabled: Boolean,
     onChange: (Map<Int, String>) -> Unit
 ) {
+    val strings = I18n.current
     var expanded by rememberSaveable(table.name) { mutableStateOf(false) }
     var selected by rememberSaveable(table.name, stateSaver = listSaver<List<Int>, Int>(save = { it }, restore = { it })) {
         mutableStateOf(if (table.columns.size == 1) listOf(0) else emptyList())
@@ -151,29 +153,28 @@ private fun BatchAdjust(
     var percent by rememberSaveable(table.name) { mutableStateOf("10") }
     var message by remember(table) { mutableStateOf<String?>(null) }
 
-    TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起批量调整" else "批量调整（按百分比）") }
+    TextButton(onClick = { expanded = !expanded }) { Text(strings.toggleBatchAdjust(expanded)) }
     if (!expanded) return
     if (table.columns.size > 1) {
-        Text("选择通道", style = MaterialTheme.typography.labelMedium)
+        Text(strings.selectChannel, style = MaterialTheme.typography.labelMedium)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             displayColumns.forEach { members ->
                 val on = members.all { it in selected }
                 FilterChip(
                     selected = on, enabled = enabled,
                     onClick = { selected = if (on) selected - members.toSet() else (selected + members).distinct() },
-                    label = { Text(table.columns[members.first()] + if (members.size > 1) " 等 ${members.size} 列" else "") }
+                    label = { Text(if (members.size > 1) strings.andOtherColumns(table.columns[members.first()], members.size) else table.columns[members.first()]) }
                 )
             }
         }
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        SmallNumberField(from, "从第几档", enabled, Modifier.weight(1f)) { from = it }
-        SmallNumberField(to, "到第几档", enabled, Modifier.weight(1f)) { to = it }
+        SmallNumberField(from, strings.fromLevel, enabled, Modifier.weight(1f)) { from = it }
+        SmallNumberField(to, strings.toLevel, enabled, Modifier.weight(1f)) { to = it }
         // Number keyboards on some IMEs lack a minus sign.
-        SmallNumberField(percent, "调整 %", enabled, Modifier.weight(1f), KeyboardType.Text) { percent = it }
+        SmallNumberField(percent, strings.adjustPercent, enabled, Modifier.weight(1f), KeyboardType.Text) { percent = it }
     }
-    Text("例：+10 表示上调 10%，-20 表示下调 20%。结果按 10 ${fields[table.cells.first()].parameter.unit} 取整；" +
-        "超出相邻档位时自动截断，保证后一档不高于前一档。",
+    Text(strings.batchAdjustExample(fields[table.cells.first()].parameter.unit),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Button(
         onClick = {
@@ -207,7 +208,7 @@ private fun BatchAdjust(
         },
         enabled = enabled,
         modifier = Modifier.fillMaxWidth()
-    ) { Text("应用到表格") }
+    ) { Text(strings.applyToTable) }
     message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
 }
 
@@ -232,6 +233,7 @@ private fun TableCell(
     description: String,
     onValueChange: (String) -> Unit
 ) {
+    val strings = I18n.current
     val colors = MaterialTheme.colorScheme
     val shape = MaterialTheme.shapes.extraSmall
     Box(
@@ -255,7 +257,7 @@ private fun TableCell(
                 cursorBrush = SolidColor(colors.primary),
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = description }
             )
-            if (changed) Text("原 $originalValue", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
+            if (changed) Text(strings.rawPrefix(originalValue), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant, maxLines = 1)
         }
     }
 }

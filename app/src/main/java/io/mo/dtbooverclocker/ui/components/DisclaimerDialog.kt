@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.ui.components
 
 import androidx.activity.compose.BackHandler
+import io.mo.dtbooverclocker.ui.i18n.I18n
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -100,12 +101,13 @@ fun DisclaimerDialog(
             }
         },
         title = {
+            val strings = I18n.current
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 Text(
-                    text = "风险提示与使用须知",
+                    text = strings.disclaimerTitle,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -117,6 +119,7 @@ fun DisclaimerDialog(
             }
         },
         text = {
+            val strings = I18n.current
             val scrollState = rememberScrollState()
             Column(
                 modifier = Modifier
@@ -127,7 +130,7 @@ fun DisclaimerDialog(
             ) {
                 // 欢迎语
                 Text(
-                    text = "欢迎使用 DTBO Refresh Overclocker。在继续使用并授予 Root 权限前，请务必仔细阅读以下内容：",
+                    text = strings.disclaimerWelcome,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.2
@@ -136,40 +139,37 @@ fun DisclaimerDialog(
                 // 1. 高危操作声明
                 DisclaimerSection(
                     icon = Icons.Default.Dangerous,
-                    title = "1. 高危操作声明",
+                    title = strings.disclaimerSec1Title,
                     color = MaterialTheme.colorScheme.error,
                     containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
-                    content = "本工具属于 Android 底层硬件调试与调校工具。使用本软件将会请求 Root 超级用户权限，并直接对设备的底层物理分区（dtbo）执行解包、修改并重写内核设备树（Device Tree Blob）操作。"
+                    content = strings.disclaimerSec1Content
                 )
 
                 // 2. 潜在严重风险
                 DisclaimerSection(
                     icon = Icons.Default.Warning,
-                    title = "2. 潜在严重风险",
+                    title = strings.disclaimerSec2Title,
                     color = MaterialTheme.colorScheme.error,
                     containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
-                    content = "屏幕刷新率超频受限于您的屏幕面板品质与显示驱动 IC（DDIC）硬件体质。任何不当的时序或频率参数可能导致：\n\n" +
-                            "• 屏幕黑屏 / 花屏：开机后屏幕无法点亮或严重偏色、残影；\n" +
-                            "• 系统无法启动（Bootloop）：内核加载异常导致卡开机 LOGO 或反复重启；\n" +
-                            "• 硬件潜在损耗：长期超出标称频率运行可能导致发热加剧、器件加速老化或不可逆的物理损坏。"
+                    content = strings.disclaimerSec2Content
                 )
 
                 // 3. 使用前提条件
                 DisclaimerSection(
                     icon = Icons.Default.Shield,
-                    title = "3. 使用前提条件",
+                    title = strings.disclaimerSec3Title,
                     color = MaterialTheme.colorScheme.primary,
                     containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                    content = "若要使用本软件，您必须拥有救砖的能力。"
+                    content = strings.disclaimerSec3Content
                 )
 
                 // 4. 免责条款
                 DisclaimerSection(
                     icon = Icons.Default.Info,
-                    title = "4. 免责条款",
+                    title = strings.disclaimerSec4Title,
                     color = MaterialTheme.colorScheme.secondary,
                     containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-                    content = "本软件仅供设备所有者用于个人学习、显示技术研究与性能测试。开发者已尽可能提供单槽保护与校验机制，但无法担保本软件在所有设备、内核及系统版本下的兼容性与安全性。因使用本软件导致的任何设备损坏、数据丢失、保修失效或硬件故障，均由使用者自行承担全部责任。"
+                    content = strings.disclaimerSec4Content
                 )
 
                 if (isFirstLaunch) {
@@ -194,7 +194,7 @@ fun DisclaimerDialog(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "我已完整阅读并充分理解上述风险，确认具备独立救砖能力并自愿承担全部后果。",
+                            text = strings.disclaimerAgreeCheckbox,
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -204,6 +204,7 @@ fun DisclaimerDialog(
             }
         },
         confirmButton = {
+            val strings = I18n.current
             if (isFirstLaunch) {
                 val isButtonEnabled = isChecked && seconds == 0
                 Button(
@@ -215,19 +216,20 @@ fun DisclaimerDialog(
                     )
                 ) {
                     Text(
-                        if (seconds > 0) "同意并继续 (${seconds}s)" else "同意并继续"
+                        if (seconds > 0) strings.disclaimerAgreeBtnCountdown(seconds) else strings.disclaimerAgreeBtn
                     )
                 }
             } else {
                 Button(onClick = onDismiss) {
-                    Text("我知道了")
+                    Text(strings.disclaimerUnderstood)
                 }
             }
         },
         dismissButton = {
+            val strings = I18n.current
             if (isFirstLaunch) {
                 OutlinedButton(onClick = onExit) {
-                    Text("退出应用")
+                    Text(strings.disclaimerExitApp)
                 }
             }
         }

@@ -1,8 +1,8 @@
 package io.mo.dtbooverclocker.ui
 
 import android.widget.Toast
-import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -32,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,10 +47,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.mo.dtbooverclocker.model.AppLanguage
+import io.mo.dtbooverclocker.ui.i18n.I18n
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import io.mo.dtbooverclocker.util.StorageUtils
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -61,9 +67,11 @@ fun SettingsScreen(
     onClearAllCache: (onCleared: (Long) -> Unit) -> Unit,
     onRefreshLogStats: () -> Unit,
     onExportLogs: () -> Unit,
-    onClearAllLogs: (onCleared: () -> Unit) -> Unit
+    onClearAllLogs: (onCleared: () -> Unit) -> Unit,
+    onSetLanguage: (AppLanguage) -> Unit
 ) {
     BackHandler(onBack = onNavigateBack)
+    val strings = I18n.current
     val context = LocalContext.current
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showClearLogsDialog by remember { mutableStateOf(false) }
@@ -76,18 +84,18 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置", fontWeight = FontWeight.SemiBold) },
+                title = { Text(strings.settingsTitle, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回主页"
+                            contentDescription = strings.backToHome
                         )
                     }
                 },
                 actions = {
                     IconButton(onClick = onRefreshEnvironment) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新环境探测")
+                        Icon(Icons.Default.Refresh, contentDescription = strings.refreshEnvironmentProbe)
                     }
                 }
             )
@@ -102,7 +110,109 @@ fun SettingsScreen(
         ) {
             item { Spacer(Modifier.height(4.dp)) }
 
-            // 1. Cache Management Section
+            // 1. Language Settings Section
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(Spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                            ) {
+                                Icon(
+                                    Icons.Default.Language,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    strings.settingsLanguage,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = MaterialTheme.shapes.small
+                            ) {
+                                Text(
+                                    text = when (state.appLanguage) {
+                                        AppLanguage.FOLLOW_SYSTEM -> strings.langFollowSystem
+                                        AppLanguage.ENGLISH -> strings.langEnglish
+                                        AppLanguage.CHINESE -> strings.langChinese
+                                    },
+                                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = strings.settingsLanguageDesc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+                        ) {
+                            val languageOptions = listOf(
+                                AppLanguage.FOLLOW_SYSTEM to strings.langFollowSystem,
+                                AppLanguage.ENGLISH to strings.langEnglish,
+                                AppLanguage.CHINESE to strings.langChinese
+                            )
+
+                            languageOptions.forEach { (lang, label) ->
+                                val selected = state.appLanguage == lang
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(MaterialTheme.shapes.medium)
+                                        .clickable { onSetLanguage(lang) },
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                    else MaterialTheme.colorScheme.surface
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                                    ) {
+                                        RadioButton(
+                                            selected = selected,
+                                            onClick = { onSetLanguage(lang) }
+                                        )
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Cache Management Section
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -128,7 +238,7 @@ fun SettingsScreen(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    "应用缓存",
+                                    strings.appCache,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -150,7 +260,7 @@ fun SettingsScreen(
                         }
 
                         Text(
-                            text = "包含导入的 DTBO 镜像缓存、反编译 DTS 临时工作区及刷写校验临时文件。",
+                            text = strings.appCacheDesc,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -171,14 +281,14 @@ fun SettingsScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("清除所有缓存")
+                                Text(strings.clearAllCache)
                             }
                         }
                     }
                 }
             }
 
-            // 2. Log Management Section
+            // 3. Log Management Section
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -204,7 +314,7 @@ fun SettingsScreen(
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    "运行日志",
+                                    strings.runtimeLogs,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -215,7 +325,7 @@ fun SettingsScreen(
                                 shape = MaterialTheme.shapes.small
                             ) {
                                 Text(
-                                    text = "${state.logFilesCount} 个文件 · ${StorageUtils.formatFileSize(state.logFilesSizeBytes)}",
+                                    text = strings.logFilesStats(state.logFilesCount, StorageUtils.formatFileSize(state.logFilesSizeBytes)),
                                     modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontFamily = FontFamily.Monospace,
@@ -239,7 +349,7 @@ fun SettingsScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("导出完整日志")
+                                Text(strings.exportFullLogs)
                             }
 
                             OutlinedButton(
@@ -254,7 +364,7 @@ fun SettingsScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(Modifier.width(6.dp))
-                                Text("清空日志")
+                                Text(strings.clearLogs)
                             }
                         }
                     }
@@ -276,12 +386,9 @@ fun SettingsScreen(
                     tint = MaterialTheme.colorScheme.primary
                 )
             },
-            title = { Text("确认清空应用缓存？") },
+            title = { Text(strings.confirmClearCacheTitle) },
             text = {
-                Text(
-                    "将清除当前应用内的所有导入镜像缓存与反编译工作目录（当前占用：${StorageUtils.formatFileSize(state.cacheSizeBytes)}）。\n\n" +
-                            "若当前有正在编辑但尚未导出的 DTBO 工作区，清理后工作区将被重置。"
-                )
+                Text(strings.confirmClearCacheBody(StorageUtils.formatFileSize(state.cacheSizeBytes)))
             },
             confirmButton = {
                 Button(
@@ -289,9 +396,9 @@ fun SettingsScreen(
                         showClearCacheDialog = false
                         onClearAllCache { freedBytes ->
                             val message = if (freedBytes > 0) {
-                                "已成功清空缓存，释放 ${StorageUtils.formatFileSize(freedBytes)}"
+                                strings.cacheClearedFreed(StorageUtils.formatFileSize(freedBytes))
                             } else {
-                                "缓存已清空"
+                                strings.cacheCleared
                             }
                             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         }
@@ -300,12 +407,12 @@ fun SettingsScreen(
                         containerColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text("清空")
+                    Text(strings.clearAction)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearCacheDialog = false }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )
@@ -322,31 +429,28 @@ fun SettingsScreen(
                     tint = MaterialTheme.colorScheme.primary
                 )
             },
-            title = { Text("确认清空所有运行日志？") },
+            title = { Text(strings.confirmClearLogsTitle) },
             text = {
-                Text(
-                    "将删除设备中保存的历史会话日志（当前：${state.logFilesCount} 个文件，共 ${StorageUtils.formatFileSize(state.logFilesSizeBytes)}）。\n\n" +
-                            "清空后将自动开启新的空白会话。"
-                )
+                Text(strings.confirmClearLogsBody(state.logFilesCount, StorageUtils.formatFileSize(state.logFilesSizeBytes)))
             },
             confirmButton = {
                 Button(
                     onClick = {
                         showClearLogsDialog = false
                         onClearAllLogs {
-                            Toast.makeText(context, "日志文件已清空", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, strings.logsCleared, Toast.LENGTH_SHORT).show()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text("清空")
+                    Text(strings.clearAction)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearLogsDialog = false }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )

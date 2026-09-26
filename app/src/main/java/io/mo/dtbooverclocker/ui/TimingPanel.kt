@@ -63,6 +63,7 @@ import androidx.compose.foundation.layout.height
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
 import io.mo.dtbooverclocker.ui.components.TimingGeometryChart
 import io.mo.dtbooverclocker.ui.components.TimingUtils
+import io.mo.dtbooverclocker.ui.i18n.I18n
 
 @Composable
 internal fun TimingPanel(
@@ -80,6 +81,7 @@ internal fun TimingPanel(
     onStageChange: () -> Unit
 ) {
     val workspace = state.workspace ?: return
+    val strings = I18n.current
     val selected = workspace.candidates.firstOrNull { it.id == state.selectedCandidateId }
         ?: workspace.candidates.first()
 
@@ -88,9 +90,9 @@ internal fun TimingPanel(
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     SectionCard(
-        title = "参数微调与超频推演",
+        title = strings.timingPanelTitle,
         icon = Icons.Default.Tune,
-        trailing = { StatusPill("${workspace.candidates.size} 个候选", tone = Tone.Primary) }
+        trailing = { StatusPill(strings.candidatesCount(workspace.candidates.size), tone = Tone.Primary) }
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
 
@@ -109,7 +111,7 @@ internal fun TimingPanel(
 
             // 2. 操作模式选择（编辑修改档位 vs 新增独立档位 vs 删除指定档位）
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                SubsectionTitle("操作模式")
+                SubsectionTitle(strings.operationMode)
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -119,7 +121,7 @@ internal fun TimingPanel(
                         FilterChip(
                             selected = state.patchMode == mode,
                             onClick = { onPatchMode(mode) },
-                            label = { Text(mode.displayName) },
+                            label = { Text(mode.getDisplayName(strings)) },
                             leadingIcon = {
                                 Icon(
                                     when (mode) {
@@ -137,34 +139,34 @@ internal fun TimingPanel(
                         )
                     }
                 }
-                HintText(state.patchMode.description)
+                HintText(state.patchMode.getDescription(strings))
             }
 
             HorizontalDivider()
 
             if (state.patchMode == PatchMode.DELETE_EXISTING) {
                 // 删除档位专属警告与详情卡片
-                SectionCard(title = "准备删除时序档位", icon = Icons.Default.Warning, tone = Tone.Danger) {
+                SectionCard(title = strings.deleteTimingCandidateTitle, icon = Icons.Default.Warning, tone = Tone.Danger) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(
-                            "待删除节点：${TimingUtils.parseTimingNodeName(selected.nodePath)} (${selected.currentHz} Hz)",
+                            strings.deleteNodeLabel(TimingUtils.parseTimingNodeName(selected.nodePath), selected.currentHz),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            "完整节点路径：${selected.nodePath}",
+                            strings.fullNodePath(selected.nodePath),
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (!canDelete) {
                             NoticeBanner(
-                                "严防黑屏限制：当前 DTB 镜像条目仅存此单一档位。屏幕面板必须保留至少 1 个时序档位以供显示驱动初始化，禁止删除！",
+                                strings.deleteOnlyModeWarning,
                                 tone = Tone.Danger
                             )
                         } else {
                             Text(
-                                "删除后，当前 DTB 镜像条目仍保留 ${candidatesInEntry - 1} 个时序档位。若此档位为默认 native-mode 开机档位，系统将自动重定向至剩余档位。",
+                                strings.deleteModeRetainHint(candidatesInEntry - 1),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -179,23 +181,23 @@ internal fun TimingPanel(
                     colors = dangerButtonColors(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    IconLabel(Icons.Default.Delete, "删除此档位 (暂存)")
+                    IconLabel(Icons.Default.Delete, strings.deleteThisCandidateBtn)
                 }
             } else if (selected.hasVendorDynamicMode) {
-                SectionCard(title = "自动变频档位不支持直接超频", icon = Icons.Default.Warning, tone = Tone.Danger) {
+                SectionCard(title = strings.autoDynamicModeUnsupported, icon = Icons.Default.Warning, tone = Tone.Danger) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(
-                            "该档位包含自动变频或低功耗参数及专用屏幕命令。仅修改刷新率或复制为高刷档位，可能导致黑屏、刷新率切换异常或卡在开机画面。",
+                            strings.autoDynamicModeDesc1,
                             style = MaterialTheme.typography.bodySmall
                         )
                         Text(
-                            "请在上方选择同一面板的 normal 普通档位，再编辑或新增。例如新增 144 Hz，应选 normal_120hz，而不是 auto_120_to_30hz。",
+                            strings.autoDynamicModeDesc2,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
                 Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                    Text("请选择普通档位后继续")
+                    Text(strings.selectNormalModeToContinue)
                 }
             } else {
                 // 3. DSI 时序几何剖面图（水平与垂直显像、前肩、同步、后肩比例分布）
@@ -206,7 +208,7 @@ internal fun TimingPanel(
                 // 4. 目标刷新率调节与快捷预设芯片
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        SubsectionTitle("目标刷新率", Modifier.weight(1f))
+                        SubsectionTitle(strings.targetRefreshRate, Modifier.weight(1f))
                         Text(
                             "${state.targetHz}",
                             style = MaterialTheme.typography.headlineMedium,
@@ -238,7 +240,7 @@ internal fun TimingPanel(
                             verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             Text(
-                                "快捷预设:",
+                                strings.quickPresets,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -260,7 +262,7 @@ internal fun TimingPanel(
                     OutlinedTextField(
                         value = state.targetHz.toString(),
                         onValueChange = { value -> value.filter(Char::isDigit).toIntOrNull()?.let(onTarget) },
-                        label = { Text("目标刷新率数值 (Hz)") },
+                        label = { Text(strings.targetHzInputLabel) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -270,7 +272,7 @@ internal fun TimingPanel(
 
                 // 5. 计算策略选择
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    SubsectionTitle("计算策略")
+                    SubsectionTitle(strings.calculationStrategy)
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -280,11 +282,11 @@ internal fun TimingPanel(
                             FilterChip(
                                 selected = state.strategy == strategy,
                                 onClick = { onStrategy(strategy) },
-                                label = { Text(strategy.displayName) }
+                                label = { Text(strategy.getDisplayName(strings)) }
                             )
                         }
                     }
-                    HintText(state.strategy.description)
+                    HintText(state.strategy.getDescription(strings))
                 }
 
                 // 5.1 自定义时序参数配置卡片
@@ -311,7 +313,7 @@ internal fun TimingPanel(
                                     )
                                     Spacer(Modifier.width(6.dp))
                                     Text(
-                                        "自定义时序参数",
+                                        strings.customParams,
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.SemiBold
                                     )
@@ -319,7 +321,7 @@ internal fun TimingPanel(
                                 TextButton(onClick = onApplySuggestedCustom) {
                                     Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("填入平衡参考值", style = MaterialTheme.typography.labelSmall)
+                                    Text(strings.fillSuggestedCustom, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
 
@@ -327,13 +329,13 @@ internal fun TimingPanel(
                             OutlinedTextField(
                                 value = state.customPixelClockText,
                                 onValueChange = onCustomPixelClock,
-                                label = { Text("Pixel Clock / panel-clockrate (Hz)") },
+                                label = { Text(strings.pixelClock) },
                                 placeholder = { Text(selected.pixelClockHz?.toString() ?: "例如 1200000000") },
                                 supportingText = {
                                     if (clockVal != null && clockVal > 0) {
                                         Text(TimingUtils.formatClock(clockVal))
                                     } else {
-                                        Text("设备树像素/通道时钟，单位 Hz")
+                                        Text(strings.pixelClockSupporting)
                                     }
                                 },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -348,7 +350,7 @@ internal fun TimingPanel(
                                 OutlinedTextField(
                                     value = state.customVfpText,
                                     onValueChange = onCustomVfp,
-                                    label = { Text("垂直前肩 (VFP)") },
+                                    label = { Text(strings.verticalFrontPorch) },
                                     placeholder = { Text(selected.vFrontPorch?.toString() ?: "行") },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     singleLine = true,
@@ -357,7 +359,7 @@ internal fun TimingPanel(
                                 OutlinedTextField(
                                     value = state.customVbpText,
                                     onValueChange = onCustomVbp,
-                                    label = { Text("垂直后肩 (VBP)") },
+                                    label = { Text(strings.verticalBackPorch) },
                                     placeholder = { Text(selected.vBackPorch?.toString() ?: "行") },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     singleLine = true,
@@ -374,7 +376,7 @@ internal fun TimingPanel(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    "高级消隐参数 (HFP / HBP)",
+                                    strings.advancedBlankingParams,
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -393,7 +395,7 @@ internal fun TimingPanel(
                                     OutlinedTextField(
                                         value = state.customHfpText,
                                         onValueChange = onCustomHfp,
-                                        label = { Text("水平前肩 (HFP)") },
+                                        label = { Text(strings.horizontalFrontPorch) },
                                         placeholder = { Text(selected.hFrontPorch?.toString() ?: "px") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true,
@@ -402,7 +404,7 @@ internal fun TimingPanel(
                                     OutlinedTextField(
                                         value = state.customHbpText,
                                         onValueChange = onCustomHbp,
-                                        label = { Text("水平后肩 (HBP)") },
+                                        label = { Text(strings.horizontalBackPorch) },
                                         placeholder = { Text(selected.hBackPorch?.toString() ?: "px") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                         singleLine = true,
@@ -442,7 +444,7 @@ internal fun TimingPanel(
                                             tint = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
-                                            "理论推算物理刷新率: ${String.format(Locale.US, "%.2f", theoreticalHz)} Hz (目标: ${state.targetHz} Hz)",
+                                            strings.theoreticalRefreshRate(String.format(Locale.US, "%.2f", theoreticalHz), state.targetHz),
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -467,7 +469,7 @@ internal fun TimingPanel(
                 Button(onClick = onStageChange, modifier = Modifier.fillMaxWidth().height(48.dp)) {
                     IconLabel(
                         if (state.patchMode == PatchMode.APPEND_NEW) Icons.Default.Add else Icons.Default.Build,
-                        if (state.patchMode == PatchMode.APPEND_NEW) "追加为此面板新档位 (暂存)" else "应用修改到当前时序 (暂存)"
+                        if (state.patchMode == PatchMode.APPEND_NEW) strings.stageAppendNewMode else strings.stageApplyCurrentMode
                     )
                 }
             }
@@ -478,12 +480,14 @@ internal fun TimingPanel(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("确认删除该时序档位？") },
+            title = { Text(strings.deleteCandidateConfirmTitle) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text("将从工作区设备树中移除 ${TimingUtils.parseTimingNodeName(selected.nodePath)} (${selected.currentHz} Hz) 节点。")
-                    Text("删除后将记入待打包修改清单，全部调整完成后可统一打包生成 DTBO 镜像。")
-                }
+                Text(
+                    strings.deleteCandidateConfirmBody(
+                        TimingUtils.parseTimingNodeName(selected.nodePath),
+                        selected.currentHz
+                    )
+                )
             },
             confirmButton = {
                 Button(
@@ -493,12 +497,12 @@ internal fun TimingPanel(
                     },
                     colors = dangerButtonColors()
                 ) {
-                    Text("确认删除 (暂存)")
+                    Text(strings.deleteThisCandidateBtn)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )

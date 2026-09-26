@@ -46,6 +46,8 @@ import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceIndex
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeReferenceIndexer
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
 import io.mo.dtbooverclocker.core.devicetree.allowedNodePaths
+import io.mo.dtbooverclocker.ui.i18n.AppStrings
+import io.mo.dtbooverclocker.ui.i18n.I18n
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -93,14 +95,23 @@ internal enum class NodeEditMode
     RENAME
 }
 
-private enum class DeviceTreeSearchScope(val label: String)
+private enum class DeviceTreeSearchScope
 {
-    ALL("全部"),
-    NODE("节点"),
-    PROPERTY("属性"),
-    VALUE("值"),
-    REFERENCE("引用"),
-    MODIFIED("已修改")
+    ALL,
+    NODE,
+    PROPERTY,
+    VALUE,
+    REFERENCE,
+    MODIFIED;
+
+    fun getLabel(strings: AppStrings): String = when (this) {
+        ALL -> strings.searchScopeAll
+        NODE -> strings.searchScopeNode
+        PROPERTY -> strings.searchScopeProperty
+        VALUE -> strings.searchScopeValue
+        REFERENCE -> strings.searchScopeReference
+        MODIFIED -> strings.searchScopeModified
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,6 +128,7 @@ fun DeviceTreeScreen(
     onDeleteNode: (Int, String) -> Unit,
     onUndoThroughTransaction: (String) -> Unit
 ) {
+    val strings = I18n.current
     val workspace = state.workspace
     var query by rememberSaveable(workspace?.rootDir?.path) { mutableStateOf("") }
     var searchScope by rememberSaveable(workspace?.rootDir?.path) {
@@ -275,7 +287,7 @@ fun DeviceTreeScreen(
                 Modifier.padding(start = Spacing.xs, end = Spacing.xs, bottom = Spacing.sm),
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
-                Text("设备树", style = MaterialTheme.typography.headlineSmall)
+                Text(strings.deviceTreeTitle, style = MaterialTheme.typography.headlineSmall)
                 HintText("层级浏览、节点详情与类型化属性编辑。")
             }
         }
@@ -313,7 +325,7 @@ fun DeviceTreeScreen(
                     value = query,
                     onValueChange = { query = it },
                     leadingIcon = { Icon(Icons.Default.Search, null) },
-                    label = { Text("搜索节点 / 属性 / 值") },
+                    label = { Text(strings.searchNodes) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
@@ -323,7 +335,7 @@ fun DeviceTreeScreen(
                         FilterChip(
                             selected = searchScope == scope,
                             onClick = { searchScope = scope },
-                            label = { Text(scope.label) }
+                            label = { Text(scope.getLabel(strings)) }
                         )
                     }
                 }
@@ -567,7 +579,7 @@ fun DeviceTreeScreen(
         val property = deleteProperty!!
         AlertDialog(
             onDismissRequest = { deleteProperty = null },
-            title = { Text("删除属性") },
+            title = { Text(strings.deleteProperty) },
             text = {
                 Text(
                     "${selectedNode.path}/${property.name}\n\n该修改会进入暂存区，可在没有后续修改时撤销。"
@@ -580,12 +592,12 @@ fun DeviceTreeScreen(
                         deleteProperty = null
                     }
                 ) {
-                    Text("删除")
+                    Text(strings.delete)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deleteProperty = null }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )
@@ -650,7 +662,7 @@ fun DeviceTreeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { undoConfirmTransactionId = null }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )
@@ -661,7 +673,7 @@ fun DeviceTreeScreen(
         val targetPath = deleteNodePath!!
         AlertDialog(
             onDismissRequest = { deleteNodePath = null },
-            title = { Text("删除节点") },
+            title = { Text(strings.deleteNode) },
             text = {
                 Text(
                     "$targetPath\n\n将删除该节点及其全部子节点和属性。修改会进入暂存区，且仅最近一项修改可直接撤销。"
@@ -674,12 +686,12 @@ fun DeviceTreeScreen(
                         deleteNodePath = null
                     }
                 ) {
-                    Text("删除整个节点")
+                    Text(strings.delete)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { deleteNodePath = null }) {
-                    Text("取消")
+                    Text(strings.cancel)
                 }
             }
         )

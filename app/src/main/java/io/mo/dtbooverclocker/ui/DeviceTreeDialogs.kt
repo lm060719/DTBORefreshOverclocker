@@ -19,6 +19,7 @@ import io.mo.dtbooverclocker.core.devicetree.DeviceTreeProperty
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeValueCodec
 import io.mo.dtbooverclocker.core.devicetree.NumberBase
 import io.mo.dtbooverclocker.core.devicetree.PropertyType
+import io.mo.dtbooverclocker.ui.i18n.I18n
 
 @Composable
 internal fun NodeNameDialog(
@@ -28,6 +29,7 @@ internal fun NodeNameDialog(
     onConfirm: (String) -> Unit
 )
 {
+    val strings = I18n.current
     val initial = when (mode)
     {
         NodeEditMode.ADD_CHILD -> ""
@@ -38,17 +40,17 @@ internal fun NodeNameDialog(
     val nameError = DeviceTreeNames.nodeNameError(name)
         ?: when
         {
-            mode == NodeEditMode.RENAME && name == node.name -> "新节点名与原节点名相同"
-            mode == NodeEditMode.ADD_CHILD && node.children.any { it.name == name } -> "已存在同名子节点"
+            mode == NodeEditMode.RENAME && name == node.name -> strings.sameNodeNameError
+            mode == NodeEditMode.ADD_CHILD && node.children.any { it.name == name } -> strings.duplicateChildNodeError
             else -> null
         }
     val valid = nameError == null
 
     val title = when (mode)
     {
-        NodeEditMode.ADD_CHILD -> "新增子节点"
-        NodeEditMode.CLONE -> "克隆节点"
-        NodeEditMode.RENAME -> "重命名节点"
+        NodeEditMode.ADD_CHILD -> strings.addChildNode
+        NodeEditMode.CLONE -> strings.cloneNode
+        NodeEditMode.RENAME -> strings.renameNode
     }
 
     AlertDialog(
@@ -64,7 +66,7 @@ internal fun NodeNameDialog(
                 if (mode == NodeEditMode.CLONE)
                 {
                     Text(
-                        "克隆会复制整个节点子树。当前阶段包含 label、phandle 或 linux,phandle 的子树会被安全阻止，避免重复节点身份。",
+                        strings.cloneNodeWarning,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -72,13 +74,13 @@ internal fun NodeNameDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.trim() },
-                    label = { Text("节点名") },
+                    label = { Text(strings.nodeName) },
                     // An empty field is simply unfinished input, not an error worth shouting about.
                     isError = name.isNotEmpty() && nameError != null,
                     supportingText = {
                         Text(
                             nameError?.takeIf { name.isNotEmpty() }
-                                ?: "支持 unit-address，例如 timing@3、panel@ae94000"
+                                ?: strings.nodeNamePlaceholder
                         )
                     },
                     singleLine = true,
@@ -91,12 +93,12 @@ internal fun NodeNameDialog(
                 onClick = { onConfirm(name) },
                 enabled = valid
             ) {
-                Text("暂存修改")
+                Text(strings.stageChanges)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(strings.cancel)
             }
         }
     )
@@ -120,6 +122,7 @@ internal fun PropertyEditorDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, String?) -> Unit
 ) {
+    val strings = I18n.current
     val addTypes = remember {
         listOf(
             PropertyType.U32,
@@ -194,7 +197,7 @@ internal fun PropertyEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (adding) "新增属性" else "编辑属性") },
+        title = { Text(if (adding) strings.addProperty else strings.editProperty) },
         text = {
             Column(
                 modifier = Modifier
@@ -212,7 +215,7 @@ internal fun PropertyEditorDialog(
                     value = name,
                     onValueChange = { name = it },
                     enabled = adding,
-                    label = { Text("属性名") },
+                    label = { Text(strings.propertyName) },
                     isError = adding && name.isNotEmpty() && nameError != null,
                     supportingText = nameError?.takeIf { adding && name.isNotEmpty() }?.let { error ->
                         { Text(error) }
@@ -224,7 +227,7 @@ internal fun PropertyEditorDialog(
                 if (adding)
                 {
                     Text(
-                        "属性类型",
+                        strings.propertyType,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium
                     )
@@ -385,12 +388,12 @@ internal fun PropertyEditorDialog(
                 },
                 enabled = nameError == null && validationError == null
             ) {
-                Text("暂存修改")
+                Text(strings.stageChanges)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(strings.cancel)
             }
         }
     )

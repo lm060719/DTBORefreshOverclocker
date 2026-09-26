@@ -5,11 +5,19 @@ import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.StagedChange
 import java.util.UUID
 
+import io.mo.dtbooverclocker.ui.i18n.AppStrings
+
 enum class DeviceTreeTransactionKind(val displayName: String)
 {
     REFRESH_RATE("刷新率"),
     CHARGING("Charging"),
-    GENERIC_EDIT("设备树编辑")
+    GENERIC_EDIT("设备树编辑");
+
+    fun getDisplayName(strings: AppStrings): String = when (this) {
+        REFRESH_RATE -> strings.capabilityRefreshRate
+        CHARGING -> strings.capabilityCharging
+        GENERIC_EDIT -> strings.deviceTreeTitle
+    }
 }
 
 enum class DeviceTreeTransactionRisk(val displayName: String)

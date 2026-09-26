@@ -21,6 +21,7 @@ import io.mo.dtbooverclocker.core.NativeToolExecutor
 import io.mo.dtbooverclocker.core.RootDetector
 import io.mo.dtbooverclocker.core.SafetyGuardManager
 import io.mo.dtbooverclocker.core.SlotDetector
+import io.mo.dtbooverclocker.model.AppLanguage
 import io.mo.dtbooverclocker.model.BackupRecord
 import io.mo.dtbooverclocker.model.BackupType
 import io.mo.dtbooverclocker.model.BackupVerificationState
@@ -79,12 +80,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_HAS_REQUESTED_ROOT = "has_requested_root"
         private const val KEY_AUTO_CHECK_ROOT = "auto_check_root"
         private const val KEY_DISCLAIMER_ACCEPTED = "disclaimer_accepted"
+        private const val KEY_APP_LANGUAGE = "app_language"
     }
 
     init {
         AppLogger.init(application)
+        val savedLang = AppLanguage.fromCode(prefs.getString(KEY_APP_LANGUAGE, null))
         val accepted = prefs.getBoolean(KEY_DISCLAIMER_ACCEPTED, false)
-        _state.update { it.copy(isDisclaimerAccepted = accepted) }
+        _state.update { it.copy(isDisclaimerAccepted = accepted, appLanguage = savedLang) }
         if (accepted) {
             refreshEnvironment()
         } else {
@@ -93,6 +96,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshCacheSize()
         refreshLogStats()
         loadBackups()
+    }
+
+    fun setAppLanguage(language: AppLanguage) {
+        prefs.edit().putString(KEY_APP_LANGUAGE, language.code).apply()
+        _state.update { it.copy(appLanguage = language) }
     }
 
     fun acceptDisclaimer() {
@@ -1121,6 +1129,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 data class MainUiState(
     val isDisclaimerAccepted: Boolean = false,
+    val appLanguage: AppLanguage = AppLanguage.FOLLOW_SYSTEM,
     val rootState: RootState = RootState(),
     val slotInfo: SlotInfo? = null,
     val sourceMode: SourceMode = SourceMode.LOCAL_IMAGE,

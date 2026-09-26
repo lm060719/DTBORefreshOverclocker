@@ -30,9 +30,11 @@ import io.mo.dtbooverclocker.core.ChargingAnalyzer
 import io.mo.dtbooverclocker.core.ChargingPlanner
 import io.mo.dtbooverclocker.model.ChargingNode
 import io.mo.dtbooverclocker.model.FeatureModuleKind
+import io.mo.dtbooverclocker.ui.i18n.I18n
 
 @Composable
 internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<String, String>) -> Unit) {
+    val strings = I18n.current
     val workspace = state.workspace ?: return
     val nodes = state.capabilityReport?.chargingNodes.orEmpty()
     val uniquePathCount = remember(nodes) { nodes.map { it.nodePath }.distinct().size }
@@ -42,9 +44,9 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
     val editableParameterCount = remember(nodes) { nodes.sumOf { it.editableCount } }
     val enabled = !state.busy && !state.capabilityScanInProgress
     if (nodes.isEmpty()) {
-        SectionCard(title = "Charging", icon = Icons.Default.BatteryChargingFull) {
-            HintText(if (state.capabilityScanInProgress) "正在扫描充电参数…"
-                else "当前 DTBO 未发现充电参数。相关配置可能位于基础 DTB、vendor_boot 或电源管理驱动中。")
+        SectionCard(title = strings.chargingTitle, icon = Icons.Default.BatteryChargingFull) {
+            HintText(if (state.capabilityScanInProgress) strings.scanningCharging
+                else strings.noChargingNodes)
         }
         return
     }
@@ -65,12 +67,11 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
     val thermalNode = remember(editableNodes) { editableNodes.firstOrNull(::hasThermalTable) }
     val drafts = rememberSaveableStateHolder()
 
-    SectionCard(title = "Charging 参数编辑", icon = Icons.Default.BatteryChargingFull) {
+    SectionCard(title = strings.chargingTitle, icon = Icons.Default.BatteryChargingFull) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
                 Text(
-                    "${editableParameterCount} 个可编辑参数 · ${editableNodeCount} 个可编辑节点 · " +
-                        "${uniquePathCount} 个唯一路径 / ${nodes.size} 个 DTB 实例",
+                    strings.chargingParamsSummary(editableParameterCount, editableNodeCount, uniquePathCount, nodes.size),
                     Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -82,9 +83,9 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("显示只读节点", style = MaterialTheme.typography.labelLarge)
+                        Text(strings.showReadOnlyNodes, style = MaterialTheme.typography.labelLarge)
                         Text(
-                            "默认隐藏 $readOnlyNodeCount 个没有已验证编辑项的相关节点",
+                            strings.hideReadOnlyDesc(readOnlyNodeCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -99,7 +100,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                 }
             }
 
-            SubTitle("选择充电节点")
+            SubTitle(strings.selectChargingNode)
             OutlinedCard(
                 Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.medium,
@@ -114,25 +115,25 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                         if ("oplus," in it)
                         {
                             Text(
-                                "已启用 OPlus 保守绑定：仅开放已验证的单值 mA / mV 参数，复杂策略表保持只读。",
+                                strings.oplusConservativeNotice,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
-                    node.targetLabel?.let { Text("Overlay 目标：&$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
-                    Text("${node.editableCount} 个可编辑参数 · status: ${node.status ?: "未声明"}", style = MaterialTheme.typography.labelSmall)
+                    node.targetLabel?.let { Text(strings.overlayTarget(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                    Text(strings.editableParamsAndStatus(node.editableCount, node.status ?: "未声明"), style = MaterialTheme.typography.labelSmall)
                 }
             }
             if (thermalNode != null && thermalNode.key != node.key) {
                 FilledTonalButton(onClick = { selectedKey = thermalNode.key; selecting = false }, enabled = enabled,
                     modifier = Modifier.fillMaxWidth()) {
-                    Text("转到温控表：DTB ${thermalNode.entryIndex} · ${thermalNode.nodePath.substringAfterLast('/')}")
+                    Text(strings.goToThermalTable(thermalNode.entryIndex, thermalNode.nodePath.substringAfterLast('/')))
                 }
             }
             if (visibleNodes.size > 1) {
                 OutlinedButton(onClick = { selecting = !selecting }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (selecting) "收起节点列表" else "切换充电节点（${visibleNodes.size}）")
+                    Text(strings.toggleNodeList(selecting, visibleNodes.size))
                 }
                 if (selecting) visibleNodes.forEach { candidate ->
                     OutlinedCard(
@@ -142,10 +143,10 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                         border = BorderStroke(1.dp, if (candidate.key == node.key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Row(Modifier.padding(Spacing.md), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                            if (candidate.key == node.key) Icon(Icons.Default.CheckCircle, "当前节点", tint = MaterialTheme.colorScheme.primary)
+                            if (candidate.key == node.key) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                             Column(Modifier.weight(1f)) {
-                                Text("DTB ${candidate.entryIndex} · ${candidate.editableCount} 个可编辑参数" +
-                                    if (hasThermalTable(candidate)) " · 含温控表" else "", style = MaterialTheme.typography.labelLarge)
+                                Text("DTB ${candidate.entryIndex} · ${strings.editableParamsAndStatus(candidate.editableCount, "").replace(" · status: ", "")}" +
+                                    if (hasThermalTable(candidate)) strings.nodeWithThermal else "", style = MaterialTheme.typography.labelLarge)
                                 Text(candidate.nodePath, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                             }
                         }
@@ -153,12 +154,12 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                 }
             }
             if (node.status != null && node.status !in listOf("okay", "ok")) {
-                NoticeBanner("此节点 status 为 ${node.status}，修改参数不会自动启用节点。", tone = Tone.Warning)
+                NoticeBanner(strings.nodeStatusWarning(node.status), tone = Tone.Warning)
             }
             if (node.editableCount == 0 && editableNodes.isNotEmpty()) {
-                NoticeBanner("这是只读相关节点，没有经过验证的可编辑参数。", tone = Tone.Neutral)
+                NoticeBanner(strings.readOnlyNodeNotice, tone = Tone.Neutral)
                 OutlinedButton(onClick = { selectedKey = editableNodes.first().key }, enabled = enabled) {
-                    Text("返回可编辑节点")
+                    Text(strings.backToEditableNode)
                 }
             }
             HorizontalDivider()
@@ -170,7 +171,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                 it.module == FeatureModuleKind.CHARGING && it.entryIndex == node.entryIndex && node.nodePath in it.affectedNodePaths
             }
             if (staged.isNotEmpty()) {
-                NoticeBanner("此节点已暂存 ${staged.size} 次修改。到“概览”集中打包，或撤销最近事务。", tone = Tone.Success)
+                NoticeBanner(strings.stagedModificationsNotice(staged.size), tone = Tone.Success)
             }
         }
     }
@@ -181,6 +182,7 @@ private fun hasThermalTable(node: ChargingNode) =
 
 @Composable
 private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (ChargingNode, Map<String, String>) -> Unit) {
+    val strings = I18n.current
     val fields = node.fields.filter { it.issue == null }
     val original = remember(node) { fields.map(ChargingAnalyzer::displayValue) }
     var values by rememberSaveable(node, stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it })) {
@@ -202,13 +204,13 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
     val pageCount = ((groupIndices.size + 15) / 16).coerceAtLeast(1)
 
     if (fields.isEmpty()) {
-        Text("已发现相关节点，但没有可确认单位与格式的编辑参数。可在下方查看原始属性。", style = MaterialTheme.typography.bodyMedium)
+        Text(strings.noUnitParametersFound, style = MaterialTheme.typography.bodyMedium)
     } else {
-        SubTitle("充电参数")
-        Text("按参数标注的单位编辑，自动换算为设备树单位；只修改当前 DTB 的当前节点。",
+        SubTitle(strings.chargingParametersTitle)
+        Text(strings.chargingParametersHint,
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (tables.isNotEmpty()) {
-            Text("温控表中的数值是各温控档位的限流值，保持原有档位数量；同一通道的后一档不能高于前一档。",
+            Text(strings.thermalTableRulesHint,
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         tables.forEach { table ->
@@ -216,22 +218,22 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
                 values = values.mapIndexed { position, previous -> updates[position] ?: previous }
             }
         }
-        if (tables.isNotEmpty() && groups.isNotEmpty()) SubTitle("其他参数")
+        if (tables.isNotEmpty() && groups.isNotEmpty()) SubTitle(strings.otherParameters)
         if (groups.size > 1) {
-            Text("参数分组（可左右滑动）", style = MaterialTheme.typography.labelMedium)
+            Text(strings.parameterGroups, style = MaterialTheme.typography.labelMedium)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 groups.forEach { group ->
                     val changedCount = plainIndices.count { fields[it].group == group && values[it] != original[it] }
                     FilterChip(selected = selectedGroup == group, onClick = { selectedGroup = group; page = 0 },
-                        label = { Text(group + if (changedCount > 0) " · $changedCount 项待暂存" else "") })
+                        label = { Text(group + if (changedCount > 0) strings.pendingStageCount(changedCount) else "") })
                 }
             }
         }
         if (pageCount > 1) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { page-- }, enabled = page > 0) { Text("上一页") }
-                Text("${page + 1} / $pageCount 页 · ${groupIndices.size} 项")
-                TextButton(onClick = { page++ }, enabled = page + 1 < pageCount) { Text("下一页") }
+                TextButton(onClick = { page-- }, enabled = page > 0) { Text(strings.previousPage) }
+                Text(strings.pageAndItemsCount(page + 1, pageCount, groupIndices.size))
+                TextButton(onClick = { page++ }, enabled = page + 1 < pageCount) { Text(strings.nextPage) }
             }
         }
         groupIndices.drop(page * 16).take(16).forEach { index ->
@@ -251,7 +253,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
                         Text(parameter.label, style = MaterialTheme.typography.bodyMedium)
                         Text(parameter.name, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
                         Text(
-                            if (field.exists) "当前：开启" else "当前：关闭（属性未声明）",
+                            if (field.exists) strings.statusEnabled else strings.statusDisabled,
                             style = MaterialTheme.typography.labelSmall
                         )
                     }
@@ -281,7 +283,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     supportingText = {
                         Column {
-                            Text(error ?: "当前：${original[index]} ${parameter.unit} · 原始：${field.value} ${parameter.rawUnit}")
+                            Text(error ?: strings.currentValueWithRaw(original[index], parameter.unit, field.value.toString(), parameter.rawUnit))
                             Text(field.inputKey, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
                         }
                     }
@@ -292,12 +294,12 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
     val invalidFields = node.fields.filter { it.issue != null }
     if (invalidFields.isNotEmpty()) {
         TextButton(onClick = { showInvalid = !showInvalid }) {
-            Text(if (showInvalid) "收起只读 / 异常参数" else "查看只读 / 异常参数（${invalidFields.size}）")
+            Text(strings.toggleReadOnlyFields(showInvalid, invalidFields.size))
         }
         if (showInvalid) {
             invalidFields.forEach { field ->
                 Text(
-                    "${field.parameter.name}\n${field.rawValue ?: "<空属性>"}\n${field.issue}",
+                    "${field.parameter.name}\n${field.rawValue ?: "<${strings.statusDisabled.substringAfter("：")}>"}\n${field.issue}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -305,32 +307,32 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
         }
     }
     if (node.otherProperties.isNotEmpty()) {
-        TextButton(onClick = { showOther = !showOther }) { Text(if (showOther) "收起其他属性" else "查看其他原始属性（${node.otherProperties.size}）") }
+        TextButton(onClick = { showOther = !showOther }) { Text(strings.toggleOtherProps(showOther, node.otherProperties.size)) }
         if (showOther) {
-            Text("以下属性未纳入充电参数编辑，按原样保留。", style = MaterialTheme.typography.bodySmall)
+            Text(strings.otherPropsPreserved, style = MaterialTheme.typography.bodySmall)
             node.otherProperties.forEach { (name, raw) ->
-                Text("$name = ${raw ?: "<空属性>"}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                Text("$name = ${raw ?: "<empty>"}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
     if (fields.isNotEmpty()) {
         HorizontalDivider()
-        SubTitle("修改预览")
+        SubTitle(strings.modificationPreview)
         when {
             result.isFailure && dirty -> NoticeBanner(result.exceptionOrNull()?.message ?: "参数无效", tone = Tone.Danger)
             preview?.changes?.isNotEmpty() == true -> preview.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
-            else -> Text("尚未修改参数", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> Text(strings.noModificationsYet, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         NoticeBanner(
-            "请按电池和充电芯片规格设置电流、电压。参数合法不代表硬件支持；修改仅允许导出验证，暂存后到概览打包。",
+            strings.batterySpecsWarning,
             tone = Tone.Warning
         )
         OutlinedButton(onClick = { values = original }, enabled = enabled && dirty, modifier = Modifier.fillMaxWidth()) {
-            Text("重置未暂存输入")
+            Text(strings.resetUnstagedInput)
         }
         Button(onClick = { onStage(node, inputs) }, enabled = enabled && preview?.values?.isNotEmpty() == true,
             modifier = Modifier.fillMaxWidth()) {
-            IconLabel(Icons.Default.BatteryChargingFull, "暂存充电修改")
+            IconLabel(Icons.Default.BatteryChargingFull, strings.stageChargingChanges)
         }
     }
 }

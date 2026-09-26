@@ -69,6 +69,7 @@ import io.mo.dtbooverclocker.ui.components.StatusPill
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 import io.mo.dtbooverclocker.ui.components.Tone
 import io.mo.dtbooverclocker.ui.components.dangerButtonColors
+import io.mo.dtbooverclocker.ui.i18n.I18n
 import io.mo.dtbooverclocker.ui.theme.Spacing
 
 private enum class StepState { DONE, CURRENT, PENDING }
@@ -77,6 +78,7 @@ private enum class StepState { DONE, CURRENT, PENDING }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun WorkflowCard(state: MainUiState) {
+    val strings = I18n.current
     val done = listOf(
         state.workspace != null,
         state.workspace != null && !state.capabilityScanInProgress && state.capabilityReport != null,
@@ -85,27 +87,27 @@ internal fun WorkflowCard(state: MainUiState) {
         state.lastFlash != null
     )
     val current = done.indexOfFirst { !it }
-    val labels = listOf("导入", "识别", "修改", "打包", "导出")
+    val labels = listOf(strings.stepImport, strings.stepAnalyze, strings.stepEdit, strings.stepPackage, strings.stepExport)
 
     SectionCard(tone = Tone.Primary) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
             Text("DTBO Studio", style = MaterialTheme.typography.titleLarge)
-            HintText("导入、分析、编辑、验证并重新构建 DTBO。")
+            HintText(strings.workflowSubtitle)
         }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             if (state.rootState.granted) {
-                StatusPill("Root ✓", tone = Tone.Success, icon = Icons.Default.LockOpen)
+                StatusPill(strings.rootGrantedStatus, tone = Tone.Success, icon = Icons.Default.LockOpen)
             } else {
-                StatusPill("免 Root 可用", icon = Icons.Default.Lock)
+                StatusPill(strings.nonRootAvailable, icon = Icons.Default.Lock)
             }
             state.slotInfo?.let { StatusPill(it.label, icon = Icons.Default.Memory) }
             if (state.workspace != null) {
-                StatusPill("工作区已加载", tone = Tone.Primary, icon = Icons.Default.CheckCircle)
+                StatusPill(strings.workspaceLoaded, tone = Tone.Primary, icon = Icons.Default.CheckCircle)
             } else {
-                StatusPill("等待镜像", icon = Icons.Default.FolderOpen)
+                StatusPill(strings.waitingForImage, icon = Icons.Default.FolderOpen)
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -154,26 +156,27 @@ internal fun SourceCard(
     onImport: () -> Unit,
     onExtract: () -> Unit
 ) {
-    SectionCard(title = "镜像来源", icon = Icons.Default.FolderOpen) {
+    val strings = I18n.current
+    SectionCard(title = strings.imageSource, icon = Icons.Default.FolderOpen) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             Button(onClick = onImport, modifier = Modifier.weight(1f)) {
-                IconLabel(Icons.Default.FolderOpen, "手动导入")
+                IconLabel(Icons.Default.FolderOpen, strings.manualImport)
             }
             FilledTonalButton(
                 onClick = onExtract,
                 enabled = state.rootState.suPresent,
                 modifier = Modifier.weight(1f)
             ) {
-                IconLabel(Icons.Default.Save, "提取当前分区")
+                IconLabel(Icons.Default.Save, strings.extractCurrentPartition)
             }
         }
         if (!state.rootState.suPresent) {
-            HintText("未检测到 Root 权限，可点击“手动导入”选择外部 dtbo.img 文件。")
+            HintText(strings.hintNoRootImport)
         } else {
-            HintText("手动导入支持外部镜像（免 Root）；提取当前分区只读取 ${state.slotInfo?.blockDevice ?: "当前 dtbo"}")
+            HintText(strings.hintRootExtract(state.slotInfo?.blockDevice ?: "dtbo"))
         }
     }
 }
@@ -205,30 +208,31 @@ internal fun ImageSummaryCard(state: MainUiState) {
             .size
     }
 
+    val strings = I18n.current
     SectionCard(
-        title = "镜像解析结果",
+        title = strings.imageParseResult,
         icon = Icons.Default.Inventory2,
         trailing = { StatusPill("DTBO v${workspace.metadata.version}") }
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-            MetricTile("DTB", "${workspace.metadata.entries.size}", Modifier.weight(1f))
-            MetricTile("唯一面板", "$panelCount", Modifier.weight(1f))
-            MetricTile("时序候选", "${workspace.candidates.size}", Modifier.weight(1f))
+            MetricTile(strings.dtbCount, "${workspace.metadata.entries.size}", Modifier.weight(1f))
+            MetricTile(strings.uniquePanels, "$panelCount", Modifier.weight(1f))
+            MetricTile(strings.timingCandidates, "${workspace.candidates.size}", Modifier.weight(1f))
         }
 
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
-            StatusPill("面板 DTB 实例: $panelInstanceCount")
+            StatusPill(strings.panelDtbInstances(panelInstanceCount))
             if (vendorCount > 0) {
-                StatusPill("厂商面板: $vendorCount")
+                StatusPill(strings.vendorPanels(vendorCount))
             }
             workspace.sourceImage?.let { source ->
                 val avbLabel = when (source.avbProtectionState) {
-                    AvbProtectionState.NONE -> "AVB: 无"
-                    AvbProtectionState.UNSIGNED -> "AVB: 未签名"
-                    AvbProtectionState.SIGNED -> "AVB: 已签名${source.avbAlgorithm?.let { " $it" }.orEmpty()}"
+                    AvbProtectionState.NONE -> strings.avbNone
+                    AvbProtectionState.UNSIGNED -> strings.avbUnsigned
+                    AvbProtectionState.SIGNED -> strings.avbSigned(source.avbAlgorithm)
                 }
                 StatusPill(
                     avbLabel,
@@ -236,16 +240,13 @@ internal fun ImageSummaryCard(state: MainUiState) {
                 )
             }
             if (state.activePanelDisplayName != null) {
-                StatusPill("在用: ${state.activePanelDisplayName}", tone = Tone.Success, icon = Icons.Default.CheckCircle)
+                StatusPill(strings.panelInUse(state.activePanelDisplayName), tone = Tone.Success, icon = Icons.Default.CheckCircle)
             }
         }
 
-        HintText(
-            "面板统计按唯一 panel identifier 去重；同一面板出现在多个 DTB entry 时只算 1 个唯一面板。" +
-                " 当前分类：厂商 $vendorCount / 高通参考 $referenceCount / 仿真 $simulationCount / 未分类 $unknownCount。"
-        )
+        HintText(strings.panelDeduplicationHint(vendorCount, referenceCount, simulationCount, unknownCount))
         if (state.activePanelDisplayName != null) {
-            HintText("已通过设备运行信息优先标记当前在用面板；“厂商面板”只做正向识别，未知标识不会再自动算作机型专属。")
+            HintText(strings.activePanelHint)
         }
         Text(
             workspace.inputImage.name,
@@ -279,13 +280,14 @@ internal fun OutputCard(
     onFlashModule: () -> Unit
 ) {
     val report = state.patchReport ?: return
+    val strings = I18n.current
     val modeTitle = if (state.transactions.size == 1) {
         val transaction = state.transactions.single()
-        "${transaction.kind.displayName}事务完成 · ${transaction.operationCount} 个底层操作 · ${transaction.risk.displayName}"
+        strings.singleTransactionSummary(transaction.kind.getDisplayName(strings), transaction.operationCount, transaction.risk.displayName)
     } else {
-        "事务打包完成：${state.transactions.size} 个事务 / ${state.transactions.sumOf { it.operationCount }} 个底层操作"
+        strings.multiTransactionSummary(state.transactions.size, state.transactions.sumOf { it.operationCount })
     }
-    SectionCard(title = "输出", subtitle = modeTitle, icon = Icons.Default.Build, tone = Tone.Success) {
+    SectionCard(title = strings.output, subtitle = modeTitle, icon = Icons.Default.Build, tone = Tone.Success) {
         if (report.changes.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
                 report.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
@@ -293,31 +295,31 @@ internal fun OutputCard(
         }
         report.warnings.forEach { NoticeBanner(it, tone = Tone.Danger) }
 
-        Text("导出", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(strings.export, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = onSavePatched, modifier = Modifier.fillMaxWidth()) {
-            IconLabel(Icons.Default.Save, "保存 dtbo_patched.img")
+            IconLabel(Icons.Default.Save, strings.savePatchedImg)
         }
         OutlinedButton(onClick = onRecoveryZip, modifier = Modifier.fillMaxWidth()) {
-            Text("导出 Recovery 刷机 Zip")
+            Text(strings.exportRecoveryZip)
         }
         OutlinedButton(onClick = onFastbootBundle, modifier = Modifier.fillMaxWidth()) {
-            Text("导出 PC Fastboot 一键包")
+            Text(strings.exportFastbootBundle)
         }
         OutlinedButton(onClick = onModuleZip, modifier = Modifier.fillMaxWidth()) {
-            Text("导出 KernelSU / Magisk 模块")
+            Text(strings.exportModuleZip)
         }
 
         HorizontalDivider(Modifier.padding(vertical = Spacing.xs))
 
         val canFlash = state.rootState.granted && state.transactions.isNotEmpty()
-        Text("刷写到设备", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
+        Text(strings.flashToDevice, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.error)
         Button(
             onClick = onFlash,
             enabled = canFlash,
             colors = dangerButtonColors(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            IconLabel(Icons.Default.FlashOn, "直接刷写当前槽位")
+            IconLabel(Icons.Default.FlashOn, strings.directFlashPartition)
         }
         Button(
             onClick = onFlashModule,
@@ -325,11 +327,11 @@ internal fun OutputCard(
             colors = dangerButtonColors(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            IconLabel(Icons.Default.FlashOn, "制作成模块并刷入")
+            IconLabel(Icons.Default.FlashOn, strings.makeModuleAndFlash)
         }
-        HintText("模块方式通过 KernelSU / Magisk / APatch 安装，安装时写入当前槽位；在管理器中移除模块并重启即可自动恢复原 DTBO。")
+        HintText(strings.moduleFlashHint)
         if (!canFlash) {
-            NoticeBanner("直接刷写需要 Root 授权。", tone = Tone.Warning)
+            NoticeBanner(strings.directFlashRequiresRoot, tone = Tone.Warning)
         }
     }
 }
@@ -343,11 +345,12 @@ internal fun RescueMemoCard(
     onScreenshot: () -> Unit
 ) {
     val flash = state.lastFlash ?: return
-    SectionCard(title = "救砖备忘录", icon = Icons.Default.Warning, tone = Tone.Danger) {
-        KeyValueRow("已刷写", flash.flashedPartition, monospace = true)
-        KeyValueRow("备份 SHA-256", flash.backupSha256, monospace = true)
-        flash.backupExternalUri?.let { KeyValueRow("备份外部位置", it) }
-        flash.rescueExternalUri?.let { KeyValueRow("Rescue Zip 外部位置", it) }
+    val strings = I18n.current
+    SectionCard(title = strings.rescueMemo, icon = Icons.Default.Warning, tone = Tone.Danger) {
+        KeyValueRow(strings.flashedPartition, flash.flashedPartition, monospace = true)
+        KeyValueRow(strings.backupSha256, flash.backupSha256, monospace = true)
+        flash.backupExternalUri?.let { KeyValueRow(strings.backupLocation, it) }
+        flash.rescueExternalUri?.let { KeyValueRow(strings.rescueZipLocation, it) }
 
         flash.rollbackCommands.forEach { command ->
             Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
@@ -362,7 +365,7 @@ internal fun RescueMemoCard(
                         style = MaterialTheme.typography.bodySmall
                     )
                     IconButton(onClick = { onCopy(command) }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "复制")
+                        Icon(Icons.Default.ContentCopy, contentDescription = strings.copy)
                     }
                 }
             }
@@ -370,14 +373,14 @@ internal fun RescueMemoCard(
 
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             OutlinedButton(onClick = onExportBackup, modifier = Modifier.weight(1f)) {
-                Text("导出备份")
+                Text(strings.exportBackup)
             }
             OutlinedButton(onClick = onExportRescue, modifier = Modifier.weight(1f)) {
-                Text("导出救援包")
+                Text(strings.exportRescue)
             }
         }
         OutlinedButton(onClick = onScreenshot, modifier = Modifier.fillMaxWidth()) {
-            IconLabel(Icons.Default.Image, "截图保存备忘录")
+            IconLabel(Icons.Default.Image, strings.saveScreenshotMemo)
         }
     }
 }
@@ -387,20 +390,21 @@ internal fun RescueMemoCard(
 internal fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val strings = I18n.current
     LaunchedEffect(logs.size, expanded) {
         if (expanded && logs.isNotEmpty()) listState.scrollToItem(logs.lastIndex)
     }
 
     SectionCard(
-        title = "终端回显",
-        subtitle = "${logs.size} 行",
+        title = strings.terminalEcho,
+        subtitle = strings.linesCount(logs.size),
         icon = Icons.Default.Terminal,
         modifier = Modifier.clickable { expanded = !expanded },
         trailing = {
-            TextButton(onClick = onClear) { Text("清空") }
+            TextButton(onClick = onClear) { Text(strings.clear) }
             Icon(
                 if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (expanded) "折叠" else "展开",
+                contentDescription = if (expanded) strings.collapse else strings.expand,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
