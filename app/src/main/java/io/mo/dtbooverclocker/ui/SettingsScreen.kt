@@ -1,5 +1,8 @@
 package io.mo.dtbooverclocker.ui
 
+import io.mo.dtbooverclocker.ui.components.HintText
+import io.mo.dtbooverclocker.ui.components.StatusPill
+import io.mo.dtbooverclocker.ui.components.Tone
 import android.widget.Toast
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.activity.compose.BackHandler
@@ -31,7 +34,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -119,10 +121,8 @@ fun SettingsScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Column(
                         modifier = Modifier.padding(Spacing.lg),
@@ -148,19 +148,18 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                             verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
-                            AssistChip(
-                                onClick = {},
-                                label = {
-                                    Text(if (state.rootState.granted) "Root 已授权 (自动保持)" else state.rootState.detail)
-                                },
-                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) }
-                            )
-                            state.slotInfo?.let { slot ->
-                                AssistChip(
-                                    onClick = {},
-                                    label = { Text(slot.label) }
-                                )
+                            if (state.rootState.granted) {
+                                StatusPill("Root 已授权 (自动保持)", tone = Tone.Success, icon = Icons.Default.Lock)
+                            } else {
+                                StatusPill("Root 未授权", tone = Tone.Warning, icon = Icons.Default.Lock)
                             }
+                            state.slotInfo?.let { slot ->
+                                StatusPill(slot.label)
+                            }
+                        }
+
+                        if (!state.rootState.granted) {
+                            HintText(state.rootState.detail)
                         }
 
                         Text(
@@ -203,10 +202,8 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onNavigateToRollback),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Row(
                         modifier = Modifier
@@ -262,10 +259,8 @@ fun SettingsScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Column(
                         modifier = Modifier.padding(Spacing.lg),
@@ -340,10 +335,8 @@ fun SettingsScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Column(
                         modifier = Modifier.padding(Spacing.lg),
@@ -427,10 +420,8 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onNavigateToAbout),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                 ) {
                     Row(
                         modifier = Modifier
