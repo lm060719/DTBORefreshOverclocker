@@ -184,8 +184,6 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
                     currentScreen = AppScreen.MAIN
                 },
-                onNavigateToAbout = { currentScreen = AppScreen.ABOUT },
-                onNavigateToRollback = { currentScreen = AppScreen.ROLLBACK },
                 onRefreshEnvironment = viewModel::refreshEnvironment,
                 onRefreshCacheSize = viewModel::refreshCacheSize,
                 onClearAllCache = viewModel::clearAllCache,
