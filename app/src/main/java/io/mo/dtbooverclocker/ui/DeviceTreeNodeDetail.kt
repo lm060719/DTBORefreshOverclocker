@@ -1,5 +1,11 @@
 package io.mo.dtbooverclocker.ui
 
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Surface
+import io.mo.dtbooverclocker.ui.components.StatusPill
+import io.mo.dtbooverclocker.ui.components.Tone
 import androidx.compose.foundation.clickable
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.foundation.horizontalScroll
@@ -385,9 +391,13 @@ private fun PropertyCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    OutlinedCard(Modifier.fillMaxWidth()) {
+    OutlinedCard(
+        Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
         Column(
-            Modifier.padding(Spacing.md),
+            Modifier.padding(start = Spacing.md, end = Spacing.md, top = Spacing.md, bottom = Spacing.xs),
             verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             Row(
@@ -400,17 +410,9 @@ private fun PropertyCard(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
+                StatusPill(
                     DeviceTreeValueCodec.displayName(property.type),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (DeviceTreeValueCodec.supportsTypedEditor(property.type, property.rawValue))
-                    {
-                        MaterialTheme.colorScheme.primary
-                    }
-                    else
-                    {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    tone = if (DeviceTreeValueCodec.supportsTypedEditor(property.type, property.rawValue)) Tone.Primary else Tone.Neutral
                 )
             }
 
@@ -421,12 +423,19 @@ private fun PropertyCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            Text(
-                property.rawStatement,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    property.rawStatement,
+                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -451,7 +460,10 @@ private fun PropertyCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                TextButton(onClick = onDelete) {
+                TextButton(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
                     Icon(Icons.Default.DeleteOutline, null)
                     Spacer(Modifier.width(5.dp))
                     Text("删除")
@@ -468,18 +480,29 @@ internal fun ChangeCard(
     onUndo: () -> Unit
 ) {
     val change = row.change
-    Card(Modifier.fillMaxWidth()) {
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
         Column(
-            Modifier.padding(Spacing.md),
-            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+            Modifier.padding(start = Spacing.md, end = Spacing.md, top = Spacing.md, bottom = Spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
-            Text(
-                DeviceTreeDiff.render(change),
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Row {
-                Icon(Icons.Default.History, null)
+            Surface(
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    DeviceTreeDiff.render(change),
+                    modifier = Modifier.padding(Spacing.sm),
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.History, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(6.dp))
                 Text(
                     if (row.laterTransactionCount == 0)

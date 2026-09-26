@@ -1,5 +1,20 @@
 package io.mo.dtbooverclocker.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material3.Surface
+import io.mo.dtbooverclocker.ui.components.EmptyState
+import io.mo.dtbooverclocker.ui.components.HintText
+import io.mo.dtbooverclocker.ui.components.NoticeBanner
+import io.mo.dtbooverclocker.ui.components.SectionCard
+import io.mo.dtbooverclocker.ui.components.Tone
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import androidx.compose.foundation.clickable
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.foundation.horizontalScroll
@@ -251,40 +266,34 @@ fun DeviceTreeScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding)
-            .padding(horizontal = Spacing.lg),
-        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+            .padding(contentPadding),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = Spacing.xs, bottom = Spacing.xl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
     ) {
-        item { Spacer(Modifier.height(2.dp)) }
-
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                Text(
-                    "设备树",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "层级浏览、节点详情与类型化属性编辑。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Column(
+                Modifier.padding(start = Spacing.xs, end = Spacing.xs, bottom = Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+            ) {
+                Text("设备树", style = MaterialTheme.typography.headlineSmall)
+                HintText("层级浏览、节点详情与类型化属性编辑。")
             }
         }
 
         if (workspace == null)
         {
             item {
-                Card(Modifier.fillMaxWidth()) {
-                    Text(
-                        "请先在“概览”加载一个 DTBO 工作区。",
-                        modifier = Modifier.padding(Spacing.xl)
-                    )
-                }
+                EmptyState(
+                    Icons.Default.FolderOpen,
+                    "还没有工作区",
+                    "请先在“概览”加载一个 DTBO 工作区。"
+                )
             }
         }
         else
         {
             item {
+              SectionCard(Modifier.padding(bottom = Spacing.sm)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     items(workspace.metadata.entries.size, key = { it }) { index ->
                         val available = File(workspace.rootDir, "dts/entry_$index.dts").isFile
@@ -300,20 +309,15 @@ fun DeviceTreeScreen(
                         )
                     }
                 }
-            }
-
-            item {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
                     leadingIcon = { Icon(Icons.Default.Search, null) },
                     label = { Text("搜索节点 / 属性 / 值") },
                     singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
-
-            item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     items(DeviceTreeSearchScope.entries, key = { it.name }) { scope ->
                         FilterChip(
@@ -323,17 +327,15 @@ fun DeviceTreeScreen(
                         )
                     }
                 }
+              }
             }
 
             item {
                 when
                 {
                     loaded.loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
-                    loaded.error != null -> Text(
-                        "设备树读取失败：${loaded.error}",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    document == null -> Text("该 Entry 无法反编译为可编辑 DTS。")
+                    loaded.error != null -> NoticeBanner("设备树读取失败：${loaded.error}", tone = Tone.Danger)
+                    document == null -> NoticeBanner("该 Entry 无法反编译为可编辑 DTS。", tone = Tone.Warning)
                     else -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(
                             "Entry $entry · ${loaded.nodes.size} 个节点 · 当前显示 ${visibleRows.size} · " +
@@ -342,11 +344,7 @@ fun DeviceTreeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         loaded.referenceError?.let { referenceError ->
-                            Text(
-                                "引用索引已降级：$referenceError。节点浏览和属性编辑仍可继续使用。",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
+                            NoticeBanner("引用索引已降级：$referenceError。节点浏览和属性编辑仍可继续使用。", tone = Tone.Warning)
                         }
                         ParseWarningsText(document.warnings)
 
@@ -410,14 +408,13 @@ fun DeviceTreeScreen(
             {
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(start = Spacing.xs, top = Spacing.sm, bottom = Spacing.xs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             if (!filteredMode) "节点树" else "筛选结果",
                             modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            style = MaterialTheme.typography.titleMedium
                         )
                         if (filteredMode)
                         {
@@ -435,6 +432,7 @@ fun DeviceTreeScreen(
                         row = row,
                         expanded = row.node.path in expandedSet,
                         selected = selectedNodePath == row.node.path,
+                        modified = row.node.path in modifiedNodePaths,
                         searchMode = filteredMode,
                         onToggle = {
                             if (row.node.children.isNotEmpty())
@@ -458,12 +456,11 @@ fun DeviceTreeScreen(
 
                 if (changesForEntry.isNotEmpty())
                 {
-                    item { HorizontalDivider() }
                     item {
                         Text(
                             "暂存 Diff · ${changesForEntry.size} 个底层设备树操作",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            modifier = Modifier.padding(start = Spacing.xs, top = Spacing.lg, bottom = Spacing.xs),
+                            style = MaterialTheme.typography.titleMedium
                         )
                     }
                     items(stagedChangesForEntry, key = { it.change.id }) { row ->
@@ -486,7 +483,6 @@ fun DeviceTreeScreen(
             }
         }
 
-        item { Spacer(Modifier.height(24.dp)) }
     }
 
     if (showNodeSheet && selectedNode != null)
@@ -695,91 +691,102 @@ private fun TreeNodeCard(
     row: TreeRow,
     expanded: Boolean,
     selected: Boolean,
+    modified: Boolean,
     searchMode: Boolean,
     onToggle: () -> Unit,
     onOpen: () -> Unit
 ) {
     val node = row.node
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            // Deep fixup paths would otherwise push the node name off a phone-width screen.
-            .padding(start = if (searchMode) 0.dp else (minOf(row.depth, MAX_INDENT_DEPTH) * 12).dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected)
-            {
-                MaterialTheme.colorScheme.primaryContainer
-            }
-            else
-            {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            }
-        )
+    val scheme = MaterialTheme.colorScheme
+    val indent = if (searchMode) 0 else minOf(row.depth, MAX_INDENT_DEPTH)
+    Row(
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpen)
-                .padding(vertical = 7.dp, horizontal = Spacing.sm),
-            verticalAlignment = Alignment.CenterVertically
+        // 缩进引导线：每级一条细线，深层路径不至于把节点名挤出屏幕。
+        repeat(indent) {
+            Box(Modifier.width(12.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Box(Modifier.width(1.dp).fillMaxHeight().background(scheme.outlineVariant))
+            }
+        }
+        Surface(
+            modifier = Modifier.weight(1f),
+            shape = MaterialTheme.shapes.medium,
+            color = if (selected) scheme.primaryContainer else scheme.surfaceContainerLow,
+            border = if (selected) BorderStroke(1.dp, scheme.primary) else null
         ) {
-            if (node.children.isNotEmpty() && !searchMode)
-            {
-                IconButton(
-                    onClick = onToggle,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
-                        contentDescription = if (expanded) "折叠节点" else "展开节点"
-                    )
-                }
-            }
-            else
-            {
-                Spacer(Modifier.width(36.dp))
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpen)
+                    .padding(vertical = Spacing.xs, horizontal = Spacing.xs),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        node.name,
-                        modifier = Modifier.weight(1f, fill = false),
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    node.label?.let {
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "$it:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                if (node.children.isNotEmpty() && !searchMode)
+                {
+                    IconButton(
+                        onClick = onToggle,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                            contentDescription = if (expanded) "折叠节点" else "展开节点"
                         )
                     }
                 }
+                else
+                {
+                    Spacer(Modifier.width(36.dp))
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            node.name,
+                            modifier = Modifier.weight(1f, fill = false),
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        node.label?.let {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "$it:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = scheme.primary
+                            )
+                        }
+                        if (modified)
+                        {
+                            Spacer(Modifier.width(6.dp))
+                            Box(Modifier.size(8.dp).background(AppTheme.status.warning, CircleShape))
+                        }
+                    }
+                    Text(
+                        node.path,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 Text(
-                    node.path,
-                    fontFamily = FontFamily.Monospace,
+                    buildString {
+                        if (!searchMode && row.depth > MAX_INDENT_DEPTH) append("L${row.depth} · ")
+                        append("${node.propertyCount}P · ${node.childCount}N")
+                    },
+                    modifier = Modifier.padding(end = Spacing.sm),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    color = scheme.onSurfaceVariant
                 )
             }
-
-            Text(
-                buildString {
-                    if (!searchMode && row.depth > MAX_INDENT_DEPTH) append("L${row.depth} · ")
-                    append("${node.propertyCount}P · ${node.childCount}N")
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
@@ -795,7 +802,7 @@ private fun ParseWarningsText(warnings: List<DeviceTreeParseWarning>)
     }
     // An unrecognised node header can shift every later node, so it deserves the error colour.
     val structural = warnings.any { it.reason.contains("节点头") }
-    Text(
+    NoticeBanner(
         buildString {
             append("解析提示：${warnings.size} 处语句未被编辑器识别，树中看不到它们，但 dtc 编译时仍会生效。")
             warnings.take(3).forEach { warning ->
@@ -806,8 +813,7 @@ private fun ParseWarningsText(warnings: List<DeviceTreeParseWarning>)
                 append("\n…")
             }
         },
-        style = MaterialTheme.typography.labelSmall,
-        color = if (structural) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+        tone = if (structural) Tone.Danger else Tone.Warning
     )
 }
 
