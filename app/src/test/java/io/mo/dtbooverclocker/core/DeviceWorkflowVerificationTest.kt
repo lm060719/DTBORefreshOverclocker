@@ -158,7 +158,7 @@ class DeviceWorkflowVerificationTest {
                 engine.resetWorkspace(workspace)
                 engine.applyTimingChange(base, candidate, target, PatchStrategy.BALANCED_BLANKING_TIME, PatchMode.OVERWRITE_EXISTING)
             }
-            val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings, true)
+            val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings)
             staged += tx
             packageAndExport("refresh_$target", listOf(tx), result.updatedWorkspace) { re ->
                 val found = re.candidates.filter { it.entryIndex == candidate.entryIndex && it.currentHz == target }
@@ -173,7 +173,7 @@ class DeviceWorkflowVerificationTest {
                 it.pixelClockHz == null && it.currentHz == 120 && it.hasFullGeometry && !it.hasVendorDynamicMode
             } ?: throw GuardRefusal("镜像中没有无 clockrate 的 120Hz 完整时序档位，跳过")
             val result = engine.applyTimingChange(base, candidate, 144, PatchStrategy.BALANCED_BLANKING_TIME, PatchMode.OVERWRITE_EXISTING)
-            val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings, true)
+            val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings)
             packageAndExport("clockless_144", listOf(tx), result.updatedWorkspace) { re ->
                 val after = re.candidates.first { it.entryIndex == candidate.entryIndex && it.nodePath == candidate.nodePath }
                 require(after.currentHz == 144 && after.pixelClockHz == null) { "回读 ${after.currentHz}Hz clock=${after.pixelClockHz}" }
@@ -269,7 +269,7 @@ class DeviceWorkflowVerificationTest {
             val candidate = base.candidates.first { it.nodePath == panelMatch.nodePath && it.entryIndex == panelMatch.entryIndex }
             val result = engine.applyTimingChange(base, candidate, candidate.currentHz + 24,
                 PatchStrategy.BALANCED_BLANKING_TIME, PatchMode.APPEND_NEW)
-            val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings, true)
+            val tx = DeviceTreeTransaction.refreshRate(result.stagedChange, result.operations, result.warnings)
             val scan = kotlinx.coroutines.coroutineScope {
                 val scanJob = async(kotlinx.coroutines.Dispatchers.Default) { CapabilityScanner.scan(result.updatedWorkspace) }
                 engine.packageStaged(result.updatedWorkspace, listOf(tx))

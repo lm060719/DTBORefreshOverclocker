@@ -522,13 +522,13 @@ class DtboPatchEngine(
         }
         val warnings = transactions.flatMap { it.warnings }.distinct().toMutableList()
         if (stagedChanges.any { it.strategy == PatchStrategy.FRAMERATE_ONLY }) {
-            warnings += "包含仅 Framerate 策略的修改，存在时序不匹配风险，不建议直接刷写。"
+            warnings += "包含仅 Framerate 策略的修改，存在时序不匹配风险。"
         }
         if (moduleStagedChanges.isNotEmpty()) {
-            warnings += "包含功能模块设备树修改；Charging 模块当前阶段禁止 Root 直刷，请优先导出并离线验证。"
+            warnings += "包含功能模块设备树修改（如 Charging），刷写前请确认参数取值。"
         }
         if (genericChanges.isNotEmpty()) {
-            warnings += "包含通用设备树自由编辑；当前阶段禁止 Root 直刷，请优先导出并离线验证。"
+            warnings += "包含通用设备树自由编辑，刷写前请确认修改内容。"
         }
 
         val lastChange = stagedChanges.lastOrNull()
@@ -562,8 +562,7 @@ class DtboPatchEngine(
         val transaction = DeviceTreeTransaction.refreshRate(
             stagedChange = applyResult.stagedChange,
             operations = applyResult.operations,
-            warnings = applyResult.warnings,
-            directFlashAllowed = applyResult.stagedChange.strategy != PatchStrategy.FRAMERATE_ONLY
+            warnings = applyResult.warnings
         )
         return packageStaged(
             workspace = applyResult.updatedWorkspace,

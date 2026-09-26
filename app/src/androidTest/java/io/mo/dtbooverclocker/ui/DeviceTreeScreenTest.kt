@@ -91,7 +91,7 @@ class DeviceTreeScreenTest {
         val module = DeviceTreeTransaction(
             kind = DeviceTreeTransactionKind.CHARGING, summary = "module edit",
             operations = listOf(SetPropertyChange(1, "/beta", "value", "<0>", "<1>")),
-            risk = DeviceTreeTransactionRisk.EXPORT_ONLY, directFlashAllowed = false
+            risk = DeviceTreeTransactionRisk.CAUTION
         )
         show(listOf(generic, module))
         compose.onNodeWithText("撤销到此处").performScrollTo().assertIsEnabled().performClick()

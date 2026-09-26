@@ -113,7 +113,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
-import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.model.AvbProtectionState
@@ -1227,11 +1226,7 @@ internal fun OutputCard(
                 Text("导出 PC Fastboot 一键包")
             }
 
-            val canFlash = state.rootState.granted &&
-                state.sourceMode == SourceMode.ROOT_PARTITION &&
-                state.transactions.isNotEmpty() &&
-                state.transactions.all { it.directFlashAllowed } &&
-                report.strategy != PatchStrategy.FRAMERATE_ONLY
+            val canFlash = state.rootState.granted && state.transactions.isNotEmpty()
             Button(
                 onClick = onFlash,
                 enabled = canFlash,
@@ -1243,12 +1238,7 @@ internal fun OutputCard(
             }
             if (!canFlash) {
                 Text(
-                    when {
-                        state.transactions.any { !it.directFlashAllowed } ->
-                            "事务队列包含仅允许导出验证的修改，当前阶段禁止 Root 直刷。"
-                        else ->
-                            "直接刷写要求：Root 已授权、镜像来自当前手机分区，且所有事务均允许直刷。"
-                    },
+                    "直接刷写需要 Root 授权。",
                     style = MaterialTheme.typography.labelSmall
                 )
             }

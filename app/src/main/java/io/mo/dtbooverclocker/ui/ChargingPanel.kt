@@ -67,7 +67,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp)) {
                 Text(
                     "${editableParameterCount} 个可编辑参数 · ${editableNodeCount} 个可编辑节点 · " +
-                        "${uniquePathCount} 个唯一路径 / ${nodes.size} 个 DTB 实例 · 仅导出验证",
+                        "${uniquePathCount} 个唯一路径 / ${nodes.size} 个 DTB 实例",
                     Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -329,7 +329,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
             modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.BatteryChargingFull, null)
             Spacer(Modifier.width(8.dp))
-            Text("暂存充电修改（仅导出验证）")
+            Text("暂存充电修改")
         }
     }
 }

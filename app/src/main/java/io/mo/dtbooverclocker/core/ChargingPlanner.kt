@@ -104,7 +104,7 @@ object ChargingPlanner {
             affectedNodePaths = listOf(snapshot.nodePath),
             summary = "Charging · DTB ${snapshot.entryIndex} · ${snapshot.nodePath.substringAfterLast('/')} · ${operations.size} 项修改",
             changes = preview.changes,
-            warnings = listOf("充电参数修改仅导出验证；实际生效值取决于电池、充电芯片和驱动限制。")
+            warnings = listOf("充电参数实际生效值取决于电池、充电芯片和驱动限制。")
         )
         return Plan(replayed, DeviceTreeTransaction.charging(staged, operations))
     }

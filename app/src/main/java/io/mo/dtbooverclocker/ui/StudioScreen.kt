@@ -189,13 +189,6 @@ private fun TransactionQueueCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (state.transactions.any { !it.directFlashAllowed }) {
-                Text(
-                    "事务队列包含仅允许导出验证的修改，因此 Root 直刷已禁用。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
                 OutlinedButton(onClick = onUndoLastTransaction, enabled = !state.busy) { Text("撤销最近事务") }
@@ -226,13 +219,6 @@ private fun ModuleStagedChangesCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (state.moduleStagedChanges.any { !it.directFlashAllowed }) {
-                Text(
-                    "当前包含仅允许导出验证的功能模块修改，因此 Root 直刷已禁用。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
                 OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
@@ -261,11 +247,6 @@ private fun DeviceTreeStagedChangesCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text(
-                "自由设备树编辑当前阶段只允许导出验证，禁止 Root 直刷。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error
-            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
                 OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }

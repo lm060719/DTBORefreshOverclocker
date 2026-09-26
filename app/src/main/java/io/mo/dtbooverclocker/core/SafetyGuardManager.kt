@@ -9,7 +9,6 @@ import android.provider.MediaStore
 import io.mo.dtbooverclocker.model.BackupType
 import io.mo.dtbooverclocker.model.FlashResult
 import io.mo.dtbooverclocker.model.PatchReport
-import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.SlotInfo
 import io.mo.dtbooverclocker.util.HashUtils
 import kotlinx.coroutines.Dispatchers
@@ -51,9 +50,6 @@ class SafetyGuardManager(
         report: PatchReport,
         slot: SlotInfo
     ): FlashResult = withContext(Dispatchers.IO) {
-        require(report.strategy != PatchStrategy.FRAMERATE_ONLY) {
-            "仅 Framerate 策略被禁止直接刷写；请导出镜像后自行离线验证，或选择完整时序策略。"
-        }
         validateBlockPath(slot.blockDevice)
         require(report.outputImage.isFile && report.outputImage.length() >= 32) {
             "修补镜像不存在或无效"

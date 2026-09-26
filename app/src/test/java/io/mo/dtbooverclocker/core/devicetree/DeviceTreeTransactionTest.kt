@@ -4,8 +4,6 @@ import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.StagedChange
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DeviceTreeTransactionTest
@@ -41,19 +39,18 @@ class DeviceTreeTransactionTest
         val transaction = DeviceTreeTransaction.refreshRate(
             stagedChange = staged,
             operations = listOf(operationA, operationB),
-            warnings = emptyList(),
-            directFlashAllowed = true
+            warnings = emptyList()
         )
 
         assertEquals(DeviceTreeTransactionKind.REFRESH_RATE, transaction.kind)
         assertEquals(2, transaction.operationCount)
         assertEquals(setOf(0), transaction.entryIndices)
-        assertTrue(transaction.directFlashAllowed)
+        assertEquals(DeviceTreeTransactionRisk.TRUSTED, transaction.risk)
         assertEquals(staged, transaction.timingChange)
     }
 
     @Test
-    fun genericEditIsAlwaysExportOnly()
+    fun genericEditIsMarkedCaution()
     {
         val change = SetPropertyChange(
             entryIndex = 1,
@@ -65,8 +62,7 @@ class DeviceTreeTransactionTest
 
         val transaction = DeviceTreeTransaction.generic(change)
 
-        assertEquals(DeviceTreeTransactionRisk.EXPORT_ONLY, transaction.risk)
-        assertFalse(transaction.directFlashAllowed)
+        assertEquals(DeviceTreeTransactionRisk.CAUTION, transaction.risk)
         assertEquals(listOf(change), transaction.operations)
         assertEquals(setOf(1), listOf(transaction).modifiedEntryIndices())
     }

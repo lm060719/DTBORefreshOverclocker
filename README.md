@@ -8,9 +8,9 @@ Android DTBO（Device Tree Blob Overlay）的查看、编辑与重建工具：�
 
 | 模块 | 能力 | Root 直刷 |
 | --- | --- | --- |
-| 刷新率 | 修改、新增、删除时序档位；平衡时序 / 仅 Pixel Clock / 仅 Framerate / 自定义 | ✅（仅 Framerate 除外） |
-| Charging | 编辑已识别的电流、电压、温控表等参数，见 [Charging 参数说明](docs/charging.md) | ❌ 仅导出 |
-| 设备树 | 节点浏览、搜索、引用关系；属性增删改，节点新增/克隆/重命名/删除 | ❌ 仅导出 |
+| 刷新率 | 修改、新增、删除时序档位；平衡时序 / 仅 Pixel Clock / 仅 Framerate / 自定义 | ✅ |
+| Charging | 编辑已识别的电流、电压、温控表等参数，见 [Charging 参数说明](docs/charging.md) | ✅ |
+| 设备树 | 节点浏览、搜索、引用关系；属性增删改，节点新增/克隆/重命名/删除 | ✅ |
 
 所有修改先进入事务队列，可撤销、合并打包。导出方式：DTBO 镜像、Recovery 刷机包、PC Fastboot 包。
 
@@ -20,7 +20,7 @@ Android DTBO（Device Tree Blob Overlay）的查看、编辑与重建工具：�
 2. **识别**：自动扫描时序档位、充电节点，并按面板分组。Root 提取时会读取 `androidboot.dtbo_idx` 与内核启动参数，标出本机在用面板和生效的 DTB。
 3. **修改**：在功能模块或设备树页面暂存修改。
 4. **打包**：重编译修改过的 DTB，校验未声明的属性没有变化、元数据一致，再重建镜像。
-5. **导出 / 刷写**：导出后离线验证，或在允许的情况下 Root 直刷（会先备份原分区）。
+5. **导出 / 刷写**：导出后离线验证，或 Root 直刷（会先备份原分区）。
 
 
 ## 使用前须知
@@ -34,7 +34,7 @@ Android DTBO（Device Tree Blob Overlay）的查看、编辑与重建工具：�
 
 ## 风险提示
 
-修改 DTBO 可能导致黑屏、显示异常或无法开机。刷写前请确认 Bootloader 已解锁、原始 DTBO 已备份，并准备好 Fastboot 或 Recovery 恢复方式。仅导出的修改不要绕过限制直接刷入。
+修改 DTBO 可能导致黑屏、显示异常或无法开机。刷写前请确认 Bootloader 已解锁、原始 DTBO 已备份，并准备好 Fastboot 或 Recovery 恢复方式。
 
 ## 构建
 

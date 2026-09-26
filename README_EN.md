@@ -8,9 +8,9 @@ An Android DTBO (Device Tree Blob Overlay) viewer, editor and rebuilder: import 
 
 | Module | Capability | Root flash |
 | --- | --- | --- |
-| Refresh rate | Edit, add or delete timing modes; Balanced / Pixel Clock only / Framerate only / Custom | ✅ (except Framerate only) |
-| Charging | Edit recognised current, voltage and thermal-table parameters, see [Charging notes](docs/charging.md) | ❌ export only |
-| Device tree | Browse, search, references; add/edit/delete properties, add/clone/rename/delete nodes | ❌ export only |
+| Refresh rate | Edit, add or delete timing modes; Balanced / Pixel Clock only / Framerate only / Custom | ✅ |
+| Charging | Edit recognised current, voltage and thermal-table parameters, see [Charging notes](docs/charging.md) | ✅ |
+| Device tree | Browse, search, references; add/edit/delete properties, add/clone/rename/delete nodes | ✅ |
 
 Every edit goes into a transaction queue, where it can be undone or packaged together with others. Export formats: DTBO image, Recovery flashable ZIP, PC Fastboot bundle.
 
@@ -20,7 +20,7 @@ Every edit goes into a transaction queue, where it can be undone or packaged tog
 2. **Detect**: timing modes and charging nodes are scanned and grouped by panel. When extracted with Root, the app reads `androidboot.dtbo_idx` and the kernel command line to mark the panel and DTB this device actually uses.
 3. **Edit**: stage changes from the module pages or the device-tree page.
 4. **Package**: modified DTBs are recompiled, undeclared properties are checked for changes, metadata is verified, then the image is rebuilt.
-5. **Export / flash**: export for offline verification, or Root-flash where allowed (the original partition is backed up first).
+5. **Export / flash**: export for offline verification, or Root-flash (the original partition is backed up first).
 
 ## Tested images
 
@@ -42,7 +42,7 @@ Every edit goes into a transaction queue, where it can be undone or packaged tog
 
 ## Risks
 
-Modifying a DTBO can cause a black screen, display faults or a device that won't boot. Before flashing, make sure the bootloader is unlocked, the original DTBO is backed up, and a Fastboot or Recovery recovery path is ready. Do not bypass export-only restrictions to flash directly.
+Modifying a DTBO can cause a black screen, display faults or a device that won't boot. Before flashing, make sure the bootloader is unlocked, the original DTBO is backed up, and a Fastboot or Recovery recovery path is ready.
 
 ## Build
 

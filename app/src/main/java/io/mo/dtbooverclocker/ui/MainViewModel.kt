@@ -290,7 +290,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     stagedChange = result.stagedChange,
                     operations = result.operations,
                     warnings = result.warnings,
-                    directFlashAllowed = result.stagedChange.strategy != PatchStrategy.FRAMERATE_ONLY,
                     id = transactionId
                 ).withPanelWarning(candidate.nodePath)
                 val newTransactions = current.transactions + transaction
@@ -609,14 +608,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ?: return@launchWorkspaceOperation showError(IllegalStateException("尚未生成修补镜像"))
             val slot = current.slotInfo
                 ?: return@launchWorkspaceOperation showError(IllegalStateException("无法确定目标槽位"))
-            requireOrReport(current.sourceMode == SourceMode.ROOT_PARTITION) {
-                "直接刷写仅允许用于“从手机当前分区读取”的工作区，防止误刷入来自其他设备的导入镜像。"
-            } ?: return@launchWorkspaceOperation
             requireOrReport(current.transactions.isNotEmpty()) {
                 "当前没有可刷写的设备树事务。"
-            } ?: return@launchWorkspaceOperation
-            requireOrReport(current.transactions.all { it.directFlashAllowed }) {
-                "当前事务队列包含仅允许导出验证的修改（例如 Charging 或通用设备树编辑），已禁止 Root 直刷。"
             } ?: return@launchWorkspaceOperation
 
             setBusy(true, "正在执行备份、救援包生成与单槽位刷写…")

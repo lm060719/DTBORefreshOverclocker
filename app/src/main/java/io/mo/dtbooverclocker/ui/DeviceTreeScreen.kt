@@ -279,7 +279,7 @@ fun DeviceTreeScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "层级浏览、节点详情与类型化属性编辑。自由编辑仍禁止 Root 直刷。",
+                    "层级浏览、节点详情与类型化属性编辑。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

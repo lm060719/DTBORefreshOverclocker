@@ -15,6 +15,5 @@ data class ModuleStagedChange(
     val summary: String,
     val changes: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
-    val directFlashAllowed: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )

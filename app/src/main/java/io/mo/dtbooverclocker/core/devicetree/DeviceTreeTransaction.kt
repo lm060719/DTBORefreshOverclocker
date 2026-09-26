@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.core.devicetree
 
 import io.mo.dtbooverclocker.model.ModuleStagedChange
+import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.StagedChange
 import java.util.UUID
 
@@ -14,8 +15,7 @@ enum class DeviceTreeTransactionKind(val displayName: String)
 enum class DeviceTreeTransactionRisk(val displayName: String)
 {
     TRUSTED("受信任"),
-    CAUTION("谨慎"),
-    EXPORT_ONLY("仅导出验证")
+    CAUTION("谨慎")
 }
 
 /**
@@ -23,9 +23,6 @@ enum class DeviceTreeTransactionRisk(val displayName: String)
  *
  * 一个事务可以包含多个底层 DeviceTreeChange。MainUiState 以 transactions 作为唯一暂存源，
  * 刷新率、功能模块和通用编辑的旧列表都由事务派生，避免多套状态彼此漂移。
- *
- * directFlashAllowed 是部署安全边界的一部分：只要队列中存在 export-only 事务，
- * 应用就必须禁止 Root 直接刷写。
  */
 data class DeviceTreeTransaction(
     val id: String = UUID.randomUUID().toString(),
@@ -33,7 +30,6 @@ data class DeviceTreeTransaction(
     val summary: String,
     val operations: List<DeviceTreeChange>,
     val risk: DeviceTreeTransactionRisk,
-    val directFlashAllowed: Boolean,
     val warnings: List<String> = emptyList(),
     val timingChange: StagedChange? = null,
     val moduleChange: ModuleStagedChange? = null,
@@ -62,7 +58,6 @@ data class DeviceTreeTransaction(
             stagedChange: StagedChange,
             operations: List<DeviceTreeChange>,
             warnings: List<String>,
-            directFlashAllowed: Boolean,
             id: String = UUID.randomUUID().toString()
         ): DeviceTreeTransaction
         {
@@ -71,8 +66,11 @@ data class DeviceTreeTransaction(
                 kind = DeviceTreeTransactionKind.REFRESH_RATE,
                 summary = stagedChange.summary,
                 operations = operations,
-                risk = if (directFlashAllowed) DeviceTreeTransactionRisk.TRUSTED else DeviceTreeTransactionRisk.CAUTION,
-                directFlashAllowed = directFlashAllowed,
+                risk = if (stagedChange.strategy == PatchStrategy.FRAMERATE_ONLY) {
+                    DeviceTreeTransactionRisk.CAUTION
+                } else {
+                    DeviceTreeTransactionRisk.TRUSTED
+                },
                 warnings = warnings,
                 timingChange = stagedChange
             )
@@ -84,8 +82,7 @@ data class DeviceTreeTransaction(
                 kind = DeviceTreeTransactionKind.CHARGING,
                 summary = moduleChange.summary,
                 operations = operations,
-                risk = DeviceTreeTransactionRisk.EXPORT_ONLY,
-                directFlashAllowed = false,
+                risk = DeviceTreeTransactionRisk.CAUTION,
                 warnings = moduleChange.warnings,
                 moduleChange = moduleChange
             )
@@ -101,9 +98,8 @@ data class DeviceTreeTransaction(
                 kind = DeviceTreeTransactionKind.GENERIC_EDIT,
                 summary = change.summary,
                 operations = listOf(change),
-                risk = DeviceTreeTransactionRisk.EXPORT_ONLY,
-                directFlashAllowed = false,
-                warnings = listOf("通用设备树自由编辑当前阶段仅允许导出验证，禁止 Root 直刷。")
+                risk = DeviceTreeTransactionRisk.CAUTION,
+                warnings = listOf("通用设备树自由编辑未经语义校验，刷写前请确认修改内容。")
             )
         }
     }

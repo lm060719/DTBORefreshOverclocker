@@ -53,14 +53,14 @@ class ChargingPanelTest {
     }
     private fun input(label: String = "最大快充电流（mA）") = compose.onNode(hasSetTextAction() and hasText(label))
     private fun cell(label: String) = compose.onNode(hasSetTextAction() and hasContentDescription(label))
-    private fun stage() = compose.onNodeWithText("暂存充电修改（仅导出验证）")
+    private fun stage() = compose.onNodeWithText("暂存充电修改")
 
     @Test fun actualPhoneMcaGroupsKeepDraftsAndStageHiddenFields() {
         val registry = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
         val fixture = File(registry.targetContext.cacheDir, "charging-device.dts")
         org.junit.Assume.assumeTrue("Optional actual-device DTC fixture", fixture.isFile)
         val restore = show(fixture.readText())
-        compose.onNodeWithText("394 个可编辑参数 · 6 / 14 个节点 · 仅导出验证").assertExists()
+        compose.onNodeWithText("394 个可编辑参数 · 6 / 14 个节点").assertExists()
         input("DCP 输入电流（mA）").performScrollTo().performTextReplacement("1450")
         compose.onNodeWithText("下一页").performScrollTo().performClick()
         input("PMIC 浮充电压补偿（mV）").performScrollTo().performTextReplacement("1")
