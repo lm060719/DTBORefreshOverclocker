@@ -1,5 +1,11 @@
 package io.mo.dtbooverclocker.ui
 
+import io.mo.dtbooverclocker.ui.components.HintText
+import io.mo.dtbooverclocker.ui.components.IconLabel
+import io.mo.dtbooverclocker.ui.components.NoticeBanner
+import io.mo.dtbooverclocker.ui.components.SectionCard
+import io.mo.dtbooverclocker.ui.components.Tone
+import androidx.compose.material3.CardDefaults
 import androidx.compose.foundation.BorderStroke
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.material3.MaterialTheme
@@ -10,7 +16,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,7 +24,6 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.core.ChargingAnalyzer
@@ -38,10 +42,9 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
     val editableParameterCount = remember(nodes) { nodes.sumOf { it.editableCount } }
     val enabled = !state.busy && !state.capabilityScanInProgress
     if (nodes.isEmpty()) {
-        Card(Modifier.fillMaxWidth()) {
-            Text(if (state.capabilityScanInProgress) "正在扫描充电参数…"
-                else "当前 DTBO 未发现充电参数。相关配置可能位于基础 DTB、vendor_boot 或电源管理驱动中。",
-                Modifier.padding(Spacing.lg))
+        SectionCard(title = "Charging", icon = Icons.Default.BatteryChargingFull) {
+            HintText(if (state.capabilityScanInProgress) "正在扫描充电参数…"
+                else "当前 DTBO 未发现充电参数。相关配置可能位于基础 DTB、vendor_boot 或电源管理驱动中。")
         }
         return
     }
@@ -62,9 +65,8 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
     val thermalNode = remember(editableNodes) { editableNodes.firstOrNull(::hasThermalTable) }
     val drafts = rememberSaveableStateHolder()
 
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-            Text("Charging 参数编辑", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    SectionCard(title = "Charging 参数编辑", icon = Icons.Default.BatteryChargingFull) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
                 Text(
                     "${editableParameterCount} 个可编辑参数 · ${editableNodeCount} 个可编辑节点 · " +
@@ -97,10 +99,15 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                 }
             }
 
-            Text("选择充电节点", style = MaterialTheme.typography.labelLarge)
-            OutlinedCard(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)) {
-                Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text("DTB ${node.entryIndex} · ${node.nodePath.substringAfterLast('/').ifBlank { "/" }}", fontWeight = FontWeight.Medium)
+            SubTitle("选择充电节点")
+            OutlinedCard(
+                Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+            ) {
+                Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    Text("DTB ${node.entryIndex} · ${node.nodePath.substringAfterLast('/').ifBlank { "/" }}", style = MaterialTheme.typography.titleSmall)
                     Text(node.nodePath, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                     node.compatible?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -131,6 +138,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     OutlinedCard(
                         onClick = { selectedKey = candidate.key; selecting = false }, enabled = enabled,
                         modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
                         border = BorderStroke(1.dp, if (candidate.key == node.key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Row(Modifier.padding(Spacing.md), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -145,10 +153,10 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                 }
             }
             if (node.status != null && node.status !in listOf("okay", "ok")) {
-                Text("此节点 status 为 ${node.status}，修改参数不会自动启用节点。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                NoticeBanner("此节点 status 为 ${node.status}，修改参数不会自动启用节点。", tone = Tone.Warning)
             }
             if (node.editableCount == 0 && editableNodes.isNotEmpty()) {
-                Text("这是只读相关节点，没有经过验证的可编辑参数。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                NoticeBanner("这是只读相关节点，没有经过验证的可编辑参数。", tone = Tone.Neutral)
                 OutlinedButton(onClick = { selectedKey = editableNodes.first().key }, enabled = enabled) {
                     Text("返回可编辑节点")
                 }
@@ -162,8 +170,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                 it.module == FeatureModuleKind.CHARGING && it.entryIndex == node.entryIndex && node.nodePath in it.affectedNodePaths
             }
             if (staged.isNotEmpty()) {
-                Text("此节点已暂存 ${staged.size} 次修改。到“概览”集中打包，或撤销最近事务。",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                NoticeBanner("此节点已暂存 ${staged.size} 次修改。到“概览”集中打包，或撤销最近事务。", tone = Tone.Success)
             }
         }
     }
@@ -197,7 +204,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
     if (fields.isEmpty()) {
         Text("已发现相关节点，但没有可确认单位与格式的编辑参数。可在下方查看原始属性。", style = MaterialTheme.typography.bodyMedium)
     } else {
-        Text("充电参数", style = MaterialTheme.typography.labelLarge)
+        SubTitle("充电参数")
         Text("按参数标注的单位编辑，自动换算为设备树单位；只修改当前 DTB 的当前节点。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (tables.isNotEmpty()) {
@@ -209,7 +216,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
                 values = values.mapIndexed { position, previous -> updates[position] ?: previous }
             }
         }
-        if (tables.isNotEmpty() && groups.isNotEmpty()) Text("其他参数", style = MaterialTheme.typography.labelLarge)
+        if (tables.isNotEmpty() && groups.isNotEmpty()) SubTitle("其他参数")
         if (groups.size > 1) {
             Text("参数分组（可左右滑动）", style = MaterialTheme.typography.labelMedium)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -308,29 +315,27 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
     }
     if (fields.isNotEmpty()) {
         HorizontalDivider()
-        Text("修改预览", style = MaterialTheme.typography.labelLarge)
+        SubTitle("修改预览")
         when {
-            result.isFailure && dirty -> Text(result.exceptionOrNull()?.message ?: "参数无效", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            result.isFailure && dirty -> NoticeBanner(result.exceptionOrNull()?.message ?: "参数无效", tone = Tone.Danger)
             preview?.changes?.isNotEmpty() == true -> preview.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
             else -> Text("尚未修改参数", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f))) {
-            Row(Modifier.padding(Spacing.md), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                Icon(Icons.Default.Info, null, modifier = Modifier.size(20.dp))
-                Text(
-                    "请按电池和充电芯片规格设置电流、电压。参数合法不代表硬件支持；修改仅允许导出验证，暂存后到概览打包。",
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-        }
+        NoticeBanner(
+            "请按电池和充电芯片规格设置电流、电压。参数合法不代表硬件支持；修改仅允许导出验证，暂存后到概览打包。",
+            tone = Tone.Warning
+        )
         OutlinedButton(onClick = { values = original }, enabled = enabled && dirty, modifier = Modifier.fillMaxWidth()) {
             Text("重置未暂存输入")
         }
         Button(onClick = { onStage(node, inputs) }, enabled = enabled && preview?.values?.isNotEmpty() == true,
             modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Default.BatteryChargingFull, null)
-            Spacer(Modifier.width(8.dp))
-            Text("暂存充电修改")
+            IconLabel(Icons.Default.BatteryChargingFull, "暂存充电修改")
         }
     }
+}
+
+@Composable
+private fun SubTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleSmall)
 }

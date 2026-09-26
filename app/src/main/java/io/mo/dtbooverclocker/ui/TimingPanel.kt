@@ -27,7 +27,6 @@ import java.util.Locale
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -52,7 +51,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
+import io.mo.dtbooverclocker.ui.components.HintText
+import io.mo.dtbooverclocker.ui.components.IconLabel
+import io.mo.dtbooverclocker.ui.components.NoticeBanner
 import io.mo.dtbooverclocker.ui.components.OverclockPreviewCard
+import io.mo.dtbooverclocker.ui.components.SectionCard
+import io.mo.dtbooverclocker.ui.components.StatusPill
+import io.mo.dtbooverclocker.ui.components.Tone
+import io.mo.dtbooverclocker.ui.components.dangerButtonColors
+import androidx.compose.foundation.layout.height
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
 import io.mo.dtbooverclocker.ui.components.TimingGeometryChart
 import io.mo.dtbooverclocker.ui.components.TimingUtils
@@ -80,30 +87,12 @@ internal fun TimingPanel(
     val canDelete = candidatesInEntry > 1
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "参数微调与超频推演",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Text(
-                        "${workspace.candidates.size} 个候选",
-                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
+    SectionCard(
+        title = "参数微调与超频推演",
+        icon = Icons.Default.Tune,
+        trailing = { StatusPill("${workspace.candidates.size} 个候选", tone = Tone.Primary) }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
 
             // 1. 屏幕面板与候选档位选择器（智能分组、卡片式呈现、折叠底层路径）
             TimingCandidateSelector(
@@ -120,7 +109,7 @@ internal fun TimingPanel(
 
             // 2. 操作模式选择（编辑修改档位 vs 新增独立档位 vs 删除指定档位）
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text("操作模式", style = MaterialTheme.typography.labelLarge)
+                SubsectionTitle("操作模式")
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -148,39 +137,15 @@ internal fun TimingPanel(
                         )
                     }
                 }
-                Text(state.patchMode.description, style = MaterialTheme.typography.bodySmall)
+                HintText(state.patchMode.description)
             }
 
             HorizontalDivider()
 
             if (state.patchMode == PatchMode.DELETE_EXISTING) {
                 // 删除档位专属警告与详情卡片
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (canDelete)
-                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
-                        else
-                            MaterialTheme.colorScheme.errorContainer
-                    ),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "准备删除时序档位",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
+                SectionCard(title = "准备删除时序档位", icon = Icons.Default.Warning, tone = Tone.Danger) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(
                             "待删除节点：${TimingUtils.parseTimingNodeName(selected.nodePath)} (${selected.currentHz} Hz)",
                             style = MaterialTheme.typography.bodyMedium,
@@ -193,11 +158,9 @@ internal fun TimingPanel(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (!canDelete) {
-                            Text(
-                                "⚠ 严防黑屏限制：当前 DTB 镜像条目仅存此单一档位。屏幕面板必须保留至少 1 个时序档位以供显示驱动初始化，禁止删除！",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
+                            NoticeBanner(
+                                "严防黑屏限制：当前 DTB 镜像条目仅存此单一档位。屏幕面板必须保留至少 1 个时序档位以供显示驱动初始化，禁止删除！",
+                                tone = Tone.Danger
                             )
                         } else {
                             Text(
@@ -213,24 +176,14 @@ internal fun TimingPanel(
                 Button(
                     onClick = { showDeleteDialog = true },
                     enabled = canDelete && !state.busy,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    colors = dangerButtonColors(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("删除此档位 (暂存)")
+                    IconLabel(Icons.Default.Delete, "删除此档位 (暂存)")
                 }
             } else if (selected.hasVendorDynamicMode) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-                ) {
-                    Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("自动变频档位不支持直接超频", fontWeight = FontWeight.SemiBold)
-                        }
+                SectionCard(title = "自动变频档位不支持直接超频", icon = Icons.Default.Warning, tone = Tone.Danger) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(
                             "该档位包含自动变频或低功耗参数及专用屏幕命令。仅修改刷新率或复制为高刷档位，可能导致黑屏、刷新率切换异常或卡在开机画面。",
                             style = MaterialTheme.typography.bodySmall
@@ -252,11 +205,21 @@ internal fun TimingPanel(
 
                 // 4. 目标刷新率调节与快捷预设芯片
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(
-                        "目标刷新率：${state.targetHz} Hz",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        SubsectionTitle("目标刷新率", Modifier.weight(1f))
+                        Text(
+                            "${state.targetHz}",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            " Hz",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = Spacing.xs)
+                        )
+                    }
 
                     val presets = remember(selected.currentHz) {
                         val base = selected.currentHz
@@ -307,7 +270,7 @@ internal fun TimingPanel(
 
                 // 5. 计算策略选择
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text("计算策略", style = MaterialTheme.typography.labelLarge)
+                    SubsectionTitle("计算策略")
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -321,7 +284,7 @@ internal fun TimingPanel(
                             )
                         }
                     }
-                    Text(state.strategy.description, style = MaterialTheme.typography.bodySmall)
+                    HintText(state.strategy.description)
                 }
 
                 // 5.1 自定义时序参数配置卡片
@@ -501,13 +464,11 @@ internal fun TimingPanel(
                 )
 
                 // 7. 执行修补 / 新增按钮
-                Button(onClick = onStageChange, modifier = Modifier.fillMaxWidth()) {
-                    Icon(
+                Button(onClick = onStageChange, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                    IconLabel(
                         if (state.patchMode == PatchMode.APPEND_NEW) Icons.Default.Add else Icons.Default.Build,
-                        contentDescription = null
+                        if (state.patchMode == PatchMode.APPEND_NEW) "追加为此面板新档位 (暂存)" else "应用修改到当前时序 (暂存)"
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (state.patchMode == PatchMode.APPEND_NEW) "追加为此面板新档位 (暂存)" else "应用修改到当前时序 (暂存)")
                 }
             }
         }
@@ -530,7 +491,7 @@ internal fun TimingPanel(
                         showDeleteDialog = false
                         onStageChange()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    colors = dangerButtonColors()
                 ) {
                     Text("确认删除 (暂存)")
                 }
@@ -542,4 +503,9 @@ internal fun TimingPanel(
             }
         )
     }
+}
+
+@Composable
+private fun SubsectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(text, modifier = modifier, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
 }
