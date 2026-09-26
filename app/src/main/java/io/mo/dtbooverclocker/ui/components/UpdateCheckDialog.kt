@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.ui.components
 
 import android.content.ActivityNotFoundException
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -63,13 +64,13 @@ fun UpdateCheckDialog(onDismiss: () -> Unit) {
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
                 Text("当前版本：${BuildConfig.VERSION_NAME}")
                 when (state) {
                     null -> Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                         Text("正在查询 GitHub Release…")

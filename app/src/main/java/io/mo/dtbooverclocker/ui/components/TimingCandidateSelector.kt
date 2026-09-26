@@ -1,6 +1,8 @@
 package io.mo.dtbooverclocker.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import io.mo.dtbooverclocker.ui.theme.Spacing
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
@@ -60,7 +61,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
 import io.mo.dtbooverclocker.core.ActivePanelDetector
 import io.mo.dtbooverclocker.model.TimingCandidate
 
@@ -202,25 +202,25 @@ fun TimingCandidateSelector(
 
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         // 推荐在用屏幕提示条
         if (activePanelDisplayName != null) {
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = MaterialTheme.shapes.small,
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier.padding(Spacing.md),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
                     Icon(
                         Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = Color(0xFF2E7D32),
+                        tint = AppTheme.status.success,
                         modifier = Modifier.size(22.dp)
                     )
                     Column {
@@ -246,8 +246,8 @@ fun TimingCandidateSelector(
             // 过滤维度按唯一 panel identifier 统计，不再把多个 DTB entry 的重复实例重复计数。
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 if (activeCount > 0)
                 {
@@ -311,7 +311,7 @@ fun TimingCandidateSelector(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     filteredGroups.forEach { (key, groupCandidates) ->
                         val isGroupActive = key == activeGroupKey
@@ -331,7 +331,7 @@ fun TimingCandidateSelector(
                                             Icons.Default.CheckCircle,
                                             contentDescription = "本机在用",
                                             modifier = Modifier.size(15.dp),
-                                            tint = Color(0xFF2E7D32)
+                                            tint = AppTheme.status.success
                                         )
                                         Spacer(Modifier.width(4.dp))
                                     } else if (key.classification == PanelClassification.VENDOR) {
@@ -360,7 +360,7 @@ fun TimingCandidateSelector(
                     "未搜索到匹配的面板或时序",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    modifier = Modifier.padding(vertical = Spacing.xs)
                 )
             }
         } else {
@@ -369,13 +369,13 @@ fun TimingCandidateSelector(
             val sample = currentGroupCandidates.firstOrNull()
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(10.dp),
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.md),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
                     Icon(
                         Icons.Default.PhoneAndroid,
@@ -390,7 +390,7 @@ fun TimingCandidateSelector(
                             fontWeight = FontWeight.Bold
                         )
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
@@ -423,13 +423,13 @@ fun TimingCandidateSelector(
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.errorContainer,
-                shape = RoundedCornerShape(10.dp),
+                shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.md),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
                     Icon(
                         Icons.Default.Warning,
@@ -455,8 +455,8 @@ fun TimingCandidateSelector(
                 fontWeight = FontWeight.Medium
             )
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 entryIndices.forEach { entryIndex ->
                     val count = allGroupCandidates.count { it.entryIndex == entryIndex }
@@ -489,7 +489,7 @@ fun TimingCandidateSelector(
         if (currentGroupCandidates.isEmpty()) {
             Text("没有符合筛选条件的时序档位", style = MaterialTheme.typography.bodySmall)
         }
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             currentGroupCandidates.forEach { candidate ->
                 val isSelected = candidate.id == (activeCandidate?.id ?: selectedCandidateId)
                 TimingCandidateCard(
@@ -507,9 +507,9 @@ fun TimingCandidateSelector(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                 ),
-                shape = RoundedCornerShape(10.dp)
+                shape = MaterialTheme.shapes.small
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(Spacing.md)) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -544,8 +544,8 @@ fun TimingCandidateSelector(
                         exit = fadeOut() + shrinkVertically()
                     ) {
                         Column(
-                            modifier = Modifier.padding(top = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.padding(top = Spacing.md),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             Text(
                                 "节点路径：",
@@ -554,13 +554,13 @@ fun TimingCandidateSelector(
                             )
                             Surface(
                                 color = MaterialTheme.colorScheme.surface,
-                                shape = RoundedCornerShape(6.dp),
+                                shape = MaterialTheme.shapes.extraSmall,
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(8.dp),
+                                        .padding(Spacing.sm),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
@@ -622,7 +622,7 @@ private fun TimingCandidateCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.outlinedCardColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
@@ -638,7 +638,7 @@ private fun TimingCandidateCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = Spacing.lg, vertical = Spacing.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // 选中指示
@@ -654,8 +654,8 @@ private fun TimingCandidateCard(
             // 主标题：刷新率
             Column(modifier = Modifier.weight(1f)) {
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs)
                 ) {
                     Text(
                         "${candidate.currentHz} Hz",
@@ -666,26 +666,26 @@ private fun TimingCandidateCard(
 
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(4.dp)
+                        shape = MaterialTheme.shapes.extraSmall
                     ) {
                         Text(
                             "DTB[${candidate.entryIndex}] · $nodeName",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            modifier = Modifier.padding(horizontal = Spacing.xs, vertical = 1.dp)
                         )
                     }
 
                     if (candidate.hasVendorDynamicMode) {
                         Surface(
                             color = MaterialTheme.colorScheme.errorContainer,
-                            shape = RoundedCornerShape(4.dp)
+                            shape = MaterialTheme.shapes.extraSmall
                         ) {
                             Text(
                                 "自动变频 / idle",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = Spacing.xs, vertical = Spacing.xxs)
                             )
                         }
                     }
@@ -693,13 +693,13 @@ private fun TimingCandidateCard(
                     if (candidate.hasOpaquePanelTimings) {
                         Surface(
                             color = MaterialTheme.colorScheme.tertiaryContainer,
-                            shape = RoundedCornerShape(4.dp)
+                            shape = MaterialTheme.shapes.extraSmall
                         ) {
                             Text(
                                 "PHY Blob",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = Spacing.xs, vertical = 1.dp)
                             )
                         }
                     }
@@ -710,7 +710,7 @@ private fun TimingCandidateCard(
                         "不建议修改或作为新增模板，请选择同面板的 normal 普通档位。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = Spacing.xs)
                     )
                 }
 
@@ -718,8 +718,8 @@ private fun TimingCandidateCard(
 
                 // 副信息：时钟与分辨率
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
                 ) {
                     Text(
                         "Clock: $clockStr",

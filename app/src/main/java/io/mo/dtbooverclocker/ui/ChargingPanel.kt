@@ -1,10 +1,11 @@
 package io.mo.dtbooverclocker.ui
 
 import androidx.compose.foundation.BorderStroke
+import io.mo.dtbooverclocker.ui.theme.Spacing
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
@@ -40,7 +41,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
         Card(Modifier.fillMaxWidth()) {
             Text(if (state.capabilityScanInProgress) "正在扫描充电参数…"
                 else "当前 DTBO 未发现充电参数。相关配置可能位于基础 DTB、vendor_boot 或电源管理驱动中。",
-                Modifier.padding(16.dp))
+                Modifier.padding(Spacing.lg))
         }
         return
     }
@@ -62,13 +63,13 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
     val drafts = rememberSaveableStateHolder()
 
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
             Text("Charging 参数编辑", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp)) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
                 Text(
                     "${editableParameterCount} 个可编辑参数 · ${editableNodeCount} 个可编辑节点 · " +
                         "${uniquePathCount} 个唯一路径 / ${nodes.size} 个 DTB 实例",
-                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
                     style = MaterialTheme.typography.labelSmall
                 )
             }
@@ -98,7 +99,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
 
             Text("选择充电节点", style = MaterialTheme.typography.labelLarge)
             OutlinedCard(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text("DTB ${node.entryIndex} · ${node.nodePath.substringAfterLast('/').ifBlank { "/" }}", fontWeight = FontWeight.Medium)
                     Text(node.nodePath, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                     node.compatible?.let {
@@ -132,7 +133,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                         modifier = Modifier.fillMaxWidth(),
                         border = BorderStroke(1.dp, if (candidate.key == node.key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
                     ) {
-                        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.padding(Spacing.md), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                             if (candidate.key == node.key) Icon(Icons.Default.CheckCircle, "当前节点", tint = MaterialTheme.colorScheme.primary)
                             Column(Modifier.weight(1f)) {
                                 Text("DTB ${candidate.entryIndex} · ${candidate.editableCount} 个可编辑参数" +
@@ -211,7 +212,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
         if (tables.isNotEmpty() && groups.isNotEmpty()) Text("其他参数", style = MaterialTheme.typography.labelLarge)
         if (groups.size > 1) {
             Text("参数分组（可左右滑动）", style = MaterialTheme.typography.labelMedium)
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 groups.forEach { group ->
                     val changedCount = plainIndices.count { fields[it].group == group && values[it] != original[it] }
                     FilterChip(selected = selectedGroup == group, onClick = { selectedGroup = group; page = 0 },
@@ -236,10 +237,10 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
             if (parameter.boolean) {
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                         Text(parameter.label, style = MaterialTheme.typography.bodyMedium)
                         Text(parameter.name, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
                         Text(
@@ -314,7 +315,7 @@ private fun ChargingEditor(node: ChargingNode, enabled: Boolean, onStage: (Charg
             else -> Text("尚未修改参数", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f))) {
-            Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.padding(Spacing.md), horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Icon(Icons.Default.Info, null, modifier = Modifier.size(20.dp))
                 Text(
                     "请按电池和充电芯片规格设置电流、电压。参数合法不代表硬件支持；修改仅允许导出验证，暂存后到概览打包。",

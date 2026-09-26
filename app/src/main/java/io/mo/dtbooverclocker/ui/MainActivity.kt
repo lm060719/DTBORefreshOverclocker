@@ -1,12 +1,12 @@
 package io.mo.dtbooverclocker.ui
 
 import android.app.Activity
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.PixelCopy
@@ -18,7 +18,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +37,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -62,7 +60,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.ui.graphics.Color
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import java.util.Locale
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -87,10 +85,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -354,7 +348,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
         ) {
             Card {
                 Row(
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.padding(Spacing.xl),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CircularProgressIndicator(
@@ -397,11 +391,11 @@ internal fun SourceCard(
     onExtract: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text("镜像来源", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 Button(
                     onClick = onImport,
@@ -466,7 +460,7 @@ internal fun ImageSummaryCard(state: MainUiState) {
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -475,11 +469,11 @@ internal fun ImageSummaryCard(state: MainUiState) {
                 Text("镜像解析结果", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(6.dp)
+                    shape = MaterialTheme.shapes.extraSmall
                 ) {
                     Text(
                         "DTBO v${workspace.metadata.version}",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace
                     )
@@ -487,8 +481,8 @@ internal fun ImageSummaryCard(state: MainUiState) {
             }
 
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 AssistChip(
                     onClick = {},
@@ -546,7 +540,7 @@ internal fun ImageSummaryCard(state: MainUiState) {
                             Icon(
                                 Icons.Default.CheckCircle,
                                 contentDescription = null,
-                                tint = Color(0xFF2E7D32),
+                                tint = AppTheme.status.success,
                                 modifier = Modifier.size(14.dp)
                             )
                         }
@@ -603,7 +597,7 @@ internal fun TimingPanel(
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.lg)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -616,11 +610,11 @@ internal fun TimingPanel(
                 )
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(12.dp)
+                    shape = MaterialTheme.shapes.medium
                 ) {
                     Text(
                         "${workspace.candidates.size} 个候选",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -641,12 +635,12 @@ internal fun TimingPanel(
             HorizontalDivider()
 
             // 2. 操作模式选择（编辑修改档位 vs 新增独立档位 vs 删除指定档位）
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text("操作模式", style = MaterialTheme.typography.labelLarge)
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     PatchMode.entries.forEach { mode ->
                         FilterChip(
@@ -685,9 +679,9 @@ internal fun TimingPanel(
                         else
                             MaterialTheme.colorScheme.errorContainer
                     ),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = MaterialTheme.shapes.medium
                 ) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Default.Warning,
@@ -747,7 +741,7 @@ internal fun TimingPanel(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
                 ) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Warning, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
@@ -773,7 +767,7 @@ internal fun TimingPanel(
                 HorizontalDivider()
 
                 // 4. 目标刷新率调节与快捷预设芯片
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
                         "目标刷新率：${state.targetHz} Hz",
                         style = MaterialTheme.typography.titleSmall,
@@ -793,8 +787,8 @@ internal fun TimingPanel(
 
                     if (presets.isNotEmpty()) {
                         FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             Text(
                                 "快捷预设:",
@@ -828,12 +822,12 @@ internal fun TimingPanel(
                 HorizontalDivider()
 
                 // 5. 计算策略选择
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text("计算策略", style = MaterialTheme.typography.labelLarge)
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                     ) {
                         PatchStrategy.entries.forEach { strategy ->
                             FilterChip(
@@ -853,9 +847,9 @@ internal fun TimingPanel(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         ),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = MaterialTheme.shapes.small
                     ) {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -902,7 +896,7 @@ internal fun TimingPanel(
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                             ) {
                                 OutlinedTextField(
                                     value = state.customVfpText,
@@ -946,8 +940,8 @@ internal fun TimingPanel(
 
                             AnimatedVisibility(visible = showHorizontalCustom) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    modifier = Modifier.fillMaxWidth().padding(top = Spacing.xs),
+                                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                                 ) {
                                     OutlinedTextField(
                                         value = state.customHfpText,
@@ -986,13 +980,13 @@ internal fun TimingPanel(
                                 val theoreticalHz = clk.toDouble() / (hTotal.toDouble() * vTotal.toDouble())
                                 Surface(
                                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = MaterialTheme.shapes.small,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                                     ) {
                                         Icon(
                                             Icons.Default.Calculate,
@@ -1041,7 +1035,7 @@ internal fun TimingPanel(
             icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("确认删除该时序档位？") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text("将从工作区设备树中移除 ${TimingUtils.parseTimingNodeName(selected.nodePath)} (${selected.currentHz} Hz) 节点。")
                     Text("删除后将记入待打包修改清单，全部调整完成后可统一打包生成 DTBO 镜像。")
                 }
@@ -1080,9 +1074,9 @@ internal fun StagedChangesCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = MaterialTheme.shapes.medium
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1121,16 +1115,16 @@ internal fun StagedChangesCard(
 
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
             ) {
                 stagedChanges.forEachIndexed { index, change ->
                     Surface(
                         color = MaterialTheme.colorScheme.surface,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = MaterialTheme.shapes.small,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
@@ -1139,11 +1133,11 @@ internal fun StagedChangesCard(
                                     PatchMode.DELETE_EXISTING -> MaterialTheme.colorScheme.errorContainer
                                     PatchMode.OVERWRITE_EXISTING -> MaterialTheme.colorScheme.primaryContainer
                                 },
-                                shape = RoundedCornerShape(6.dp)
+                                shape = MaterialTheme.shapes.extraSmall
                             ) {
                                 Text(
                                     "${index + 1}",
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -1217,7 +1211,7 @@ internal fun OutputCard(
 ) {
     val report = state.patchReport ?: return
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text("输出", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             val modeTitle = if (state.transactions.size == 1) {
                 val transaction = state.transactions.single()
@@ -1292,7 +1286,7 @@ internal fun RescueMemoCard(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Warning, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
@@ -1306,7 +1300,7 @@ internal fun RescueMemoCard(
             flash.rollbackCommands.forEach { command ->
                 Card {
                     Row(
-                        Modifier.fillMaxWidth().padding(10.dp),
+                        Modifier.fillMaxWidth().padding(Spacing.md),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(command, Modifier.weight(1f), fontFamily = FontFamily.Monospace)
@@ -1317,7 +1311,7 @@ internal fun RescueMemoCard(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 OutlinedButton(onClick = onExportBackup, modifier = Modifier.weight(1f)) {
                     Text("导出备份")
                 }
@@ -1342,7 +1336,7 @@ internal fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("终端回显", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 TextButton(onClick = onClear) { Text("清空") }
@@ -1352,8 +1346,8 @@ internal fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(230.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
-                        .padding(10.dp),
+                        .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.small)
+                        .padding(Spacing.md),
                     state = listState
                 ) {
                     items(logs) { line ->
@@ -1395,7 +1389,7 @@ private fun DangerousFlashDialog(
         icon = { Icon(Icons.Default.Warning, contentDescription = null) },
         title = { Text("高危操作：写入物理 DTBO 分区") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Text("目标：$partition")
                 Text("本应用只写当前目标槽位。写入前会强制备份、SHA-256 校验并生成 Rescue Zip。")
                 if (viaModule) {
@@ -1425,19 +1419,6 @@ private fun DangerousFlashDialog(
             TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
-}
-
-@Composable
-private fun AppTheme(content: @Composable () -> Unit) {
-    val context = LocalContext.current
-    val dark = isSystemInDarkTheme()
-    val scheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && dark -> dynamicDarkColorScheme(context)
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> dynamicLightColorScheme(context)
-        dark -> darkColorScheme()
-        else -> lightColorScheme()
-    }
-    MaterialTheme(colorScheme = scheme, content = content)
 }
 
 private fun copyText(context: Context, label: String, text: String) {

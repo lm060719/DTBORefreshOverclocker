@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.ui.components
 
 import androidx.compose.foundation.background
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Card
@@ -45,11 +45,11 @@ fun TimingGeometryChart(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = MaterialTheme.shapes.medium
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -67,11 +67,11 @@ fun TimingGeometryChart(
                     } else {
                         MaterialTheme.colorScheme.errorContainer
                     },
-                    shape = RoundedCornerShape(6.dp)
+                    shape = MaterialTheme.shapes.extraSmall
                 ) {
                     Text(
                         text = if (candidate.hasFullGeometry) "完整几何" else "部分缺省",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (candidate.hasFullGeometry) {
                             MaterialTheme.colorScheme.onPrimaryContainer
@@ -85,7 +85,7 @@ fun TimingGeometryChart(
             if (!candidate.hasFullGeometry) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    modifier = Modifier.padding(vertical = Spacing.xs)
                 ) {
                     Icon(
                         Icons.Default.Info,
@@ -145,9 +145,9 @@ fun TimingGeometryChart(
                 FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(top = Spacing.xxs),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs)
                 ) {
                     LegendItem(color = MaterialTheme.colorScheme.primary, label = "Active 显像区")
                     LegendItem(color = MaterialTheme.colorScheme.secondary, label = "Front Porch 前肩")
@@ -170,7 +170,7 @@ private fun TimingAxisBar(
     unit: String,
     blankingPct: Double
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -200,7 +200,7 @@ private fun TimingAxisBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(18.dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(MaterialTheme.shapes.extraSmall)
             ) {
                 Box(
                     modifier = Modifier
@@ -266,7 +266,7 @@ private fun TimingAxisBar(
 private fun LegendItem(color: Color, label: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs)
     ) {
         Box(
             modifier = Modifier

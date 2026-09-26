@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.ui
 
 import android.widget.Toast
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
@@ -110,8 +110,8 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
         ) {
             item { Spacer(Modifier.height(4.dp)) }
 
@@ -125,12 +125,12 @@ fun SettingsScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.padding(Spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             Icon(
                                 Icons.Default.Security,
@@ -145,8 +145,8 @@ fun SettingsScreen(
                         }
 
                         FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             AssistChip(
                                 onClick = {},
@@ -172,7 +172,7 @@ fun SettingsScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             if (!state.rootState.granted) {
                                 OutlinedButton(
@@ -211,16 +211,16 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(Spacing.lg),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = MaterialTheme.shapes.small,
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 modifier = Modifier.size(40.dp)
                             ) {
@@ -234,7 +234,7 @@ fun SettingsScreen(
                                 }
                             }
 
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
                                 Text(
                                     "镜像备份与回滚管理",
                                     style = MaterialTheme.typography.titleMedium,
@@ -268,8 +268,8 @@ fun SettingsScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.padding(Spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -278,7 +278,7 @@ fun SettingsScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                             ) {
                                 Icon(
                                     Icons.Default.CleaningServices,
@@ -294,11 +294,11 @@ fun SettingsScreen(
 
                             Surface(
                                 color = MaterialTheme.colorScheme.secondaryContainer,
-                                shape = RoundedCornerShape(8.dp)
+                                shape = MaterialTheme.shapes.small
                             ) {
                                 Text(
                                     text = StorageUtils.formatFileSize(state.cacheSizeBytes),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
@@ -346,8 +346,8 @@ fun SettingsScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.padding(Spacing.lg),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -356,7 +356,7 @@ fun SettingsScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                             ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.Article,
@@ -372,11 +372,11 @@ fun SettingsScreen(
 
                             Surface(
                                 color = MaterialTheme.colorScheme.secondaryContainer,
-                                shape = RoundedCornerShape(8.dp)
+                                shape = MaterialTheme.shapes.small
                             ) {
                                 Text(
                                     text = "${state.logFilesCount} 个文件 · ${StorageUtils.formatFileSize(state.logFilesSizeBytes)}",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
@@ -387,7 +387,7 @@ fun SettingsScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                         ) {
                             Button(
                                 onClick = onExportLogs,
@@ -435,16 +435,16 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(Spacing.lg),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = MaterialTheme.shapes.small,
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 modifier = Modifier.size(40.dp)
                             ) {
@@ -458,7 +458,7 @@ fun SettingsScreen(
                                 }
                             }
 
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
                                 Text(
                                     "关于应用",
                                     style = MaterialTheme.typography.titleMedium,

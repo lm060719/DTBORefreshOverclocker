@@ -1,6 +1,8 @@
 package io.mo.dtbooverclocker.ui.components
 
 import androidx.compose.foundation.background
+import io.mo.dtbooverclocker.ui.theme.Spacing
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CheckCircle
@@ -29,7 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -52,18 +52,18 @@ fun OverclockPreviewCard(
 
     val (riskColor, riskBgColor, riskIcon) = when (sim.risk) {
         OverclockRisk.SAFE -> Triple(
-            Color(0xFF2E7D32),
-            Color(0xFFE8F5E9),
+            AppTheme.status.success,
+            AppTheme.status.successContainer,
             Icons.Default.CheckCircle
         )
         OverclockRisk.MODERATE -> Triple(
-            Color(0xFFED6C02),
-            Color(0xFFFFF3E0),
+            AppTheme.status.warning,
+            AppTheme.status.warningContainer,
             Icons.Default.Speed
         )
         OverclockRisk.EXTREME -> Triple(
-            Color(0xFFD32F2F),
-            Color(0xFFFFEBEE),
+            MaterialTheme.colorScheme.error,
+            MaterialTheme.colorScheme.errorContainer,
             Icons.Default.Warning
         )
     }
@@ -73,11 +73,11 @@ fun OverclockPreviewCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = MaterialTheme.shapes.medium
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -102,10 +102,10 @@ fun OverclockPreviewCard(
                 // 风险评级微标
                 Surface(
                     color = riskBgColor,
-                    shape = RoundedCornerShape(16.dp)
+                    shape = MaterialTheme.shapes.large
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -128,13 +128,13 @@ fun OverclockPreviewCard(
             if (mode == PatchMode.APPEND_NEW) {
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                     ) {
                         Icon(
                             Icons.Default.AddCircle,
@@ -244,10 +244,10 @@ fun OverclockPreviewCard(
             if (showRiskDescription || showCalculationNote) {
                 Surface(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(modifier = Modifier.padding(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
                         if (showRiskDescription) {
                             Text(
                                 sim.risk.description,

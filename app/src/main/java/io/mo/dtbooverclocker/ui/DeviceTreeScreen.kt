@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.ui
 
 import androidx.compose.foundation.clickable
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -266,13 +267,13 @@ fun DeviceTreeScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(contentPadding)
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .padding(horizontal = Spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         item { Spacer(Modifier.height(2.dp)) }
 
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
                 Text(
                     "设备树",
                     style = MaterialTheme.typography.headlineSmall,
@@ -291,7 +292,7 @@ fun DeviceTreeScreen(
                 Card(Modifier.fillMaxWidth()) {
                     Text(
                         "请先在“概览”加载一个 DTBO 工作区。",
-                        modifier = Modifier.padding(18.dp)
+                        modifier = Modifier.padding(Spacing.xl)
                     )
                 }
             }
@@ -299,7 +300,7 @@ fun DeviceTreeScreen(
         else
         {
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     items(workspace.metadata.entries.size, key = { it }) { index ->
                         val available = File(workspace.rootDir, "dts/entry_$index.dts").isFile
                         FilterChip(
@@ -328,7 +329,7 @@ fun DeviceTreeScreen(
             }
 
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     items(DeviceTreeSearchScope.entries, key = { it.name }) { scope ->
                         FilterChip(
                             selected = searchScope == scope,
@@ -348,7 +349,7 @@ fun DeviceTreeScreen(
                         color = MaterialTheme.colorScheme.error
                     )
                     document == null -> Text("该 Entry 无法反编译为可编辑 DTS。")
-                    else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    else -> Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         Text(
                             "Entry $entry · ${loaded.nodes.size} 个节点 · 当前显示 ${visibleRows.size} · " +
                                 "${referenceIndex?.references?.size ?: 0} 条引用",
@@ -387,7 +388,7 @@ fun DeviceTreeScreen(
                         {
                             Row(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                             ) {
                                 TextButton(
                                     onClick = {
@@ -734,7 +735,7 @@ private fun TreeNodeCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onOpen)
-                .padding(vertical = 7.dp, horizontal = 8.dp),
+                .padding(vertical = 7.dp, horizontal = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (node.children.isNotEmpty() && !searchMode)
@@ -756,7 +757,7 @@ private fun TreeNodeCard(
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -822,10 +823,10 @@ private fun NodeDetailSheet(
             .fillMaxWidth()
             .heightIn(max = 680.dp),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         item(key = "header") {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Text(
                     node.name,
                     style = MaterialTheme.typography.headlineSmall,
@@ -866,7 +867,7 @@ private fun NodeDetailSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     AssistChip(
                         onClick = onAddChild,
@@ -913,7 +914,7 @@ private fun NodeDetailSheet(
                         .clickable { onOpenChild(child) }
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(Spacing.md),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
@@ -986,7 +987,7 @@ private fun LazyListScope.referenceItems(
     }
 
     item(key = "references-header") {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             HorizontalDivider()
             Text(
                 "引用关系",
@@ -1090,12 +1091,12 @@ private fun ReferenceCard(
             )
     ) {
         Row(
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier.padding(Spacing.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xxs)
             ) {
                 Text(
                     if (incoming)
@@ -1182,7 +1183,7 @@ private fun NodeNameDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 Text(
                     node.path,
                     fontFamily = FontFamily.Monospace,
@@ -1247,8 +1248,8 @@ private fun PropertyCard(
 ) {
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(
-            Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+            Modifier.padding(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1306,7 +1307,7 @@ private fun PropertyCard(
                         "Boolean 无值，删除即关闭",
                         modifier = Modifier
                             .weight(1f)
-                            .padding(start = 8.dp),
+                            .padding(start = Spacing.sm),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1409,7 +1410,7 @@ private fun PropertyEditorDialog(
                 modifier = Modifier
                     .heightIn(max = 500.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
                 Text(
                     node.path,
@@ -1439,7 +1440,7 @@ private fun PropertyEditorDialog(
                     )
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                     ) {
                         addTypes.forEach { type ->
                             FilterChip(
@@ -1501,7 +1502,7 @@ private fun PropertyEditorDialog(
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                         FilterChip(
                             selected = numberBase == NumberBase.DECIMAL,
                             onClick = { numberBase = NumberBase.DECIMAL },
@@ -1524,7 +1525,7 @@ private fun PropertyEditorDialog(
                     ) {
                         Text(
                             "Boolean 属性只有“存在 / 不存在”，没有数值。新增后会生成：$name;",
-                            modifier = Modifier.padding(12.dp)
+                            modifier = Modifier.padding(Spacing.md)
                         )
                     }
                 }
@@ -1682,8 +1683,8 @@ private fun ChangeCard(
     val change = row.change
     Card(Modifier.fillMaxWidth()) {
         Column(
-            Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            Modifier.padding(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             Text(
                 DeviceTreeDiff.render(change),

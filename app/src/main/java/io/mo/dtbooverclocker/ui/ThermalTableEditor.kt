@@ -1,11 +1,12 @@
 package io.mo.dtbooverclocker.ui
 
 import androidx.compose.foundation.background
+import io.mo.dtbooverclocker.ui.theme.Spacing
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -72,7 +73,7 @@ internal fun ThermalTableEditor(
     }
 
     OutlinedCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxWidth().padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text("${table.title} · ${table.levels} 档 × ${table.columns.size} 通道（$unit）",
                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Text("第 1 档限流最宽松，档位越高温度越高、限流越严格。左右滑动查看全部通道。",
@@ -154,7 +155,7 @@ private fun BatchAdjust(
     if (!expanded) return
     if (table.columns.size > 1) {
         Text("选择通道", style = MaterialTheme.typography.labelMedium)
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             displayColumns.forEach { members ->
                 val on = members.all { it in selected }
                 FilterChip(
@@ -165,7 +166,7 @@ private fun BatchAdjust(
             }
         }
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         SmallNumberField(from, "从第几档", enabled, Modifier.weight(1f)) { from = it }
         SmallNumberField(to, "到第几档", enabled, Modifier.weight(1f)) { to = it }
         // Number keyboards on some IMEs lack a minus sign.
@@ -214,7 +215,7 @@ private val CELL_HEIGHT = 54.dp
 
 @Composable
 private fun HeaderCell(title: String, subtitle: String?) {
-    Column(Modifier.size(92.dp, 44.dp).padding(horizontal = 4.dp), verticalArrangement = Arrangement.Center,
+    Column(Modifier.size(92.dp, 44.dp).padding(horizontal = Spacing.xs), verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 1)
         subtitle?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1) }
@@ -232,12 +233,12 @@ private fun TableCell(
     onValueChange: (String) -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(6.dp)
+    val shape = MaterialTheme.shapes.extraSmall
     Box(
-        Modifier.size(92.dp, CELL_HEIGHT).padding(2.dp)
+        Modifier.size(92.dp, CELL_HEIGHT).padding(Spacing.xxs)
             .background(if (changed) colors.primaryContainer else colors.surface, shape)
             .border(if (invalid) 2.dp else 1.dp, if (invalid) colors.error else if (changed) colors.primary else colors.outlineVariant, shape)
-            .padding(horizontal = 4.dp),
+            .padding(horizontal = Spacing.xs),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

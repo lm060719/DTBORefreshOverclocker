@@ -1,6 +1,8 @@
 package io.mo.dtbooverclocker.ui
 
 import androidx.compose.foundation.clickable
+import io.mo.dtbooverclocker.ui.theme.Spacing
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
@@ -149,7 +151,7 @@ private fun OverviewTab(
     onFastbootBundle: () -> Unit, onModuleZip: () -> Unit, onFlash: () -> Unit, onFlashModule: () -> Unit, onExportBackup: (File) -> Unit,
     onExportRescue: (File) -> Unit, onScreenshot: () -> Unit, onCopy: (String) -> Unit, onClearLogs: () -> Unit
 ) {
-    LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         item(key = "top") { Spacer(Modifier.height(2.dp)) }
         item(key = "hero") { StudioHeroCard(state) }
         item(key = "source") { SourceCard(state, onImport, onExtract) }
@@ -162,7 +164,7 @@ private fun OverviewTab(
         state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onModuleZip, onFlash, onFlashModule) } }
         state.lastFlash?.let { flash -> item(key = "rescue") { RescueMemoCard(state, onCopy, { onExportBackup(flash.backupFile) }, { onExportRescue(flash.rescueZip) }, onScreenshot) } }
         item(key = "terminal") { TerminalCard(state.logs, onClearLogs) }
-        item(key = "status") { Text(state.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 24.dp)) }
+        item(key = "status") { Text(state.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = Spacing.xl)) }
     }
 }
 
@@ -176,7 +178,7 @@ private fun TransactionQueueCard(
 )
 {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(
                 "设备树事务 · ${state.transactions.size} 个 / ${state.transactions.sumOf { it.operationCount }} 个底层操作",
                 style = MaterialTheme.typography.titleMedium,
@@ -189,7 +191,7 @@ private fun TransactionQueueCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
                 OutlinedButton(onClick = onUndoLastTransaction, enabled = !state.busy) { Text("撤销最近事务") }
                 OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
@@ -206,7 +208,7 @@ private fun ModuleStagedChangesCard(
 )
 {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(
                 "功能模块修改 · ${state.moduleStagedChanges.size} 项",
                 style = MaterialTheme.typography.titleMedium,
@@ -219,7 +221,7 @@ private fun ModuleStagedChangesCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
                 OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
             }
@@ -234,7 +236,7 @@ private fun DeviceTreeStagedChangesCard(
     onReset: () -> Unit
 ) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text(
                 "通用设备树修改 · ${state.deviceTreeChanges.size} 项",
                 style = MaterialTheme.typography.titleMedium,
@@ -247,7 +249,7 @@ private fun DeviceTreeStagedChangesCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
                 OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
             }
@@ -259,10 +261,10 @@ private fun DeviceTreeStagedChangesCard(
 @Composable
 private fun StudioHeroCard(state: MainUiState) {
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             Text("Android Device Tree Toolkit", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text("导入、分析、编辑、验证并重新构建 DTBO。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 AssistChip({}, { Text(if (state.rootState.granted) "Root ✓" else "免 Root 可用") })
                 state.slotInfo?.let { AssistChip({}, { Text(it.label) }) }
                 AssistChip({}, { Text(if (state.workspace != null) "工作区已加载" else "等待镜像") })
@@ -283,7 +285,7 @@ private fun ModulesTab(
 ) {
     var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
     val workspace = state.workspace
-    LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         item { Spacer(Modifier.height(2.dp)) }
         item { Column { Text("功能模块", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("功能模块负责生成经过约束验证的设备树事务；能力扫描只负责发现，不会自动把检测结果变成写入。", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
         if (workspace != null) {
@@ -292,7 +294,7 @@ private fun ModulesTab(
         if (workspace == null) {
             item { WorkspaceRequiredCard() }
         } else {
-            item { FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { FlowRow(horizontalArrangement = Arrangement.spacedBy(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
                 val refreshFinding = state.capabilityReport?.finding(CapabilityKind.REFRESH_RATE)
                 ModuleCard("刷新率", capabilitySubtitle(state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE) { activeModule = if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE }
                 ModuleCard("Charging", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING) { activeModule = if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING }
@@ -323,8 +325,8 @@ private fun CapabilityScanCard(state: MainUiState)
         )
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -345,8 +347,8 @@ private fun CapabilityScanCard(state: MainUiState)
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.sm)
                 ) {
                     report.findings.forEach { finding ->
                         AssistChip(
@@ -391,24 +393,24 @@ private fun capabilitySubtitle(
 @Composable
 private fun ModuleCard(title: String, subtitle: String, icon: ImageVector, enabled: Boolean, active: Boolean = false, onClick: () -> Unit = {}) {
     Card(Modifier.width(164.dp).clickable(enabled = enabled, onClick = onClick), colors = CardDefaults.cardColors(containerColor = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (enabled) 0.55f else 0.28f))) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Icon(icon, null); Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) { Icon(icon, null); Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
 @Composable
 private fun WorkspaceRequiredCard() {
-    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Default.FolderOpen, null); Text("还没有工作区", fontWeight = FontWeight.SemiBold); Text("先到“概览”导入 dtbo.img，或在 Root 设备上提取当前 DTBO 分区。") } }
+    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.xl), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) { Icon(Icons.Default.FolderOpen, null); Text("还没有工作区", fontWeight = FontWeight.SemiBold); Text("先到“概览”导入 dtbo.img，或在 Root 设备上提取当前 DTBO 分区。") } }
 }
 
 @Composable
 private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, onRequestRoot: () -> Unit, onRefreshEnvironment: () -> Unit, onOpenRollback: () -> Unit, onOpenAdvancedSettings: () -> Unit, onOpenAbout: () -> Unit) {
-    LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         item { Spacer(Modifier.height(2.dp)) }
-        item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             Text("环境状态", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(if (state.rootState.granted) "Root 已授权" else state.rootState.detail)
             Text(state.slotInfo?.blockDevice ?: "分区路径检测中", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 if (!state.rootState.granted) OutlinedButton(onRequestRoot, enabled = state.rootState.suPresent) { Icon(Icons.Default.Lock, null); Spacer(Modifier.width(6.dp)); Text("请求 Root") }
                 OutlinedButton(onRefreshEnvironment) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(6.dp)); Text("重新探测") }
             }
@@ -421,7 +423,7 @@ private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, onRequest
 
 @Composable
 private fun SettingsEntry(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) { Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) { Row(Modifier.padding(Spacing.lg), verticalAlignment = Alignment.CenterVertically) {
         Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(44.dp)) { Box(contentAlignment = Alignment.Center) { Icon(icon, null) } }
         Spacer(Modifier.width(14.dp)); Column { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     } }

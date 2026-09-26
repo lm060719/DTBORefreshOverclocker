@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.ui
 
 import android.content.ClipData
+import io.mo.dtbooverclocker.ui.theme.Spacing
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -21,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -92,9 +92,9 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
         ) {
             Spacer(Modifier.height(8.dp))
 
@@ -109,7 +109,7 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
 
             Surface(
                 modifier = Modifier.size(96.dp),
-                shape = RoundedCornerShape(22.dp),
+                shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shadowElevation = 3.dp
             ) {
@@ -124,7 +124,7 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                             },
                             modifier = Modifier
                                 .size(76.dp)
-                                .clip(RoundedCornerShape(16.dp))
+                                .clip(MaterialTheme.shapes.large)
                         )
                     } else {
                         Icon(
@@ -140,7 +140,7 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
             // App Name & Version
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
             ) {
                 Text(
                     text = "DTBO Studio",
@@ -157,11 +157,11 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
 
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = RoundedCornerShape(8.dp)
+                    shape = MaterialTheme.shapes.small
                 ) {
                     Text(
                         text = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
                         style = MaterialTheme.typography.labelMedium,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -189,12 +189,12 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                     ) {
                         Icon(
                             Icons.Default.Code,
@@ -217,7 +217,7 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                     ) {
                         Button(
                             onClick = {
@@ -260,12 +260,12 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                     ) {
                         Icon(
                             Icons.Default.Security,
@@ -300,12 +300,12 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                     ) {
                         Icon(
                             Icons.Default.Warning,
@@ -341,7 +341,7 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                 text = "本应用为开源工具，仅供设备所有者与系统开发者进行屏幕显示测试与超频研究。使用物理刷写功能存在一定风险，请务必保管好预生成的备份救砖文件。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.sm)
             )
 
             Spacer(Modifier.height(16.dp))
