@@ -113,11 +113,12 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
-import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.TimingCandidate
+import io.mo.dtbooverclocker.model.AvbProtectionState
 import io.mo.dtbooverclocker.ui.components.DisclaimerDialog
 import io.mo.dtbooverclocker.ui.components.OverclockPreviewCard
+import io.mo.dtbooverclocker.ui.components.PanelClassification
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
 import io.mo.dtbooverclocker.ui.components.TimingGeometryChart
 import io.mo.dtbooverclocker.ui.components.TimingUtils
@@ -156,6 +157,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     var pendingBinary by remember { mutableStateOf<File?>(null) }
     var pendingZip by remember { mutableStateOf<File?>(null) }
     var showFlashDialog by remember { mutableStateOf(false) }
+    var flashViaModule by remember { mutableStateOf(false) }
 
     val openImage = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -284,6 +286,16 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 onCustomHbp = viewModel::setCustomHbp,
                 onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
                 onStageChange = viewModel::stageTimingChange,
+                onStageCharging = viewModel::stageChargingChange,
+                onSetDeviceTreeProperty = viewModel::setDeviceTreeProperty,
+                onAddDeviceTreeProperty = viewModel::addDeviceTreeProperty,
+                onDeleteDeviceTreeProperty = viewModel::deleteDeviceTreeProperty,
+                onAddDeviceTreeNode = viewModel::addDeviceTreeNode,
+                onCloneDeviceTreeNode = viewModel::cloneDeviceTreeNode,
+                onRenameDeviceTreeNode = viewModel::renameDeviceTreeNode,
+                onDeleteDeviceTreeNode = viewModel::deleteDeviceTreeNode,
+                onUndoThroughTransaction = viewModel::undoThroughTransaction,
+                onUndoLastTransaction = viewModel::undoLastTransaction,
                 onPackage = viewModel::packageStagedChanges,
                 onReset = viewModel::resetStagedChanges,
                 onSavePatched = { file ->
@@ -302,7 +314,20 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                         saveZip.launch(file.name)
                     }
                 },
-                onFlash = { showFlashDialog = true },
+                onModuleZip = {
+                    viewModel.prepareModuleZip { file ->
+                        pendingZip = file
+                        saveZip.launch(file.name)
+                    }
+                },
+                onFlash = {
+                    flashViaModule = false
+                    showFlashDialog = true
+                },
+                onFlashModule = {
+                    flashViaModule = true
+                    showFlashDialog = true
+                },
                 onExportBackup = { file ->
                     pendingBinary = file
                     saveBinary.launch(file.name)
@@ -355,10 +380,11 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
         DangerousFlashDialog(
             targetHz = state.targetHz,
             partition = state.slotInfo?.blockDevice.orEmpty(),
+            viaModule = flashViaModule,
             onDismiss = { showFlashDialog = false },
             onConfirm = {
                 showFlashDialog = false
-                viewModel.flashPatched()
+                viewModel.flashPatched(viaModule = flashViaModule)
             }
         )
     }
@@ -419,8 +445,25 @@ internal fun ImageSummaryCard(state: MainUiState) {
     val groups = remember(workspace.candidates) {
         TimingUtils.groupCandidates(workspace.candidates)
     }
-    val devCount = remember(groups) { groups.keys.count { it.isDeviceSpecific } }
+    val vendorCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.VENDOR }
+    }
+    val referenceCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.QCOM_REFERENCE }
+    }
+    val simulationCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.SIMULATION }
+    }
+    val unknownCount = remember(groups) {
+        groups.keys.count { it.classification == PanelClassification.UNKNOWN }
+    }
     val panelCount = groups.size
+    val panelInstanceCount = remember(workspace.candidates) {
+        workspace.candidates
+            .map { it.entryIndex to TimingUtils.parsePanelIdentifier(it.nodePath) }
+            .distinct()
+            .size
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -453,14 +496,48 @@ internal fun ImageSummaryCard(state: MainUiState) {
                 )
                 AssistChip(
                     onClick = {},
-                    label = {
-                        Text(if (devCount > 0) "屏幕面板: $panelCount (机型专属: $devCount)" else "屏幕面板: $panelCount")
-                    }
+                    label = { Text("唯一面板: $panelCount") }
                 )
+                AssistChip(
+                    onClick = {},
+                    label = { Text("面板 DTB 实例: $panelInstanceCount") }
+                )
+                if (vendorCount > 0) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("厂商面板: $vendorCount") }
+                    )
+                }
                 AssistChip(
                     onClick = {},
                     label = { Text("时序候选: ${workspace.candidates.size}") }
                 )
+                workspace.sourceImage?.let { source ->
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            val avbLabel = when (source.avbProtectionState) {
+                                AvbProtectionState.NONE -> "AVB: 无"
+                                AvbProtectionState.UNSIGNED -> "AVB: 未签名"
+                                AvbProtectionState.SIGNED -> {
+                                    "AVB: 已签名${source.avbAlgorithm?.let { " $it" }.orEmpty()}"
+                                }
+                            }
+                            Text(avbLabel)
+                        },
+                        leadingIcon = if (source.avbProtectionState == AvbProtectionState.SIGNED) {
+                            {
+                                Icon(
+                                    Icons.Default.Lock,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        } else {
+                            null
+                        }
+                    )
+                }
                 if (state.activePanelDisplayName != null) {
                     AssistChip(
                         onClick = {},
@@ -477,11 +554,18 @@ internal fun ImageSummaryCard(state: MainUiState) {
                 }
             }
 
-            if (devCount > 0) {
+            Text(
+                "面板统计按唯一 panel identifier 去重；同一面板出现在多个 DTB entry 时只算 1 个唯一面板。" +
+                    " 当前分类：厂商 $vendorCount / 高通参考 $referenceCount / 仿真 $simulationCount / 未分类 $unknownCount。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            if (state.activePanelDisplayName != null) {
                 Text(
-                    "检测到 $devCount 个机型专属面板（如 O1-38 / O1-42），其余 ${panelCount - devCount} 个为高通公版/仿真测试屏节点，已优先为您展示机型屏幕。",
+                    "已通过设备运行信息优先标记当前在用面板；“厂商面板”只做正向识别，未知标识不会再自动算作机型专属。",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -550,7 +634,8 @@ internal fun TimingPanel(
                 onSelect = onSelect,
                 activePanelIdentifier = state.activePanelIdentifier,
                 activePanelDisplayName = state.activePanelDisplayName,
-                activePanelSource = state.activePanelSource
+                activePanelSource = state.activePanelSource,
+                activeDtboEntries = state.activeDtboEntries
             )
 
             HorizontalDivider()
@@ -1126,18 +1211,19 @@ internal fun OutputCard(
     onSavePatched: () -> Unit,
     onRecoveryZip: () -> Unit,
     onFastbootBundle: () -> Unit,
-    onFlash: () -> Unit
+    onModuleZip: () -> Unit,
+    onFlash: () -> Unit,
+    onFlashModule: () -> Unit
 ) {
     val report = state.patchReport ?: return
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("输出", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            val modeTitle = if (report.stagedChanges.size > 1) {
-                "集中打包完成：共包含 ${report.stagedChanges.size} 项时序修改"
-            } else when (report.mode) {
-                PatchMode.APPEND_NEW -> "新增独立档位：${report.targetHz} Hz (基于原 ${report.originalHz} Hz 模板) · ${report.strategy.displayName}"
-                PatchMode.DELETE_EXISTING -> "删除指定档位：已彻底移除 ${report.originalHz} Hz 时序档位"
-                PatchMode.OVERWRITE_EXISTING -> "${report.originalHz} Hz → ${report.targetHz} Hz · ${report.strategy.displayName}"
+            val modeTitle = if (state.transactions.size == 1) {
+                val transaction = state.transactions.single()
+                "${transaction.kind.displayName}事务完成 · ${transaction.operationCount} 个底层操作 · ${transaction.risk.displayName}"
+            } else {
+                "事务打包完成：${state.transactions.size} 个事务 / ${state.transactions.sumOf { it.operationCount }} 个底层操作"
             }
             Text(modeTitle, fontWeight = FontWeight.Medium)
             report.changes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
@@ -1156,11 +1242,11 @@ internal fun OutputCard(
             OutlinedButton(onClick = onFastbootBundle, modifier = Modifier.fillMaxWidth()) {
                 Text("导出 PC Fastboot 一键包")
             }
+            OutlinedButton(onClick = onModuleZip, modifier = Modifier.fillMaxWidth()) {
+                Text("导出 KernelSU / Magisk 模块")
+            }
 
-            val canFlash = state.rootState.granted &&
-                state.sourceMode == SourceMode.ROOT_PARTITION &&
-                report.stagedChanges.none { it.strategy == PatchStrategy.FRAMERATE_ONLY } &&
-                report.strategy != PatchStrategy.FRAMERATE_ONLY
+            val canFlash = state.rootState.granted && state.transactions.isNotEmpty()
             Button(
                 onClick = onFlash,
                 enabled = canFlash,
@@ -1170,9 +1256,22 @@ internal fun OutputCard(
                 Spacer(Modifier.width(8.dp))
                 Text("直接刷写当前槽位")
             }
+            Button(
+                onClick = onFlashModule,
+                enabled = canFlash,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.FlashOn, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("制作成模块并刷入")
+            }
+            Text(
+                "模块方式通过 KernelSU / Magisk / APatch 安装，安装时写入当前槽位；在管理器中移除模块并重启即可自动恢复原 DTBO。",
+                style = MaterialTheme.typography.labelSmall
+            )
             if (!canFlash) {
                 Text(
-                    "直接刷写要求：Root 已授权、镜像来自当前手机分区、且不是“仅 Framerate”策略。",
+                    "直接刷写需要 Root 授权。",
                     style = MaterialTheme.typography.labelSmall
                 )
             }
@@ -1274,6 +1373,7 @@ internal fun TerminalCard(logs: List<String>, onClear: () -> Unit) {
 private fun DangerousFlashDialog(
     targetHz: Int,
     partition: String,
+    viaModule: Boolean,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -1298,6 +1398,9 @@ private fun DangerousFlashDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("目标：$partition")
                 Text("本应用只写当前目标槽位。写入前会强制备份、SHA-256 校验并生成 Rescue Zip。")
+                if (viaModule) {
+                    Text("将打包为模块并交给 KernelSU / Magisk / APatch 安装，由模块完成写入；移除模块并重启会自动写回原 DTBO。")
+                }
                 Text("请输入目标刷新率 $targetHz，或输入大写 FLASH：")
                 OutlinedTextField(
                     value = confirmation,
@@ -1315,7 +1418,7 @@ private fun DangerousFlashDialog(
         },
         confirmButton = {
             Button(onClick = onConfirm, enabled = enabled) {
-                Text("确认单槽位刷写")
+                Text(if (viaModule) "确认以模块刷入" else "确认单槽位刷写")
             }
         },
         dismissButton = {

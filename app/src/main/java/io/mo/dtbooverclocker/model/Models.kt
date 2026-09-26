@@ -7,6 +7,12 @@ enum class SourceMode {
     LOCAL_IMAGE
 }
 
+enum class AvbProtectionState {
+    NONE,
+    UNSIGNED,
+    SIGNED
+}
+
 enum class PatchStrategy(val displayName: String, val description: String) {
     BALANCED_BLANKING_TIME(
         "平衡时序",
@@ -171,7 +177,9 @@ data class DtboSourceImage(
     val containerSize: Int,
     val dtboTotalSize: Int,
     val logicalImageSize: Int?,
-    val footerOffset: Int?
+    val footerOffset: Int?,
+    val avbProtectionState: AvbProtectionState = AvbProtectionState.NONE,
+    val avbAlgorithm: String? = null
 )
 
 data class DtboWorkspace(

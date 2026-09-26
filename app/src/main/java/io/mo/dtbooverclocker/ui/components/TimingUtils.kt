@@ -11,15 +11,28 @@ import kotlin.math.roundToLong
 /**
  * 屏幕面板分组键，用于将分散在各个 DTB / 片段中的时序候选归类到具体的屏幕面板。
  */
+enum class PanelClassification
+{
+    VENDOR,
+    QCOM_REFERENCE,
+    SIMULATION,
+    UNKNOWN
+}
+
 data class PanelGroupKey(
-    val entryIndex: Int,
     val panelIdentifier: String,
     val panelDisplayName: String,
-    val isDeviceSpecific: Boolean = false,
-    val isSimulation: Boolean = false
-) {
+    val classification: PanelClassification
+)
+{
+    val isDeviceSpecific: Boolean
+        get() = classification == PanelClassification.VENDOR
+
+    val isSimulation: Boolean
+        get() = classification == PanelClassification.SIMULATION
+
     val title: String
-        get() = "$panelDisplayName · DTB[$entryIndex]"
+        get() = panelDisplayName
 }
 
 /**
@@ -151,17 +164,64 @@ object TimingUtils {
             .removePrefix("qcom,mdss_dsi_")
             .removePrefix("qcom,")
             .removePrefix("mdss_dsi_")
-        return clean.startsWith("nt37801") ||
-            clean.startsWith("sharp") ||
-            clean.startsWith("vtdr6130")
+        return listOf(
+            "nt37801", "nt37802", "nt35597", "nt35695b", "sharp", "vtdr6130",
+            "r66451", "visionox_r66451", "rdp370f", "dual_rdp370f", "ss_video_psr"
+        ).any(clean::startsWith)
     }
 
     /**
-     * 判断是否为手机机型专属定制面板（非仿真测试、非高通公版样例，如 o1_38 / o1_42）
+     * 厂商面板只做正向识别，未知标识保持 UNKNOWN。
+     * 旧实现使用“不是仿真且不是少数高通参考屏 = 机型专属”，会把大量未知面板误报为机型专属。
      */
-    fun isDeviceSpecific(identifier: String): Boolean {
-        return !isSimulation(identifier) && !isQcomReference(identifier)
+    fun isVendorPanel(identifier: String): Boolean
+    {
+        val clean = identifier.lowercase(Locale.ROOT)
+            .removePrefix("qcom,mdss_dsi_")
+            .removePrefix("qcom,mdss-dsi-")
+            .removePrefix("qcom,")
+            .removePrefix("mdss_dsi_")
+            .removePrefix("dsi_")
+
+        // OPlus names production panels by code, e.g. panel_AD296_P_3_A0020_dsc_cmd.
+        return Regex("""^o\d+_\d{2,}(?:_|$)|^panel_[a-z]{2}\d{3}_""").containsMatchIn(clean) ||
+            listOf(
+                "oplus_",
+                "oneplus_",
+                "oppo_",
+                "realme_",
+                "xiaomi_",
+                "redmi_",
+                "poco_",
+                "mi_",
+                "samsung_",
+                "boe_",
+                "tianma_",
+                "visionox_",
+                "csot_",
+                "meizu_"
+            ).any(clean::startsWith)
     }
+
+    fun classifyPanel(identifier: String): PanelClassification
+    {
+        return when
+        {
+            isSimulation(identifier) -> PanelClassification.SIMULATION
+            isQcomReference(identifier) -> PanelClassification.QCOM_REFERENCE
+            isVendorPanel(identifier) -> PanelClassification.VENDOR
+            else -> PanelClassification.UNKNOWN
+        }
+    }
+
+    const val NON_PRODUCTION_PANEL_WARNING = "非量产屏节点，改后不生效"
+
+    /** Qualcomm reference and simulation panels are never driven on a retail device. */
+    fun isNonProductionPanel(identifier: String): Boolean =
+        classifyPanel(identifier).let { it == PanelClassification.QCOM_REFERENCE || it == PanelClassification.SIMULATION }
+
+    /** 兼容旧调用；语义现为“明确识别到的厂商面板”，不再把未知面板算作机型专属。 */
+    fun isDeviceSpecific(identifier: String): Boolean = isVendorPanel(identifier)
 
     /**
      * 提取时序节点名称（如 "timing@0" 或 "timing@1"）
@@ -187,33 +247,38 @@ object TimingUtils {
      * 紧凑型时钟格式（用于卡片徽标，如 "1,199.9 MHz"）
      */
     fun formatClockCompact(clockHz: Long?): String {
-        if (clockHz == null || clockHz <= 0) return "未定义时钟"
+        // Without panel-clockrate the Qualcomm DSI driver derives the link clock from the timing.
+        if (clockHz == null || clockHz <= 0) return "驱动自动推导"
         val mhz = clockHz / 1_000_000.0
         return String.format(Locale.US, "%,.1f MHz", mhz)
     }
 
     /**
-     * 将候选列表按面板与 DTB 条目归类，并优先按「机型专属 > 公版样例 > 仿真测试」排序
+     * 按唯一 panel identifier 分组，不把同一面板在多个 DTB entry 中的重复实例重复计算成多块屏幕。
+     * 候选自身仍保留 entryIndex，实际编辑时仍能精确定位到原始 DTB。
      */
-    fun groupCandidates(candidates: List<TimingCandidate>): Map<PanelGroupKey, List<TimingCandidate>> {
+    fun groupCandidates(candidates: List<TimingCandidate>): Map<PanelGroupKey, List<TimingCandidate>>
+    {
         val rawGroups = candidates.groupBy { candidate ->
             val identifier = parsePanelIdentifier(candidate.nodePath)
-            val displayName = formatPanelDisplayName(identifier)
-            val isSim = isSimulation(identifier)
-            val isDev = isDeviceSpecific(identifier)
             PanelGroupKey(
-                entryIndex = candidate.entryIndex,
                 panelIdentifier = identifier,
-                panelDisplayName = displayName,
-                isDeviceSpecific = isDev,
-                isSimulation = isSim
+                panelDisplayName = formatPanelDisplayName(identifier),
+                classification = classifyPanel(identifier)
             )
+        }
+
+        fun rank(classification: PanelClassification): Int = when (classification)
+        {
+            PanelClassification.VENDOR -> 0
+            PanelClassification.QCOM_REFERENCE -> 1
+            PanelClassification.UNKNOWN -> 2
+            PanelClassification.SIMULATION -> 3
         }
 
         return rawGroups.toList()
             .sortedWith(
-                compareByDescending<Pair<PanelGroupKey, List<TimingCandidate>>> { it.first.isDeviceSpecific }
-                    .thenBy { it.first.isSimulation }
+                compareBy<Pair<PanelGroupKey, List<TimingCandidate>>> { rank(it.first.classification) }
                     .thenBy { it.first.panelDisplayName }
             )
             .toMap()
@@ -265,15 +330,17 @@ object TimingUtils {
                 }
 
                 PatchStrategy.PIXEL_CLOCK_ONLY -> {
+                    clockMultiplier = ratio
                     if (originalClock != null) {
                         estimatedClock = (originalClock * ratio).roundToLong()
-                        clockMultiplier = ratio
+                        note = "Pixel Clock 等比缩放 ×${String.format(Locale.US, "%.3f", ratio)}；垂直消隐行数不变"
+                    } else {
+                        note = "未定义 panel-clockrate，链路时钟由驱动按新刷新率自动推导 ×${String.format(Locale.US, "%.3f", ratio)}；垂直消隐行数不变"
                     }
-                    note = "Pixel Clock 等比缩放 ×${String.format(Locale.US, "%.3f", ratio)}；垂直消隐行数不变"
                 }
 
                 PatchStrategy.BALANCED_BLANKING_TIME -> {
-                    if (vActive != null && vfp != null && vbp != null && vsync != null && originalClock != null) {
+                    if (vActive != null && vfp != null && vbp != null && vsync != null) {
                         val fixedVertical = vActive + vsync
                         val porchVertical = vfp + vbp
                         val oldVt = fixedVertical + porchVertical
@@ -294,11 +361,12 @@ object TimingUtils {
                             newVbp = calcVbp
                             val newVt = fixedVertical + calcVfp + calcVbp
                             estimatedVTotal = newVt
-                            estimatedClock = (originalClock.toDouble() * ratio * newVt.toDouble() / oldVt.toDouble()).roundToLong()
-                            note = "平衡消隐：时钟倍率 ×${String.format(Locale.US, "%.3f", k)}，VFP ${candidate.vFrontPorch}→$newVfp, VBP ${candidate.vBackPorch}→$newVbp"
+                            estimatedClock = originalClock?.let { (it.toDouble() * ratio * newVt.toDouble() / oldVt.toDouble()).roundToLong() }
+                            note = (if (originalClock == null) "平衡消隐：未定义 panel-clockrate，驱动按新时序自动推导时钟 ×" else "平衡消隐：时钟倍率 ×") +
+                                "${String.format(Locale.US, "%.3f", k)}，VFP ${candidate.vFrontPorch}→$newVfp, VBP ${candidate.vBackPorch}→$newVbp"
                         } else {
                             // 分母 <= 0 说明超频过高导致无法在正向消隐下求解，回退简单比例
-                            estimatedClock = (originalClock * ratio).roundToLong()
+                            estimatedClock = originalClock?.let { (it * ratio).roundToLong() }
                             clockMultiplier = ratio
                             note = "超频幅度过大，超出消隐时间平衡解范围，已自动降级为等比时钟预估"
                         }
@@ -307,7 +375,8 @@ object TimingUtils {
                         clockMultiplier = ratio
                         note = "该节点缺少完整消隐参数，回退为 Pixel Clock 等比预估"
                     } else {
-                        note = "无可用 Pixel Clock 属性"
+                        clockMultiplier = ratio
+                        note = "缺少完整消隐参数且未定义 panel-clockrate；链路时钟由驱动按新刷新率自动推导"
                     }
                 }
 

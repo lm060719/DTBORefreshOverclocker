@@ -10,6 +10,26 @@ import java.io.File
 
 class DtsTimingPatcherTest {
     @Test
+    fun multiLabelTimingNodesKeepTheirFullPath() {
+        val file = File.createTempFile("panel", ".dts")
+        file.writeText(
+            """/dts-v1/;
+                |/ {
+                |    panel_a: panel_b: panel {
+                |        timings_1: timings_2: display-timings {
+                |            timing_0_37: timing_0_146: timing@0 {
+                |                qcom,mdss-dsi-panel-framerate = <0x78>;
+                |            };
+                |        };
+                |    };
+                |};
+            """.trimMargin()
+        )
+
+        assertEquals("/panel/display-timings/timing@0", DtsTimingPatcher.analyzeEntry(0, file).single().nodePath)
+    }
+
+    @Test
     fun balancedPatchChangesRefreshClockAndVerticalPorches() {
         val file = File.createTempFile("panel", ".dts")
         file.writeText(

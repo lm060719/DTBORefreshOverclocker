@@ -90,6 +90,88 @@ class TimingUtilsTest {
     }
 
     @Test
+    fun panelClassificationIsConservativeAndUnknownIsNotVendor()
+    {
+        assertEquals(
+            PanelClassification.VENDOR,
+            TimingUtils.classifyPanel("qcom,mdss_dsi_o1_42_02_0a_dsc_cmd")
+        )
+        assertEquals(
+            PanelClassification.QCOM_REFERENCE,
+            TimingUtils.classifyPanel("qcom,mdss_dsi_nt37801_wqhd_plus_cmd")
+        )
+        assertEquals(
+            PanelClassification.SIMULATION,
+            TimingUtils.classifyPanel("qcom,mdss_dsi_dual_sim_cmd")
+        )
+        assertEquals(
+            PanelClassification.UNKNOWN,
+            TimingUtils.classifyPanel("qcom,mdss_dsi_mystery_panel_cmd")
+        )
+        assertTrue(!TimingUtils.isDeviceSpecific("qcom,mdss_dsi_mystery_panel_cmd"))
+    }
+
+    @Test
+    fun referencePanelsFromRetailImagesAreNonProduction()
+    {
+        // Qualcomm BSP panels shipped inside Meizu / OnePlus / Realme DTBOs.
+        listOf(
+            "qcom,mdss_dsi_visionox_r66451_fhd_plus_cmd",
+            "qcom,mdss_dsi_r66451_fhd_plus_144hz_cmd",
+            "qcom,mdss_dsi_nt35597_truly_wqxga_cmd",
+            "qcom,mdss_dsi_nt35695b_truly_fhd_cmd",
+            "qcom,mdss_dsi_nt37802_amoled_video_psr_vhm",
+            "qcom,mdss_dsi_dual_rdp370f_rgb_video",
+            "qcom,mdss_dsi_ss_video_psr_vid_vhm"
+        ).forEach {
+            assertEquals(it, PanelClassification.QCOM_REFERENCE, TimingUtils.classifyPanel(it))
+            assertTrue(it, TimingUtils.isNonProductionPanel(it))
+        }
+        assertTrue(TimingUtils.isNonProductionPanel("qcom,mdss_dsi_sim_cmd"))
+
+        listOf(
+            "qcom,mdss_dsi_meizu_amoled_m2461_cmd",
+            "qcom,mdss_dsi_panel_AD296_P_3_A0020_dsc_cmd",
+            "qcom,mdss_dsi_panel_AB849_P_1_A0022_dsc_cmd_bigdc",
+            "qcom,mdss_dsi_o1_42_02_0a_dsc_cmd"
+        ).forEach {
+            assertEquals(it, PanelClassification.VENDOR, TimingUtils.classifyPanel(it))
+            assertTrue(it, !TimingUtils.isNonProductionPanel(it))
+        }
+        // Unrecognised panels are never warned about.
+        assertTrue(!TimingUtils.isNonProductionPanel("qcom,mdss_dsi_xjmz_amoled_tianma_cmd"))
+        assertEquals("非量产屏节点，改后不生效", TimingUtils.NON_PRODUCTION_PANEL_WARNING)
+    }
+
+    @Test
+    fun groupCandidatesCountsSamePanelAcrossEntriesOnlyOnce()
+    {
+        fun candidate(entry: Int, panel: String, hz: Int) = TimingCandidate(
+            id = "$entry:$panel:$hz",
+            entryIndex = entry,
+            dtsFile = File("entry_$entry.dts"),
+            nodePath = "/$panel/qcom,mdss-dsi-display-timings/timing@$hz",
+            nodeStart = 0,
+            nodeEndExclusive = 10,
+            currentHz = hz
+        )
+
+        val panel = "qcom,mdss_dsi_o1_42_02_0a_dsc_cmd"
+        val groups = TimingUtils.groupCandidates(
+            listOf(
+                candidate(0, panel, 60),
+                candidate(0, panel, 120),
+                candidate(1, panel, 60),
+                candidate(1, panel, 120)
+            )
+        )
+
+        assertEquals(1, groups.size)
+        assertEquals(4, groups.values.single().size)
+        assertEquals(setOf(0, 1), groups.values.single().map { it.entryIndex }.toSet())
+        assertEquals(PanelClassification.VENDOR, groups.keys.single().classification)
+    }
+    @Test
     fun testCalculateSimulationWithCustomParams() {
         val candidate = TimingCandidate(
             id = "0:100:test_custom",

@@ -73,12 +73,27 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     // Optional real-image regression; fixtures stay outside the source tree.
     systemProperty("dtbo.sampleDir", providers.gradleProperty("sampleDir").getOrElse(""))
     systemProperty("dtbo.dtc", providers.gradleProperty("hostDtc").getOrElse(""))
+    systemProperty("dtbo.workflowSampleDir", providers.gradleProperty("workflowSampleDir").getOrElse(""))
+    // e.g. -PtestMaxHeap=256m reproduces Android's default per-app heap limit.
+    providers.gradleProperty("testMaxHeap").orNull?.let { maxHeapSize = it }
     providers.gradleProperty("sampleDir").orNull?.let { directory ->
         inputs.files(File(directory, "dtbo_b.img"), File(directory, "dtbo_b_144hz_scaled.img"))
     }
     providers.gradleProperty("hostDtc").orNull?.let { inputs.file(it) }
     providers.gradleProperty("avbSampleImage").orNull?.let {
         systemProperty("dtbo.avbSampleImage", it)
+        inputs.file(it)
+    }
+    providers.gradleProperty("chargingSampleImage").orNull?.let {
+        systemProperty("dtbo.chargingSampleImage", it)
+        inputs.file(it)
+    }
+    providers.gradleProperty("chargingSampleDts").orNull?.let {
+        systemProperty("dtbo.chargingSampleDts", it)
+        inputs.file(it)
+    }
+    providers.gradleProperty("chargingDeviceImage").orNull?.let {
+        systemProperty("dtbo.chargingDeviceImage", it)
         inputs.file(it)
     }
 }

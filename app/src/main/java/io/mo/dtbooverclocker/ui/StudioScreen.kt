@@ -17,6 +17,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.mo.dtbooverclocker.model.ChargingNode
+import io.mo.dtbooverclocker.model.CapabilityFinding
+import io.mo.dtbooverclocker.model.CapabilityKind
+import io.mo.dtbooverclocker.model.CapabilityStatus
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import java.io.File
@@ -30,7 +34,7 @@ enum class StudioTab(val label: String, val icon: ImageVector) {
     SETTINGS("设置", Icons.Default.Settings)
 }
 
-private enum class StudioModule { REFRESH_RATE }
+private enum class StudioModule { REFRESH_RATE, CHARGING }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,16 +47,41 @@ fun StudioScreen(
     onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit,
     onCustomVbp: (String) -> Unit, onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit,
     onApplySuggestedCustom: () -> Unit, onStageChange: () -> Unit,
+    onStageCharging: (ChargingNode, Map<String, String>) -> Unit,
+    onSetDeviceTreeProperty: (Int, String, String, String?) -> Unit,
+    onAddDeviceTreeProperty: (Int, String, String, String?) -> Unit,
+    onDeleteDeviceTreeProperty: (Int, String, String) -> Unit,
+    onAddDeviceTreeNode: (Int, String, String) -> Unit,
+    onCloneDeviceTreeNode: (Int, String, String) -> Unit,
+    onRenameDeviceTreeNode: (Int, String, String) -> Unit,
+    onDeleteDeviceTreeNode: (Int, String) -> Unit,
+    onUndoThroughTransaction: (String) -> Unit,
+    onUndoLastTransaction: () -> Unit,
     onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit,
-    onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onFlash: () -> Unit,
+    onRecoveryZip: () -> Unit, onFastbootBundle: () -> Unit, onModuleZip: () -> Unit, onFlash: () -> Unit, onFlashModule: () -> Unit,
     onExportBackup: (File) -> Unit, onExportRescue: (File) -> Unit, onScreenshot: () -> Unit,
     onCopy: (String) -> Unit, onClearLogs: () -> Unit
 ) {
     StudioNavigation(pagerState, pageStateHolder, !state.busy, onOpenRollback, onRefreshEnvironment) { tab, padding ->
         when (tab) {
-            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onSavePatched, onRecoveryZip, onFastbootBundle, onFlash, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
-            StudioTab.MODULES -> ModulesTab(state, padding, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange)
-            StudioTab.DEVICE_TREE -> DeviceTreeScreen(state, padding)
+            StudioTab.OVERVIEW -> OverviewTab(state, padding, onImport, onExtract, onPackage, onReset, onUndoLastTransaction, onSavePatched, onRecoveryZip, onFastbootBundle, onModuleZip, onFlash, onFlashModule, onExportBackup, onExportRescue, onScreenshot, onCopy, onClearLogs)
+            StudioTab.MODULES -> ModulesTab(
+                state, padding, onSelect, onTarget, onStrategy, onPatchMode,
+                onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp,
+                onApplySuggestedCustom, onStageChange, onStageCharging
+            )
+            StudioTab.DEVICE_TREE -> DeviceTreeScreen(
+                state = state,
+                contentPadding = padding,
+                onSetProperty = onSetDeviceTreeProperty,
+                onAddProperty = onAddDeviceTreeProperty,
+                onDeleteProperty = onDeleteDeviceTreeProperty,
+                onAddNode = onAddDeviceTreeNode,
+                onCloneNode = onCloneDeviceTreeNode,
+                onRenameNode = onRenameDeviceTreeNode,
+                onDeleteNode = onDeleteDeviceTreeNode,
+                onUndoThroughTransaction = onUndoThroughTransaction
+            )
             StudioTab.SETTINGS -> SettingsHubTab(state, padding, onRequestRoot, onRefreshEnvironment, onOpenRollback, onOpenAdvancedSettings, onOpenAbout)
         }
     }
@@ -115,8 +144,9 @@ internal fun StudioNavigation(
 @Composable
 private fun OverviewTab(
     state: MainUiState, padding: PaddingValues, onImport: () -> Unit, onExtract: () -> Unit,
-    onPackage: () -> Unit, onReset: () -> Unit, onSavePatched: (File) -> Unit, onRecoveryZip: () -> Unit,
-    onFastbootBundle: () -> Unit, onFlash: () -> Unit, onExportBackup: (File) -> Unit,
+    onPackage: () -> Unit, onReset: () -> Unit, onUndoLastTransaction: () -> Unit,
+    onSavePatched: (File) -> Unit, onRecoveryZip: () -> Unit,
+    onFastbootBundle: () -> Unit, onModuleZip: () -> Unit, onFlash: () -> Unit, onFlashModule: () -> Unit, onExportBackup: (File) -> Unit,
     onExportRescue: (File) -> Unit, onScreenshot: () -> Unit, onCopy: (String) -> Unit, onClearLogs: () -> Unit
 ) {
     LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -125,12 +155,103 @@ private fun OverviewTab(
         item(key = "source") { SourceCard(state, onImport, onExtract) }
         if (state.workspace != null) {
             item(key = "summary") { ImageSummaryCard(state) }
-            if (state.stagedChanges.isNotEmpty()) item(key = "staged") { StagedChangesCard(state.stagedChanges, onPackage, onReset, state.busy) }
+            if (state.transactions.isNotEmpty()) item(key = "transactions") {
+                TransactionQueueCard(state, onPackage, onReset, onUndoLastTransaction)
+            }
         }
-        state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onFlash) } }
+        state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { onSavePatched(report.outputImage) }, onRecoveryZip, onFastbootBundle, onModuleZip, onFlash, onFlashModule) } }
         state.lastFlash?.let { flash -> item(key = "rescue") { RescueMemoCard(state, onCopy, { onExportBackup(flash.backupFile) }, { onExportRescue(flash.rescueZip) }, onScreenshot) } }
         item(key = "terminal") { TerminalCard(state.logs, onClearLogs) }
         item(key = "status") { Text(state.status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 24.dp)) }
+    }
+}
+
+
+@Composable
+private fun TransactionQueueCard(
+    state: MainUiState,
+    onPackage: () -> Unit,
+    onReset: () -> Unit,
+    onUndoLastTransaction: () -> Unit
+)
+{
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "设备树事务 · ${state.transactions.size} 个 / ${state.transactions.sumOf { it.operationCount }} 个底层操作",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            state.transactions.takeLast(5).forEach { transaction ->
+                Text(
+                    "• ${transaction.kind.displayName} · ${transaction.risk.displayName} · ${transaction.operationCount} ops\n  ${transaction.summary}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
+                OutlinedButton(onClick = onUndoLastTransaction, enabled = !state.busy) { Text("撤销最近事务") }
+                OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModuleStagedChangesCard(
+    state: MainUiState,
+    onPackage: () -> Unit,
+    onReset: () -> Unit
+)
+{
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "功能模块修改 · ${state.moduleStagedChanges.size} 项",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            state.moduleStagedChanges.takeLast(4).forEach { change ->
+                Text(
+                    "• ${change.module.displayName}: ${change.summary}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
+                OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeviceTreeStagedChangesCard(
+    state: MainUiState,
+    onPackage: () -> Unit,
+    onReset: () -> Unit
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "通用设备树修改 · ${state.deviceTreeChanges.size} 项",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            state.deviceTreeChanges.takeLast(4).forEach { change ->
+                Text(
+                    "• ${change.summary}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onPackage, enabled = !state.busy) { Text("集中打包") }
+                OutlinedButton(onClick = onReset, enabled = !state.busy) { Text("全部重置") }
+            }
+        }
     }
 }
 
@@ -156,36 +277,114 @@ private fun ModulesTab(
     state: MainUiState, padding: PaddingValues, onSelect: (String) -> Unit, onTarget: (Int) -> Unit,
     onStrategy: (PatchStrategy) -> Unit, onPatchMode: (PatchMode) -> Unit,
     onCustomPixelClock: (String) -> Unit, onCustomVfp: (String) -> Unit, onCustomVbp: (String) -> Unit,
-    onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit, onApplySuggestedCustom: () -> Unit, onStageChange: () -> Unit
+    onCustomHfp: (String) -> Unit, onCustomHbp: (String) -> Unit, onApplySuggestedCustom: () -> Unit,
+    onStageChange: () -> Unit,
+    onStageCharging: (ChargingNode, Map<String, String>) -> Unit
 ) {
     var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
     val workspace = state.workspace
     LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Spacer(Modifier.height(2.dp)) }
-        item { Column { Text("功能模块", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("专用模块负责常见硬件配置；通用修改最终统一落到设备树编辑器。", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+        item { Column { Text("功能模块", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("功能模块负责生成经过约束验证的设备树事务；能力扫描只负责发现，不会自动把检测结果变成写入。", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+        if (workspace != null) {
+            item { CapabilityScanCard(state) }
+        }
         if (workspace == null) {
             item { WorkspaceRequiredCard() }
         } else {
-            item { Text("显示", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
             item { FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ModuleCard("刷新率", workspace.candidates.size.toString() + " 个时序候选", Icons.Default.Monitor, workspace.candidates.isNotEmpty(), activeModule == StudioModule.REFRESH_RATE) { activeModule = if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE }
-                ModuleCard("分辨率", "规划中", Icons.Default.AspectRatio, false)
-                ModuleCard("DSC", "规划中", Icons.Default.Tune, false)
-                ModuleCard("亮度 / HBM", "规划中", Icons.Default.Brightness6, false)
-            } }
-            item { Text("硬件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-            item { FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ModuleCard("Thermal", "规划中", Icons.Default.Thermostat, false)
-                ModuleCard("Charging", "规划中", Icons.Default.BatteryChargingFull, false)
-                ModuleCard("Touch", "规划中", Icons.Default.TouchApp, false)
-                ModuleCard("高级属性", "设备树编辑器", Icons.Default.Code, false)
+                val refreshFinding = state.capabilityReport?.finding(CapabilityKind.REFRESH_RATE)
+                ModuleCard("刷新率", capabilitySubtitle(state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE) { activeModule = if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE }
+                ModuleCard("Charging", capabilitySubtitle(state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING) { activeModule = if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING }
+                ModuleCard("高级属性", "设备树编辑器 · 始终可用", Icons.Default.Code, false)
             } }
             if (activeModule == StudioModule.REFRESH_RATE && workspace.candidates.isNotEmpty()) {
                 item { HorizontalDivider() }
                 item { TimingPanel(state, onSelect, onTarget, onStrategy, onPatchMode, onCustomPixelClock, onCustomVfp, onCustomVbp, onCustomHfp, onCustomHbp, onApplySuggestedCustom, onStageChange) }
             }
+            if (activeModule == StudioModule.CHARGING) {
+                item { HorizontalDivider() }
+                item(key = "charging_panel") { ChargingPanel(state, onStageCharging) }
+            }
         }
         item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CapabilityScanCard(state: MainUiState)
+{
+    val report = state.capabilityReport
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("设备树能力扫描", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (state.capabilityScanInProgress) "扫描中…" else if (report != null) "已完成" else "等待扫描",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (report != null) {
+                Text(
+                    "${report.scannedEntryCount} 个 DTB · ${report.nodeCount} 个节点 · ${report.propertyCount} 个属性",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    report.findings.forEach { finding ->
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("${finding.kind.displayName}: ${finding.status.displayName} ${finding.matchCount}") }
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    "导入 DTBO 后自动识别刷新率时序和 Charging 参数。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+private fun capabilitySubtitle(
+    state: MainUiState,
+    finding: CapabilityFinding?,
+    fallbackCount: Int
+): String
+{
+    if (state.capabilityScanInProgress && finding == null)
+    {
+        return "扫描中…"
+    }
+    if (finding == null)
+    {
+        return if (fallbackCount > 0) "$fallbackCount 个候选" else "等待能力扫描"
+    }
+    return when (finding.status)
+    {
+        CapabilityStatus.AVAILABLE -> "可用 · ${finding.matchCount} 个"
+        CapabilityStatus.ANALYSIS_ONLY -> "可分析 · ${finding.matchCount} 个"
+        CapabilityStatus.NOT_FOUND -> "当前 DTBO 未发现"
     }
 }
 

@@ -4,6 +4,7 @@ import io.mo.dtbooverclocker.model.TimingCandidate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -84,5 +85,56 @@ class ActivePanelDetectorTest {
         assertEquals(candidate42_120.id, ActivePanelDetector.findBestMatchCandidate(
             listOf(dynamicFirst) + candidates, "mdss_dsi_o1_42_02_0a_dsc_cmd"
         )?.id)
+    }
+
+    @Test
+    fun exactPanelWinsOverPanelWhoseNameIsAPrefix() {
+        fun candidate(panel: String) = TimingCandidate(
+            id = panel, entryIndex = 0, dtsFile = File("dummy.dts"),
+            nodePath = "/fragment@0/__overlay__/qcom,mdss_dsi_$panel/qcom,mdss-dsi-display-timings/timing@0",
+            nodeStart = 0, nodeEndExclusive = 1, currentHz = 120
+        )
+        val candidates = listOf(candidate("nt37801_wqhd_plus_cmd"), candidate("nt37801_wqhd_plus_cmd_cphy"))
+
+        assertEquals("nt37801_wqhd_plus_cmd_cphy",
+            ActivePanelDetector.findBestMatchCandidate(candidates, "qcom,mdss_dsi_nt37801_wqhd_plus_cmd_cphy")?.id)
+        assertEquals("nt37801_wqhd_plus_cmd",
+            ActivePanelDetector.findBestMatchCandidate(candidates, "qcom,mdss_dsi_nt37801_wqhd_plus_cmd")?.id)
+    }
+
+    @Test
+    fun parsesAppliedDtboIndicesFromBootconfigAndCmdline() {
+        val bootconfig = """
+            androidboot.hardware = "qcom"
+            androidboot.dtbo_idx = "3"
+            androidboot.dtb_idx = "0"
+        """.trimIndent()
+        assertEquals("3", ActivePanelDetector.extractDtboIndexValue(bootconfig))
+        val cmdline = "console=null androidboot.dtbo_idx=0,5 androidboot.dtb_idx=0 msm_drm.dsi_display0=x"
+        assertEquals(setOf(0, 5), ActivePanelDetector.parseDtboIndices(ActivePanelDetector.extractDtboIndexValue(cmdline)!!))
+        assertEquals(setOf(3), ActivePanelDetector.parseDtboIndices("3\n"))
+        assertEquals(emptySet<Int>(), ActivePanelDetector.parseDtboIndices("3,x"))
+        assertEquals(emptySet<Int>(), ActivePanelDetector.parseDtboIndices(""))
+        assertNull(ActivePanelDetector.extractDtboIndexValue("androidboot.dtb_idx=0"))
+    }
+
+    @Test
+    fun appliedDtboEntryDecidesWhichInstanceOfThePanelIsRecommended() {
+        fun candidate(entry: Int, hz: Int, panel: String = "panel_AD296_P_3_A0020_dsc_cmd") = TimingCandidate(
+            id = "$entry:$panel:$hz", entryIndex = entry, dtsFile = File("dummy.dts"),
+            nodePath = "/fragment@0/__overlay__/qcom,mdss_dsi_$panel/qcom,mdss-dsi-display-timings/timing@$hz",
+            nodeStart = 0, nodeEndExclusive = 1, currentHz = hz
+        )
+        val candidates = (0..7).flatMap { listOf(candidate(it, 60), candidate(it, 120)) } + candidate(0, 120, "sim_cmd")
+        val detected = "qcom,mdss_dsi_panel_AD296_P_3_A0020_dsc_cmd"
+
+        assertEquals("3:panel_AD296_P_3_A0020_dsc_cmd:120",
+            ActivePanelDetector.findBestMatchCandidate(candidates, detected, setOf(3))?.id)
+        // Without dtbo_idx the first instance is used, as before.
+        assertEquals("0:panel_AD296_P_3_A0020_dsc_cmd:120",
+            ActivePanelDetector.findBestMatchCandidate(candidates, detected)?.id)
+        // An applied entry lacking the panel must not hide the panel entirely.
+        assertEquals("0:sim_cmd:120",
+            ActivePanelDetector.findBestMatchCandidate(candidates, "qcom,mdss_dsi_sim_cmd", setOf(3))?.id)
     }
 }

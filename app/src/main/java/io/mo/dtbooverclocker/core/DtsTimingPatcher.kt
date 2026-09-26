@@ -10,6 +10,14 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+/**
+ * 旧版文本时序分析/修补器。
+ *
+ * 当前生产链只继续使用 analyzeEntry() 做时序候选发现；真正的刷新率写入已经迁移到
+ * TimingParameterCalculator + TimingDeviceTreePlanner + DeviceTreeChange。
+ *
+ * patch() 保留用于历史行为回归测试和结果对照，不应在新的功能模块中作为生产写入入口。
+ */
 object DtsTimingPatcher {
     private val refreshAliases = listOf(
         "qcom,mdss-dsi-panel-framerate",
@@ -208,21 +216,22 @@ object DtsTimingPatcher {
                 changes += "剩余档位数量: ${remainingSiblings.size} 个 (${remainingSiblings.joinToString { it.path.substringAfterLast('/') }})"
 
                 // 检查 native-mode 引用
-                val openHeaderRegex = Regex("""^\s*(?:([A-Za-z0-9_.-]+):\s*)?([A-Za-z0-9,._@+\-/#]+)\s*\{""", RegexOption.MULTILINE)
-                val headerMatch = openHeaderRegex.find(originalNodeText)
-                val deletedLabel = headerMatch?.groups?.get(1)?.value
+                val openHeaderRegex = Regex("""^\s*((?:[A-Za-z0-9_.-]+:\s*)*)([A-Za-z0-9,._@+\-/#]+)\s*\{""", RegexOption.MULTILINE)
+                fun headerLabels(nodeText: String) = openHeaderRegex.find(nodeText)?.groupValues?.get(1)
+                    ?.split(':')?.map(String::trim)?.filter(String::isNotEmpty).orEmpty()
+                val deletedLabels = headerLabels(originalNodeText)
 
                 val nativeModeRegex = Regex("""(?m)^(\s*native-mode\s*=\s*<)([^>]+)(>\s*;)""")
                 val nativeMatch = nativeModeRegex.find(patchedFullText)
                 if (nativeMatch != null) {
                     val refContent = nativeMatch.groups[2]!!.value.trim()
-                    val isReferencingDeleted = (deletedLabel != null && refContent.contains("&$deletedLabel")) ||
+                    val isReferencingDeleted = deletedLabels.any { refContent.contains("&$it") } ||
                         refContent.contains("&{${candidate.nodePath}}") ||
                         refContent.contains("&$nodeName")
                     if (isReferencingDeleted) {
                         val targetSibling = remainingSiblings.first()
                         val targetSibText = fullText.substring(targetSibling.start, targetSibling.endExclusive)
-                        val targetSibLabel = openHeaderRegex.find(targetSibText)?.groups?.get(1)?.value
+                        val targetSibLabel = headerLabels(targetSibText).firstOrNull()
                         val newRef = if (targetSibLabel != null) "&$targetSibLabel" else "&{${targetSibling.path}}"
                         patchedFullText = patchedFullText.replaceRange(
                             nativeMatch.groups[2]!!.range,
@@ -302,7 +311,7 @@ object DtsTimingPatcher {
     }
 
     internal fun replaceNodeHeader(nodeText: String, newName: String): String {
-        val openHeaderRegex = Regex("""^(\s*)(?:[A-Za-z0-9_.-]+:\s*)?([A-Za-z0-9,._@+\-/#]+)(\s*\{.*)$""", RegexOption.MULTILINE)
+        val openHeaderRegex = Regex("""^(\s*)(?:[A-Za-z0-9_.-]+:\s*)*([A-Za-z0-9,._@+\-/#]+)(\s*\{.*)$""", RegexOption.MULTILINE)
         val match = openHeaderRegex.find(nodeText) ?: return nodeText
         val prefix = match.groupValues[1]
         val suffix = match.groupValues[3]
@@ -553,7 +562,7 @@ object DtsTimingPatcher {
         val stack = ArrayDeque<NodeOpen>()
         val ranges = mutableListOf<NodeRange>()
         val openRegex = Regex(
-            """^\s*(?:[A-Za-z0-9_.-]+:\s*)?([A-Za-z0-9,._@+\-/#]+)\s*\{\s*(?://.*)?$"""
+            """^\s*(?:[A-Za-z0-9_.-]+:\s*)*([A-Za-z0-9,._@+\-/#]+)\s*\{\s*(?://.*)?$"""
         )
 
         var lineStart = 0
