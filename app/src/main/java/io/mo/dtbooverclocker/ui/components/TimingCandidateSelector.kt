@@ -61,7 +61,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import io.mo.dtbooverclocker.core.ActivePanelDetector
 import io.mo.dtbooverclocker.model.TimingCandidate
 
 enum class PanelFilterScope(val label: String)
@@ -89,6 +88,9 @@ fun TimingCandidateSelector(
     val groups = remember(candidates) {
         TimingUtils.groupCandidates(candidates)
     }
+    // activePanelIdentifier 已是 ActivePanelDetector 精确选出的分组；此处再模糊匹配会把前缀相同的兄弟面板
+    // （如在用 `..._dsc_cmd_dvt02` 旁的 `..._dsc_cmd`）也标成在用。
+    fun isActivePanel(key: PanelGroupKey): Boolean = key.panelIdentifier == activePanelIdentifier
 
     if (groups.isEmpty()) {
         Text("未识别到可调整的 DSI 时序候选", style = MaterialTheme.typography.bodyMedium)
@@ -99,8 +101,7 @@ fun TimingCandidateSelector(
         groups.keys.count { it.classification == PanelClassification.VENDOR }
     }
     val activeCount = remember(groups, activePanelIdentifier) {
-        if (activePanelIdentifier == null) 0
-        else groups.keys.count { ActivePanelDetector.matchPanel(it.panelIdentifier, activePanelIdentifier) }
+        groups.keys.count(::isActivePanel)
     }
     val hasVendorPanels = vendorCount > 0
 
@@ -120,9 +121,7 @@ fun TimingCandidateSelector(
         val baseFiltered = groups.filter { (key, list) ->
             val scopeMatch = when (filterScope)
             {
-                PanelFilterScope.ACTIVE ->
-                    activePanelIdentifier != null &&
-                        ActivePanelDetector.matchPanel(key.panelIdentifier, activePanelIdentifier)
+                PanelFilterScope.ACTIVE -> isActivePanel(key)
                 PanelFilterScope.VENDOR -> key.classification == PanelClassification.VENDOR
                 PanelFilterScope.OTHER -> key.classification != PanelClassification.VENDOR
                 PanelFilterScope.ALL -> true
@@ -138,9 +137,7 @@ fun TimingCandidateSelector(
         }
 
         if (activePanelIdentifier != null) {
-            baseFiltered.toList().sortedByDescending { (key, _) ->
-                ActivePanelDetector.matchPanel(key.panelIdentifier, activePanelIdentifier)
-            }.toMap()
+            baseFiltered.toList().sortedByDescending { (key, _) -> isActivePanel(key) }.toMap()
         } else {
             baseFiltered
         }
@@ -155,7 +152,7 @@ fun TimingCandidateSelector(
             } ?: filteredGroups.keys.firstOrNull()
                 ?: groups.keys.first()
         } else if (activePanelIdentifier != null) {
-            filteredGroups.keys.firstOrNull { ActivePanelDetector.matchPanel(it.panelIdentifier, activePanelIdentifier) }
+            filteredGroups.keys.firstOrNull(::isActivePanel)
                 ?: filteredGroups.keys.firstOrNull()
                 ?: groups.keys.first()
         } else {
@@ -315,8 +312,7 @@ fun TimingCandidateSelector(
                 ) {
                     filteredGroups.forEach { (key, groupCandidates) ->
                         val isGroupActive = key == activeGroupKey
-                        val isDetectedActive = activePanelIdentifier != null &&
-                            ActivePanelDetector.matchPanel(key.panelIdentifier, activePanelIdentifier)
+                        val isDetectedActive = isActivePanel(key)
                         FilterChip(
                             selected = isGroupActive,
                             onClick = {
