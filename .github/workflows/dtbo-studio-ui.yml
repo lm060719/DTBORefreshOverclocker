@@ -15,6 +15,8 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      BUILD_DEBUG: ${{ github.ref != 'refs/heads/main' || github.event_name == 'pull_request' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,7 +36,9 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace -Dorg.gradle.java.home="$JAVA_HOME"
 
+      # main 由 release 任务出正式包，这里只跑测试；Debug 包留给 chatgpt 分支与 PR。
       - name: Assemble debug
+        if: env.BUILD_DEBUG == 'true'
         run: ./gradlew assembleDebug --stacktrace -Dorg.gradle.java.home="$JAVA_HOME"
 
       - name: Package source
@@ -50,6 +54,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Debug APK
+        if: env.BUILD_DEBUG == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: DTBOStudio_Debug_APK
