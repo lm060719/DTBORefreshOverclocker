@@ -65,6 +65,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.mo.dtbooverclocker.ui.components.DisclaimerDialog
+import io.mo.dtbooverclocker.ui.components.FeedbackDialog
+import io.mo.dtbooverclocker.feedback.FeedbackReport
+import io.mo.dtbooverclocker.feedback.FeedbackType
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -113,8 +118,13 @@ class MainActivity : ComponentActivity() {
                     setLocale(currentLocale)
                 }
             }
+            // 只替换资源而保留 Activity 作为 base：createConfigurationContext 返回的 ContextImpl
+            // 不是 Activity，强转和不带 NEW_TASK 的 startActivity 都会崩溃。
             val localizedContext = remember(context, currentLocale) {
-                context.createConfigurationContext(localizedConfiguration)
+                val localizedResources = context.createConfigurationContext(localizedConfiguration).resources
+                object : android.content.ContextWrapper(context) {
+                    override fun getResources(): android.content.res.Resources = localizedResources
+                }
             }
 
             CompositionLocalProvider(
@@ -135,7 +145,7 @@ class MainActivity : ComponentActivity() {
 private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    val activity = context as Activity
+    val activity = remember(context) { context.findActivity() }
     val strings = I18n.current
 
     var pendingBinary by remember { mutableStateOf<File?>(null) }
@@ -178,6 +188,26 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
             viewModel.exportLogsToUri(uri) { success ->
                 val msg = if (success) "完整日志已成功导出" else "日志导出失败"
                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // null 表示反馈对话框未打开。
+    var feedbackType by remember { mutableStateOf<FeedbackType?>(null) }
+    var feedbackBundleSaved by remember { mutableStateOf(false) }
+    val openFeedback: (FeedbackType) -> Unit = { type ->
+        feedbackType = type
+        feedbackBundleSaved = false
+        viewModel.refreshFeedbackInfo()
+    }
+
+    val saveFeedbackBundle = androidx.activity.compose.rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportFeedbackBundle(uri) { success ->
+                feedbackBundleSaved = success
+                Toast.makeText(context, if (success) strings.feedbackBundleSaved else strings.feedbackSaveFailed, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -242,7 +272,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 onNavigateBack = {
                     navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
                     currentScreen = AppScreen.MAIN
-                }
+                },
+                onOpenFeedback = { openFeedback(FeedbackType.BUG) }
             )
         }
         AppScreen.MAIN -> {
@@ -277,7 +308,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     onCustomHbp = viewModel::setCustomHbp,
                     onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
                     onStageChange = viewModel::stageTimingChange,
-                    onStageCharging = viewModel::stageChargingChange
+                    onStageCharging = viewModel::stageChargingChange,
+                    onReportPanelIssue = { openFeedback(FeedbackType.PANEL_RECOMMEND) }
                 ),
                 deviceTree = DeviceTreeActions(
                     onSetProperty = viewModel::setDeviceTreeProperty,
@@ -373,6 +405,30 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
             isFirstLaunch = true,
             onConfirm = viewModel::acceptDisclaimer,
             onExit = { activity.finish() }
+        )
+    }
+
+    feedbackType?.let { type ->
+        FeedbackDialog(
+            type = type,
+            info = state.feedbackInfo,
+            imageName = state.workspace?.inputImage?.name,
+            rootGranted = state.rootState.granted,
+            bundleSaved = feedbackBundleSaved,
+            onTypeChange = { feedbackType = it },
+            onSaveBundle = {
+                state.feedbackInfo?.let { saveFeedbackBundle.launch(FeedbackReport.bundleFileName(it)) }
+            },
+            onOpenIssue = {
+                viewModel.feedbackIssueUrl(type)?.let { url ->
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    } catch (_: ActivityNotFoundException) {
+                        Toast.makeText(context, strings.noBrowserFound, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            onDismiss = { feedbackType = null }
         )
     }
 
@@ -500,4 +556,11 @@ private fun captureWindowToPng(activity: Activity, uri: Uri, strings: AppStrings
         },
         Handler(Looper.getMainLooper())
     )
+}
+
+/** Compose 中的 LocalContext 可能被 ContextWrapper 包装（如语言切换），逐层解包找到宿主 Activity。 */
+private tailrec fun Context.findActivity(): Activity = when (this) {
+    is Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> error("Context 未关联 Activity：$this")
 }

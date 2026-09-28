@@ -37,7 +37,8 @@ class TimingActions(
     val onCustomHbp: (String) -> Unit,
     val onApplySuggestedCustom: () -> Unit,
     val onStageChange: () -> Unit,
-    val onStageCharging: (ChargingNode, Map<String, String>) -> Unit
+    val onStageCharging: (ChargingNode, Map<String, String>) -> Unit,
+    val onReportPanelIssue: () -> Unit
 )
 
 /** 通用设备树编辑。 */

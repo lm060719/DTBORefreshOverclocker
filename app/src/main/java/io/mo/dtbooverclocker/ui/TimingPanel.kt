@@ -78,7 +78,8 @@ internal fun TimingPanel(
     onCustomHfp: (String) -> Unit,
     onCustomHbp: (String) -> Unit,
     onApplySuggestedCustom: () -> Unit,
-    onStageChange: () -> Unit
+    onStageChange: () -> Unit,
+    onReportPanelIssue: () -> Unit
 ) {
     val workspace = state.workspace ?: return
     val strings = I18n.current
@@ -104,7 +105,9 @@ internal fun TimingPanel(
                 activePanelIdentifier = state.activePanelIdentifier,
                 activePanelDisplayName = state.activePanelDisplayName,
                 activePanelSource = state.activePanelSource,
-                activeDtboEntries = state.activeDtboEntries
+                activeDtboEntries = state.activeDtboEntries,
+                // 本机面板识别依赖 Root；无 Root 时不存在“推荐”，也就无从反馈推荐问题。
+                onReportRecommendIssue = onReportPanelIssue.takeIf { state.rootState.granted }
             )
 
             HorizontalDivider()

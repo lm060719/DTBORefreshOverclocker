@@ -17,22 +17,20 @@ data class AppliedDtboEntries(
 )
 
 class ActivePanelDetector(
-    private val rootDetector: RootDetector
+    private val rootDetector: RootDetector,
+    private val logSink: (String) -> Unit = {}
 ) {
     suspend fun detect(): ActivePanelDetectionResult? {
-        // 1. Tier 1: /proc/cmdline (全平台通用，包含启动引导加载器传入的面板)
-        val cmdlineResult = detectFromCmdline()
-        if (cmdlineResult != null) return cmdlineResult
-
-        // 2. Tier 2: 小米 / Redmi / POCO mi_display 驱动 sysfs
-        val miResult = detectFromMiDisplay()
-        if (miResult != null) return miResult
-
-        // 3. Tier 3: 其他厂商（OPPO/一加/三星）显示节点
-        val vendorResult = detectFromOtherVendors()
-        if (vendorResult != null) return vendorResult
-
-        return null
+        // 依次尝试：/proc/cmdline（全平台通用）→ 小米 mi_display sysfs → 其他厂商（OPPO/一加/三星）显示节点
+        val result = detectFromCmdline()
+            ?: detectFromMiDisplay()
+            ?: detectFromOtherVendors()
+        if (result != null) {
+            logSink("[INFO] [PANEL-MATCH] 探测到在用面板：raw=${result.rawIdentifier}, normalized=${result.normalizedIdentifier}, 来源=${result.source}")
+        } else {
+            logSink("[WARN] [PANEL-MATCH] cmdline、小米显示驱动与其他厂商节点均未读到在用面板标识")
+        }
+        return result
     }
 
     /**
@@ -50,6 +48,7 @@ class ActivePanelDetector(
             if (!result.isSuccess) continue
             val raw = if (command.first() == "getprop") result.stdout.trim() else extractDtboIndexValue(result.stdout)
             val indices = raw?.let(::parseDtboIndices).orEmpty()
+            if (!raw.isNullOrBlank()) logSink("[INFO] [PANEL-MATCH] $source dtbo_idx 原始值：$raw -> ${indices.sorted()}")
             if (indices.isNotEmpty()) return AppliedDtboEntries(indices, source)
         }
         return null
@@ -57,8 +56,13 @@ class ActivePanelDetector(
 
     private suspend fun detectFromCmdline(): ActivePanelDetectionResult? {
         val result = rootDetector.runRoot(listOf("cat", "/proc/cmdline"), timeoutMs = 3000)
-        if (!result.isSuccess || result.stdout.isBlank()) return null
+        if (!result.isSuccess || result.stdout.isBlank()) {
+            logSink("[INFO] [PANEL-MATCH] 无法读取 /proc/cmdline（exit=${result.exitCode}）")
+            return null
+        }
         val cmdline = result.stdout.trim()
+        val panelArgs = cmdline.split(Regex("\\s+")).filter { "dsi_display" in it || "mdss_dsi" in it || "panel" in it }
+        logSink("[INFO] [PANEL-MATCH] cmdline 面板相关参数：${panelArgs.ifEmpty { listOf("无") }.joinToString(" ")}")
 
         // 匹配 msm_drm.dsi_display0=qcom,mdss_dsi_o1_42_02_0a_dsc_cmd: 等
         val dsiRegex = Regex("""(?:msm_drm\.dsi_display\d*|mdss_dsi\.display\d*)=([a-zA-Z0-9,._-]+)""")
@@ -98,6 +102,7 @@ class ActivePanelDetector(
         for (path in paths) {
             val result = rootDetector.runRoot(listOf("cat", path), timeoutMs = 2000)
             if (result.isSuccess && result.stdout.isNotBlank()) {
+                logSink("[INFO] [PANEL-MATCH] $path：${result.stdout.trim().lines().take(5).joinToString(" | ")}")
                 val panelNameRegex = Regex("""panel_name=([a-zA-Z0-9,._-]+)""")
                 val match = panelNameRegex.find(result.stdout)
                 if (match != null) {
@@ -124,6 +129,7 @@ class ActivePanelDetector(
         for ((path, sourceName) in vendorNodes) {
             val result = rootDetector.runRoot(listOf("cat", path), timeoutMs = 2000)
             if (result.isSuccess && result.stdout.isNotBlank()) {
+                logSink("[INFO] [PANEL-MATCH] $path：${result.stdout.trim().lines().take(3).joinToString(" | ")}")
                 val raw = result.stdout.trim().lines().firstOrNull()?.trim().orEmpty()
                 if (raw.isNotBlank() && !raw.startsWith("error", ignoreCase = true)) {
                     return ActivePanelDetectionResult(
@@ -178,24 +184,34 @@ class ActivePanelDetector(
         fun findBestMatchCandidate(
             candidates: List<TimingCandidate>,
             detectedIdentifier: String,
-            preferredEntries: Set<Int> = emptySet()
+            preferredEntries: Set<Int> = emptySet(),
+            trace: (String) -> Unit = {}
         ): TimingCandidate? {
             if (candidates.isEmpty()) return null
             val normDetected = normalizeIdentifier(detectedIdentifier)
 
             val panelGrouped = candidates.groupBy { TimingUtils.parsePanelIdentifier(it.nodePath) }
+            trace("[PANEL-MATCH] 待匹配 $normDetected；镜像中的面板（${panelGrouped.size}）：" +
+                panelGrouped.keys.joinToString { "$it→${normalizeIdentifier(it)}" })
             // Substring matching alone would pick `..._cmd` for a detected `..._cmd_cphy` panel.
-            val panelCandidates = panelGrouped.entries.firstOrNull { normalizeIdentifier(it.key) == normDetected }?.value
-                ?: panelGrouped.entries.firstOrNull { matchPanel(it.key, normDetected) }?.value
-                ?: return null
+            val exact = panelGrouped.entries.firstOrNull { normalizeIdentifier(it.key) == normDetected }
+            val matched = exact ?: panelGrouped.entries.firstOrNull { matchPanel(it.key, normDetected) }
+            if (matched == null) {
+                trace("[PANEL-MATCH] 精确与模糊规则均未命中")
+                return null
+            }
             // The same panel node exists in every DTB entry; only the applied entry takes effect.
-            val entryCandidates = panelCandidates.filter { it.entryIndex in preferredEntries }
-                .ifEmpty { panelCandidates }
+            val entryCandidates = matched.value.filter { it.entryIndex in preferredEntries }
+                .ifEmpty { matched.value }
             val normalCandidates = entryCandidates.filterNot { it.hasVendorDynamicMode }
-            return normalCandidates.find { it.currentHz == 120 }
+            val best = normalCandidates.find { it.currentHz == 120 }
                 ?: normalCandidates.find { it.currentHz == 144 }
                 ?: normalCandidates.maxByOrNull { it.currentHz }
                 ?: entryCandidates.firstOrNull()
+            trace("[PANEL-MATCH] 命中 ${matched.key}（${if (exact != null) "精确" else "模糊"}规则），生效 DTB=${preferredEntries.sorted()}，候选档位：" +
+                entryCandidates.joinToString { "DTB[${it.entryIndex}] ${it.currentHz}Hz" + if (it.hasVendorDynamicMode) "(动态)" else "" } +
+                "；选中 ${best?.let { "DTB[${it.entryIndex}] ${it.currentHz}Hz ${it.nodePath}" } ?: "无"}")
+            return best
         }
     }
 }

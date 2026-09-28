@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Warning
@@ -65,7 +66,7 @@ private const val GITHUB_REPO_URL = GitHubUpdateChecker.REPOSITORY_URL
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(onNavigateBack: () -> Unit) {
+fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
     BackHandler(onBack = onNavigateBack)
     val strings = I18n.current
     val context = LocalContext.current
@@ -245,6 +246,49 @@ fun AboutScreen(onNavigateBack: () -> Unit) {
                             Spacer(Modifier.width(4.dp))
                             Text(strings.copy)
                         }
+                    }
+                }
+            }
+
+            // Feedback Section
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+            ) {
+                Column(
+                    modifier = Modifier.padding(Spacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                    ) {
+                        Icon(
+                            Icons.Default.Feedback,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = strings.feedbackTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Text(
+                        text = strings.feedbackCardDesc,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Button(
+                        onClick = onOpenFeedback,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Feedback, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.feedbackOpen)
                     }
                 }
             }

@@ -399,6 +399,35 @@ interface AppStrings {
     val capabilityAvailable: String
     val capabilityAnalysisOnly: String
     val capabilityNotFound: String
+
+    // Feedback
+    val feedbackTitle: String
+    val feedbackCardDesc: String
+    val feedbackOpen: String
+    val feedbackTypeBug: String
+    val feedbackTypePanel: String
+    val feedbackTypeFeature: String
+    val feedbackAutoFilled: String
+    val feedbackDevice: String
+    val feedbackRom: String
+    val feedbackAndroid: String
+    val feedbackAppVersion: String
+    val feedbackRecommendedPanel: String
+    val feedbackNone: String
+    val feedbackLoading: String
+    val feedbackBundleContents: String
+    fun feedbackBundleImage(name: String): String
+    val feedbackBundleNoImage: String
+    val feedbackBundleLogs: String
+    val feedbackPanelNeedsRoot: String
+    val feedbackSaveBundle: String
+    val feedbackBundleSaved: String
+    val feedbackSaveFailed: String
+    val feedbackUploadHint: String
+    val feedbackOpenGithub: String
+    val feedbackPrivacy: String
+    val feedbackReportRecommend: String
+    val feedbackReportNoPanel: String
 }
 
 val LocalStrings = staticCompositionLocalOf<AppStrings> { StringsZh }

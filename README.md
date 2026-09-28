@@ -38,6 +38,16 @@ Android DTBO（Device Tree Blob Overlay）的查看、编辑与重建工具：�
 
 修改 DTBO 可能导致黑屏、显示异常或无法开机。刷写前请确认 Bootloader 已解锁、原始 DTBO 已备份，并准备好 Fastboot 或 Recovery 恢复方式。
 
+## 问题反馈
+
+请通过 [GitHub Issues](https://github.com/lm060719/DTBORefreshOverclocker/issues/new/choose) 反馈。推荐在 App 内操作：
+
+1. 「关于 → 问题反馈」，或时序页推荐横幅上的「推荐不对？反馈」。
+2. 点「保存反馈包」，生成的 zip 包含原始 DTBO、设备信息（机型、系统版本、安卓版本）和运行日志。
+3. 点「前往 GitHub 提交」，设备信息已预填，把 zip 拖进「反馈包」一栏后提交。
+
+节点推荐问题请先用 Root 提取当前分区再反馈。Issue 与附件公开可见。
+
 ## 构建
 
 需要 JDK 17。

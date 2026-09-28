@@ -21,6 +21,10 @@ import io.mo.dtbooverclocker.core.NativeToolExecutor
 import io.mo.dtbooverclocker.core.RootDetector
 import io.mo.dtbooverclocker.core.SafetyGuardManager
 import io.mo.dtbooverclocker.core.SlotDetector
+import io.mo.dtbooverclocker.feedback.FeedbackCollector
+import io.mo.dtbooverclocker.feedback.FeedbackDeviceInfo
+import io.mo.dtbooverclocker.feedback.FeedbackReport
+import io.mo.dtbooverclocker.feedback.FeedbackType
 import io.mo.dtbooverclocker.model.AppLanguage
 import io.mo.dtbooverclocker.model.BackupRecord
 import io.mo.dtbooverclocker.model.BackupType
@@ -40,6 +44,7 @@ import io.mo.dtbooverclocker.model.SourceMode
 import io.mo.dtbooverclocker.model.StagedChange
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.TimingUtils
+import io.mo.dtbooverclocker.update.GitHubUpdateChecker
 import io.mo.dtbooverclocker.util.AppLogger
 import io.mo.dtbooverclocker.util.StorageUtils
 import kotlinx.coroutines.CancellationException
@@ -65,7 +70,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("dtbo_prefs", Context.MODE_PRIVATE)
     private val executor = NativeToolExecutor(application, ::appendLog)
     private val rootDetector = RootDetector(executor)
-    private val activePanelDetector = ActivePanelDetector(rootDetector)
+    private val activePanelDetector = ActivePanelDetector(rootDetector, ::appendLog)
     private val slotDetector = SlotDetector(executor)
     private val patchEngine = DtboPatchEngine(application, executor, ::appendLog)
     private val safetyGuard = SafetyGuardManager(application, rootDetector, ::appendLog)
@@ -806,6 +811,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun refreshFeedbackInfo() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val info = collectFeedbackInfo()
+            _state.update { it.copy(feedbackInfo = info) }
+        }
+    }
+
+    fun feedbackIssueUrl(type: FeedbackType): String? =
+        _state.value.feedbackInfo?.let { FeedbackReport.issueUrl(GitHubUpdateChecker.REPOSITORY_URL, type, it) }
+
+    fun exportFeedbackBundle(targetUri: Uri, onComplete: ((Boolean) -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            setBusy(true, "正在生成反馈包…")
+            val success = runCatching {
+                val info = collectFeedbackInfo()
+                _state.update { it.copy(feedbackInfo = info) }
+                // exportLogs 会关闭传入的流，先写入内存再放进 zip。
+                val logs = java.io.ByteArrayOutputStream().also(AppLogger::exportLogs).toByteArray()
+                val resolver = getApplication<Application>().contentResolver
+                resolver.openOutputStream(targetUri, "w")?.use { out ->
+                    FeedbackReport.writeBundle(out, info, _state.value.workspace?.inputImage, logs)
+                } ?: error("无法打开目标 URI 写入反馈包")
+                _state.update { it.copy(status = "反馈包已生成") }
+                appendLog("[OK] 反馈包已导出")
+                true
+            }.getOrElse {
+                showError(it)
+                false
+            }
+            setBusy(false)
+            withContext(Dispatchers.Main) {
+                onComplete?.invoke(success)
+            }
+        }
+    }
+
+    private fun collectFeedbackInfo(): FeedbackDeviceInfo {
+        val s = _state.value
+        return FeedbackCollector.collect(
+            rootState = s.rootState,
+            slotInfo = s.slotInfo,
+            workspace = s.workspace,
+            activeDtboEntries = s.activeDtboEntries,
+            activePanelIdentifier = s.activePanelIdentifier,
+            activePanelSource = s.activePanelSource
+        )
+    }
+
     fun loadBackups() {
         viewModelScope.launch(Dispatchers.IO) {
             val list = safetyGuard.backupManager.getBackups()
@@ -954,7 +1007,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 workspace.candidates,
                 detectedActive.rawIdentifier,
                 activeDtboEntries
-            )
+            ) { appendLog("[INFO] $it") }
             if (bestCandidate != null) {
                 selectedCandidate = bestCandidate
                 activePanelId = TimingUtils.parsePanelIdentifier(bestCandidate.nodePath)
@@ -1156,6 +1209,7 @@ data class MainUiState(
     val cacheSizeBytes: Long = 0L,
     val logFilesCount: Int = 0,
     val logFilesSizeBytes: Long = 0L,
+    val feedbackInfo: FeedbackDeviceInfo? = null,
     val backups: List<BackupRecord> = emptyList(),
     val backupVerificationStates: Map<String, BackupVerificationState> = emptyMap(),
     val customPixelClockText: String = "",

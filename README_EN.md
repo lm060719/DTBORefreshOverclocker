@@ -44,6 +44,16 @@ Every edit goes into a transaction queue, where it can be undone or packaged tog
 
 Modifying a DTBO can cause a black screen, display faults or a device that won't boot. Before flashing, make sure the bootloader is unlocked, the original DTBO is backed up, and a Fastboot or Recovery recovery path is ready.
 
+## Feedback
+
+Please report via [GitHub Issues](https://github.com/lm060719/DTBORefreshOverclocker/issues/new/choose), preferably from inside the app:
+
+1. Open "About → Feedback", or tap "Wrong recommendation? Report" on the timing page banner.
+2. Tap "Save feedback bundle". The zip contains the original DTBO, device info (model, ROM and Android version) and runtime logs.
+3. Tap "Open GitHub". Device fields are prefilled; drag the zip into the "Feedback bundle" field and submit.
+
+For panel recommendation issues, import via root extraction first. Issues and attachments are public.
+
 ## Build
 
 Requires JDK 17.

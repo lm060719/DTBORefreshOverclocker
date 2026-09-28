@@ -49,6 +49,9 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.PaddingValues
+import io.mo.dtbooverclocker.ui.i18n.I18n
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,8 +86,10 @@ fun TimingCandidateSelector(
     activePanelSource: String? = null,
     activeDtboEntries: Set<Int> = emptySet(),
     selectionLabel: String = "选择待超频的原始时序档位：",
-    selectFallback: Boolean = true
+    selectFallback: Boolean = true,
+    onReportRecommendIssue: (() -> Unit)? = null
 ) {
+    val strings = I18n.current
     val groups = remember(candidates) {
         TimingUtils.groupCandidates(candidates)
     }
@@ -234,8 +239,20 @@ fun TimingCandidateSelector(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        if (onReportRecommendIssue != null) {
+                            TextButton(
+                                onClick = onReportRecommendIssue,
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(strings.feedbackReportRecommend, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
                     }
                 }
+            }
+        } else if (onReportRecommendIssue != null) {
+            TextButton(onClick = onReportRecommendIssue) {
+                Text(strings.feedbackReportNoPanel, style = MaterialTheme.typography.labelMedium)
             }
         }
         // 面板选择区（若存在多个屏幕/DTB 分组时展示切换与过滤）

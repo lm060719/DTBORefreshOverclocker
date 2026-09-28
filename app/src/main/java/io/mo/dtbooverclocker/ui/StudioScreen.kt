@@ -243,7 +243,7 @@ private fun ModulesTab(
                 }
             }
             if (activeModule == StudioModule.REFRESH_RATE && workspace.candidates.isNotEmpty()) {
-                item { TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange) }
+                item { TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange, timing.onReportPanelIssue) }
             }
             if (activeModule == StudioModule.CHARGING) {
                 item(key = "charging_panel") { ChargingPanel(state, timing.onStageCharging) }

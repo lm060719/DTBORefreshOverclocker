@@ -1,0 +1,63 @@
+name: 问题反馈 / Bug report
+description: 导入、解析、打包、刷写或界面异常。Import, parsing, packaging, flashing or UI problems.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        推荐在 App「关于 → 问题反馈」中生成反馈包，下面的设备信息会自动填好。
+        Use "About → Feedback" in the app to generate a feedback bundle; device fields below are prefilled.
+
+        ⚠️ Issue 与附件是公开的。Issues and attachments are public.
+  - type: input
+    id: device
+    attributes:
+      label: 机型 / Device
+      placeholder: Xiaomi 23127PN0CC (shennong)
+    validations:
+      required: true
+  - type: input
+    id: rom
+    attributes:
+      label: 系统版本 / ROM version
+      placeholder: HyperOS 2.0.x / ColorOS 15 …
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: 安卓版本 / Android version
+      placeholder: Android 15 (API 35)
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: App 版本 / App version
+      placeholder: 1.1.5 (xx)
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述 / What happened
+      description: 做了什么操作，期望的结果，实际的结果。Steps, expected result, actual result.
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 反馈包 / Feedback bundle
+      description: |
+        把 App 生成的反馈包 zip（内含原始 DTBO、设备信息和日志）拖到这里。GitHub 不接受 .img，请上传 zip。
+        Drag the feedback bundle zip (original DTBO, device info and logs) here. GitHub does not accept .img files.
+      placeholder: 拖入 feedback_xxx.zip / Drop feedback_xxx.zip here
+    validations:
+      required: true
+  - type: textarea
+    id: device_info
+    attributes:
+      label: 设备详细信息 / Device details
+      description: App 自动填写，无需修改。Filled by the app.
+      render: text

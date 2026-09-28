@@ -1,0 +1,68 @@
+name: 节点推荐问题 / Panel recommendation issue
+description: 「本机正在使用的屏幕」识别错误或没有识别出来。The detected in-use panel is wrong or missing.
+title: "[推荐] "
+labels: ["panel-recommend"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先用 **Root 提取当前分区** 导入（本机面板识别需要 Root），再在时序页点「推荐不对？反馈」生成反馈包。
+        Please import via **Root extraction** first (panel detection requires root), then tap "Wrong recommendation? Report" on the timing page.
+
+        ⚠️ Issue 与附件是公开的。Issues and attachments are public.
+  - type: input
+    id: device
+    attributes:
+      label: 机型 / Device
+    validations:
+      required: true
+  - type: input
+    id: rom
+    attributes:
+      label: 系统版本 / ROM version
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: 安卓版本 / Android version
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: App 版本 / App version
+    validations:
+      required: true
+  - type: input
+    id: recommended_panel
+    attributes:
+      label: App 推荐的面板 / Panel recommended by the app
+      placeholder: 未识别 / none
+    validations:
+      required: true
+  - type: input
+    id: expected_panel
+    attributes:
+      label: 实际在用的面板（如知道）/ Actual panel (if known)
+      description: 例如在设备树页或 /proc/cmdline 中确认过的节点名。e.g. confirmed via the device tree page or /proc/cmdline.
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 反馈包（含 DTBO 与日志）/ Feedback bundle (DTBO + logs)
+      description: |
+        必须包含原始 DTBO 和完整日志，App 生成的反馈包 zip 已包含两者。GitHub 不接受 .img，请上传 zip。
+        Must contain the original DTBO and full logs; the app's feedback bundle includes both. Upload the zip, not .img.
+      placeholder: 拖入 feedback_xxx.zip / Drop feedback_xxx.zip here
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 补充说明 / Additional notes
+  - type: textarea
+    id: device_info
+    attributes:
+      label: 设备详细信息 / Device details
+      description: App 自动填写，无需修改。Filled by the app.
+      render: text
