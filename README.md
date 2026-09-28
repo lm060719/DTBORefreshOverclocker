@@ -59,7 +59,7 @@ Android DTBO（Device Tree Blob Overlay）的查看、编辑与重建工具：�
 
 Windows 使用 `.\gradlew.bat`。APK 中的 `app/src/main/jniLibs/arm64-v8a/libdtc.so` 是 ARM64 的 DTC 可执行文件，用于 DTS 与 DTB 互转。
 
-推送到 `chatgpt/**` 分支后，GitHub Actions 会运行单元测试并上传 Debug APK。
+推送到 `main` 或 `chatgpt/**` 分支后，GitHub Actions 会运行单元测试并上传 Debug APK；推送到 `main` 时还会用仓库 Secrets 中的签名打正式包（Actions 产物 `DTBOStudio_Release_APK`）。
 
 ### 真实镜像测试（可选）
 

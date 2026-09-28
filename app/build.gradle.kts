@@ -33,8 +33,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // 正式签名从环境变量读取（CI 由 GitHub Secrets 注入）；未配置时 release 仍可构建，只是不签名。
+    val releaseKeystore = System.getenv("SIGNING_STORE_FILE")?.let(::file)?.takeIf { it.isFile }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

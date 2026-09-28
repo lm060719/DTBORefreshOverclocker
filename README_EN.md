@@ -65,7 +65,7 @@ Requires JDK 17.
 
 On Windows use `.\gradlew.bat`. `app/src/main/jniLibs/arm64-v8a/libdtc.so` in the APK is an ARM64 DTC executable used to convert between DTS and DTB.
 
-Pushes to `chatgpt/**` branches run the unit tests in GitHub Actions and upload a Debug APK.
+Pushes to `main` or `chatgpt/**` run the unit tests in GitHub Actions and upload a Debug APK; pushes to `main` also build a signed release APK using the repository signing secrets (artifact `DTBOStudio_Release_APK`).
 
 ### Real-image tests (optional)
 
