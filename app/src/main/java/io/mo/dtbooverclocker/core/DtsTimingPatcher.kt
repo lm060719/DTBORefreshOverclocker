@@ -46,8 +46,9 @@ object DtsTimingPatcher {
         val text = dtsFile.readText()
         val nodes = parseNodeRanges(text)
         val refreshMatches = findAllProperties(text, refreshAliases)
+        val switchCommands = mutableMapOf<String, String?>()
 
-        return refreshMatches.mapNotNull { refreshProp ->
+        val candidates = refreshMatches.mapNotNull { refreshProp ->
             val owner = nodes
                 .asSequence()
                 .filter { refreshProp.absoluteStart in it.start until it.endExclusive }
@@ -61,6 +62,11 @@ object DtsTimingPatcher {
 
             val clock = valueOf(nodeText, pixelClockAliases)
                 ?: findParentClock(text, owner, nodes)
+
+            if (isCommandModeTiming(text, nodeText, owner, nodes)) {
+                switchCommands["$entryIndex:${owner.start}:${owner.path}"] =
+                    timingSwitchCommandRegex.find(nodeText)?.groupValues?.get(1)?.trim()
+            }
 
             TimingCandidate(
                 id = "$entryIndex:${owner.start}:${owner.path}",
@@ -85,6 +91,40 @@ object DtsTimingPatcher {
                 hasVendorDynamicMode = hasVendorDynamicMode(nodeText)
             )
         }.distinctBy { it.id }
+
+        // A command-mode panel scans at whatever rate the DDIC registers select; when sibling modes
+        // send different timing-switch commands, the rate lives in those commands, not in the timing values.
+        val commandDrivenGroups = candidates
+            .filter { switchCommands[it.id] != null }
+            .groupBy { it.nodePath.substringBeforeLast('/', "") }
+            .filterValues { group -> group.mapNotNull { switchCommands[it.id] }.distinct().size > 1 }
+            .keys
+        return candidates.map {
+            if (switchCommands[it.id] != null && it.nodePath.substringBeforeLast('/', "") in commandDrivenGroups) {
+                it.copy(refreshSetByPanelCommands = true)
+            } else it
+        }
+    }
+
+    private val timingSwitchCommandRegex =
+        Regex("""(?m)^\s*qcom,mdss-dsi-timing-switch-command\s*=\s*([^;]*);""")
+    private val cmdModePanelTypeRegex =
+        Regex("""(?m)^\s*qcom,mdss-dsi-panel-type\s*=\s*"dsi_cmd_mode"\s*;""")
+
+    /** The mode node itself or its panel node (the parent of `qcom,mdss-dsi-display-timings`) declares command mode. */
+    private fun isCommandModeTiming(
+        fullText: String,
+        nodeText: String,
+        owner: NodeRange,
+        allNodes: List<NodeRange>
+    ): Boolean {
+        if (Regex("""(?m)^\s*qcom,mdss-dsi-cmd-mode\s*;""").containsMatchIn(nodeText)) return true
+        val panelPath = owner.path.substringBeforeLast('/', "").substringBeforeLast('/', "")
+        if (panelPath.isEmpty()) return false
+        val panel = allNodes.firstOrNull {
+            it.path == panelPath && owner.start in it.start until it.endExclusive
+        } ?: return false
+        return cmdModePanelTypeRegex.containsMatchIn(fullText.substring(panel.start, panel.endExclusive))
     }
 
     private fun findParentClock(

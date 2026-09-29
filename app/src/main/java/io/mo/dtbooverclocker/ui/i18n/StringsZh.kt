@@ -218,6 +218,8 @@ object StringsZh : AppStrings {
     override val autoDynamicModeDesc2: String =
         "请在上方选择同一面板的 normal 普通档位，再编辑或新增。例如新增 144 Hz，应选 normal_120hz，而不是 auto_120_to_30hz。"
     override val selectNormalModeToContinue: String = "请选择普通档位后继续"
+    override val commandModePanelBadge: String = "命令模式屏"
+    override val commandModePanelHint: String = "实际刷新率由写给屏幕驱动芯片的寄存器命令决定，修改参数可能无效"
     override val quickPresets: String = "快捷预设:"
     override val targetHzInputLabel: String = "目标刷新率数值 (Hz)"
     override val fillSuggestedCustom: String = "填入平衡参考值"

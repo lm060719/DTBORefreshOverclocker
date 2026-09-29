@@ -53,6 +53,43 @@ class CommandModeTimingTest {
         assertTrue(preview.calculationNote.contains("6083"))
     }
 
+    private fun panelFixture(panelType: String, secondSwitchCommand: String): File =
+        File.createTempFile("switch_panel", ".dts").apply {
+            deleteOnExit()
+            writeText("""
+                /dts-v1/;
+                / {
+                    qcom,mdss_dsi_mot_boe_ili97680A_678_1264x2780_dsc_cmd_v4 {
+                        qcom,mdss-dsi-panel-type = "$panelType";
+                        qcom,mdss-dsi-display-timings {
+                            timing@0 {
+                                qcom,mdss-dsi-panel-framerate = <120>;
+                                qcom,mdss-dsi-timing-switch-command = [39 00 00 40 00 00 04 ff 5a a5 00 39 00 00 40 00 00 02 53 20];
+                            };
+                            timing@1 {
+                                qcom,mdss-dsi-panel-framerate = <165>;
+                                qcom,mdss-dsi-timing-switch-command = [$secondSwitchCommand];
+                            };
+                        };
+                    };
+                };
+            """.trimIndent())
+        }
+
+    @Test fun flagsCommandModePanelWhoseModesSendDifferentSwitchCommands() {
+        val flagged = DtsTimingPatcher.analyzeEntry(0,
+            panelFixture("dsi_cmd_mode", "39 00 00 40 00 00 04 ff 5a a5 2d 39 00 00 40 00 00 02 cd 01"))
+        assertEquals(listOf(true, true), flagged.map { it.refreshSetByPanelCommands })
+
+        val identical = DtsTimingPatcher.analyzeEntry(0,
+            panelFixture("dsi_cmd_mode", "39 00 00 40 00 00 04 ff 5a a5 00 39 00 00 40 00 00 02 53 20"))
+        assertTrue(identical.none { it.refreshSetByPanelCommands })
+
+        val video = DtsTimingPatcher.analyzeEntry(0,
+            panelFixture("dsi_video_mode", "39 00 00 40 00 00 04 ff 5a a5 2d 39 00 00 40 00 00 02 cd 01"))
+        assertTrue(video.none { it.refreshSetByPanelCommands })
+    }
+
     @Test fun refusesDynamicTemplateForBothAppendAndOverwrite() {
         val file = fixture()
         val candidate = DtsTimingPatcher.analyzeEntry(0, file).last()

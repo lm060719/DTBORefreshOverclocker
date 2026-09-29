@@ -220,6 +220,9 @@ object StringsEn : AppStrings {
     override val autoDynamicModeDesc2: String =
         "Please select a standard 'normal' mode for the same panel above, then edit or add. For instance, to add 144 Hz, choose normal_120hz rather than auto_120_to_30hz."
     override val selectNormalModeToContinue: String = "Please select a standard mode to continue"
+    override val commandModePanelBadge: String = "Command-mode panel"
+    override val commandModePanelHint: String =
+        "The actual refresh rate is set by register commands sent to the display driver IC; changing these parameters may have no effect."
     override val quickPresets: String = "Quick Presets:"
     override val targetHzInputLabel: String = "Target Refresh Rate (Hz)"
     override val fillSuggestedCustom: String = "Fill Balanced Values"

@@ -181,7 +181,9 @@ data class TimingCandidate(
     val vSync: Int? = null,
     val hasOpaquePanelTimings: Boolean = false,
     val mdpTransferTimeUs: Long? = null,
-    val hasVendorDynamicMode: Boolean = false
+    val hasVendorDynamicMode: Boolean = false,
+    /** Command-mode panel whose sibling modes send different timing-switch commands to the DDIC. */
+    val refreshSetByPanelCommands: Boolean = false
 ) {
     val hasFullGeometry: Boolean
         get() = listOf(

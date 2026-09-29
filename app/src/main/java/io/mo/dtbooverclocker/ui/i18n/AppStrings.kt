@@ -202,6 +202,8 @@ interface AppStrings {
     val autoDynamicModeDesc1: String
     val autoDynamicModeDesc2: String
     val selectNormalModeToContinue: String
+    val commandModePanelBadge: String
+    val commandModePanelHint: String
     val quickPresets: String
     val targetHzInputLabel: String
     val fillSuggestedCustom: String
