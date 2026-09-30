@@ -80,9 +80,10 @@ fun SettingsScreen(
     onExportLogs: () -> Unit,
     onClearAllLogs: (onCleared: () -> Unit) -> Unit,
     onSetLanguage: (AppLanguage) -> Unit,
-    onOpenThemeSettings: () -> Unit
+    onOpenThemeSettings: () -> Unit,
+    backHandlerEnabled: Boolean = true
 ) {
-    BackHandler(onBack = onNavigateBack)
+    BackHandler(enabled = backHandlerEnabled, onBack = onNavigateBack)
     val strings = I18n.current
     val miuix = AppTheme.isMiuix
     val context = LocalContext.current

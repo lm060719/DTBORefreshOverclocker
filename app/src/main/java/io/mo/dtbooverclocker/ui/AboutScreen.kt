@@ -68,8 +68,12 @@ private const val GITHUB_REPO_URL = GitHubUpdateChecker.REPOSITORY_URL
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
-    BackHandler(onBack = onNavigateBack)
+fun AboutScreen(
+    onNavigateBack: () -> Unit,
+    onOpenFeedback: () -> Unit,
+    backHandlerEnabled: Boolean = true
+) {
+    BackHandler(enabled = backHandlerEnabled, onBack = onNavigateBack)
     val strings = I18n.current
     val context = LocalContext.current
     var showDisclaimerDialog by remember { mutableStateOf(false) }

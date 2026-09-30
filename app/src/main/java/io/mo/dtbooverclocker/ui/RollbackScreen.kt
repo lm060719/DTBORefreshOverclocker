@@ -87,9 +87,10 @@ fun RollbackScreen(
     onVerifyMd5: (record: BackupRecord) -> Unit,
     onExportBackup: (record: BackupRecord) -> Unit,
     onFlashBackup: (record: BackupRecord) -> Unit,
-    onDeleteBackup: (record: BackupRecord) -> Unit
+    onDeleteBackup: (record: BackupRecord) -> Unit,
+    backHandlerEnabled: Boolean = true
 ) {
-    BackHandler(onBack = onNavigateBack)
+    BackHandler(enabled = backHandlerEnabled, onBack = onNavigateBack)
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val strings = I18n.current

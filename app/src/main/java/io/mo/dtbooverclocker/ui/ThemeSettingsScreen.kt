@@ -36,9 +36,10 @@ internal fun ThemeSettingsScreen(
     onSetUiStyle: (UiStyle) -> Unit,
     onSetMonetColors: (Boolean) -> Unit,
     onSetFloatingBottomBar: (Boolean) -> Unit,
-    onSetLiquidGlass: (Boolean) -> Unit
+    onSetLiquidGlass: (Boolean) -> Unit,
+    backHandlerEnabled: Boolean = true
 ) {
-    BackHandler(onBack = onNavigateBack)
+    BackHandler(enabled = backHandlerEnabled, onBack = onNavigateBack)
     val strings = I18n.current
     val miuix = AppTheme.isMiuix
     val scrollBehavior = MiuixScrollBehavior()

@@ -219,175 +219,181 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     val pageStateHolder = rememberSaveableStateHolder()
     val navigationScope = rememberCoroutineScope()
 
-    when (currentScreen) {
-        AppScreen.ROLLBACK -> {
-            RollbackScreen(
-                state = state,
-                onNavigateBack = { currentScreen = AppScreen.MAIN },
-                onRefresh = viewModel::loadBackups,
-                onManualBackup = { desc ->
-                    viewModel.createManualBackup(desc) { ok, msg ->
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    AppScreenTransition(currentScreen) { screen, isActive ->
+        when (screen) {
+            AppScreen.ROLLBACK -> {
+                RollbackScreen(
+                    state = state,
+                    backHandlerEnabled = isActive,
+                    onNavigateBack = { currentScreen = AppScreen.MAIN },
+                    onRefresh = viewModel::loadBackups,
+                    onManualBackup = { desc ->
+                        viewModel.createManualBackup(desc) { ok, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    onVerifyMd5 = viewModel::verifyBackupMd5,
+                    onExportBackup = { record ->
+                        viewModel.exportBackup(record) { ok, path ->
+                            val tip = if (ok) "已成功导出至 $path" else "导出失败：$path"
+                            Toast.makeText(context, tip, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onFlashBackup = { record ->
+                        viewModel.flashBackup(record) { ok, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    onDeleteBackup = { record ->
+                        viewModel.deleteBackup(record) { ok ->
+                            val tip = if (ok) "已删除备份：${record.fileName}" else "删除失败"
+                            Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
+                        }
                     }
-                },
-                onVerifyMd5 = viewModel::verifyBackupMd5,
-                onExportBackup = { record ->
-                    viewModel.exportBackup(record) { ok, path ->
-                        val tip = if (ok) "已成功导出至 $path" else "导出失败：$path"
-                        Toast.makeText(context, tip, Toast.LENGTH_LONG).show()
-                    }
-                },
-                onFlashBackup = { record ->
-                    viewModel.flashBackup(record) { ok, msg ->
-                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                    }
-                },
-                onDeleteBackup = { record ->
-                    viewModel.deleteBackup(record) { ok ->
-                        val tip = if (ok) "已删除备份：${record.fileName}" else "删除失败"
-                        Toast.makeText(context, tip, Toast.LENGTH_SHORT).show()
-                    }
-                }
-            )
-        }
-        AppScreen.SETTINGS -> {
-            SettingsScreen(
-                state = state,
-                onNavigateBack = {
-                    navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
-                    currentScreen = AppScreen.MAIN
-                },
-                onRefreshEnvironment = viewModel::refreshEnvironment,
-                onRefreshCacheSize = viewModel::refreshCacheSize,
-                onClearAllCache = viewModel::clearAllCache,
-                onRefreshLogStats = viewModel::refreshLogStats,
-                onExportLogs = {
-                    val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-                    saveLogs.launch("DTBO_Log_${timestamp}.txt")
-                },
-                onClearAllLogs = viewModel::clearLogFiles,
-                onSetLanguage = viewModel::setAppLanguage,
-                onOpenThemeSettings = {
-                    themeParentScreen = AppScreen.SETTINGS
-                    currentScreen = AppScreen.THEME_SETTINGS
-                }
-            )
-        }
-        AppScreen.THEME_SETTINGS -> {
-            ThemeSettingsScreen(
-                state = state,
-                onNavigateBack = { currentScreen = themeParentScreen },
-                onSetUiStyle = viewModel::setUiStyle,
-                onSetMonetColors = viewModel::setMonetColors,
-                onSetFloatingBottomBar = viewModel::setFloatingBottomBar,
-                onSetLiquidGlass = viewModel::setLiquidGlass
-            )
-        }
-        AppScreen.ABOUT -> {
-            AboutScreen(
-                onNavigateBack = {
-                    navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
-                    currentScreen = AppScreen.MAIN
-                },
-                onOpenFeedback = { openFeedback(FeedbackType.BUG) }
-            )
-        }
-        AppScreen.MAIN -> {
-            StudioScreen(
-                state = state,
-                pagerState = studioPagerState,
-                pageStateHolder = pageStateHolder,
-                navigation = NavigationActions(
+                )
+            }
+            AppScreen.SETTINGS -> {
+                SettingsScreen(
+                    state = state,
+                    backHandlerEnabled = isActive,
+                    onNavigateBack = {
+                        navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
+                        currentScreen = AppScreen.MAIN
+                    },
                     onRefreshEnvironment = viewModel::refreshEnvironment,
-                    onRequestRoot = viewModel::requestRoot,
-                    onOpenRollback = { currentScreen = AppScreen.ROLLBACK },
-                    onOpenAdvancedSettings = { currentScreen = AppScreen.SETTINGS },
-                    onOpenAbout = { currentScreen = AppScreen.ABOUT },
+                    onRefreshCacheSize = viewModel::refreshCacheSize,
+                    onClearAllCache = viewModel::clearAllCache,
+                    onRefreshLogStats = viewModel::refreshLogStats,
+                    onExportLogs = {
+                        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                        saveLogs.launch("DTBO_Log_${timestamp}.txt")
+                    },
+                    onClearAllLogs = viewModel::clearLogFiles,
+                    onSetLanguage = viewModel::setAppLanguage,
                     onOpenThemeSettings = {
-                        themeParentScreen = AppScreen.MAIN
+                        themeParentScreen = AppScreen.SETTINGS
                         currentScreen = AppScreen.THEME_SETTINGS
                     }
-                ),
-                workspace = WorkspaceActions(
-                    onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },
-                    onExtract = viewModel::extractActivePartition,
-                    onPackage = viewModel::packageStagedChanges,
-                    onReset = viewModel::resetStagedChanges,
-                    onUndoLastTransaction = viewModel::undoLastTransaction,
-                    onUndoThroughTransaction = viewModel::undoThroughTransaction
-                ),
-                timing = TimingActions(
-                    onSelect = viewModel::selectCandidate,
-                    onTarget = viewModel::setTargetHz,
-                    onStrategy = viewModel::setStrategy,
-                    onPatchMode = viewModel::setPatchMode,
-                    onCustomPixelClock = viewModel::setCustomPixelClock,
-                    onCustomVfp = viewModel::setCustomVfp,
-                    onCustomVbp = viewModel::setCustomVbp,
-                    onCustomHfp = viewModel::setCustomHfp,
-                    onCustomHbp = viewModel::setCustomHbp,
-                    onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
-                    onStageChange = viewModel::stageTimingChange,
-                    onStageCharging = viewModel::stageChargingChange,
-                    onReportPanelIssue = { openFeedback(FeedbackType.PANEL_RECOMMEND) }
-                ),
-                deviceTree = DeviceTreeActions(
-                    onSetProperty = viewModel::setDeviceTreeProperty,
-                    onAddProperty = viewModel::addDeviceTreeProperty,
-                    onDeleteProperty = viewModel::deleteDeviceTreeProperty,
-                    onAddNode = viewModel::addDeviceTreeNode,
-                    onCloneNode = viewModel::cloneDeviceTreeNode,
-                    onRenameNode = viewModel::renameDeviceTreeNode,
-                    onDeleteNode = viewModel::deleteDeviceTreeNode
-                ),
-                output = OutputActions(
-                    onSavePatched = { file ->
-                        pendingBinary = file
-                        saveBinary.launch(file.name)
-                    },
-                    onRecoveryZip = {
-                        viewModel.prepareRecoveryZip { file ->
-                            pendingZip = file
-                            saveZip.launch(file.name)
-                        }
-                    },
-                    onFastbootBundle = {
-                        viewModel.prepareFastbootBundle { file ->
-                            pendingZip = file
-                            saveZip.launch(file.name)
-                        }
-                    },
-                    onModuleZip = {
-                        viewModel.prepareModuleZip { file ->
-                            pendingZip = file
-                            saveZip.launch(file.name)
-                        }
-                    },
-                    onFlash = {
-                        flashViaModule = false
-                        showFlashDialog = true
-                    },
-                    onFlashModule = {
-                        flashViaModule = true
-                        showFlashDialog = true
-                    },
-                    onExportBackup = { file ->
-                        pendingBinary = file
-                        saveBinary.launch(file.name)
-                    },
-                    onExportRescue = { file ->
-                        pendingZip = file
-                        saveZip.launch(file.name)
-                    },
-                    onScreenshot = {
-                        saveScreenshot.launch("DTBO_rescue_memo_${System.currentTimeMillis()}.png")
-                    },
-                    onCopy = { text -> copyText(context, "DTBO rollback", text, strings.copied) },
-                    onClearLogs = viewModel::clearLogs
                 )
-            )
+            }
+            AppScreen.THEME_SETTINGS -> {
+                ThemeSettingsScreen(
+                    state = state,
+                    backHandlerEnabled = isActive,
+                    onNavigateBack = { currentScreen = themeParentScreen },
+                    onSetUiStyle = viewModel::setUiStyle,
+                    onSetMonetColors = viewModel::setMonetColors,
+                    onSetFloatingBottomBar = viewModel::setFloatingBottomBar,
+                    onSetLiquidGlass = viewModel::setLiquidGlass
+                )
+            }
+            AppScreen.ABOUT -> {
+                AboutScreen(
+                    backHandlerEnabled = isActive,
+                    onNavigateBack = {
+                        navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
+                        currentScreen = AppScreen.MAIN
+                    },
+                    onOpenFeedback = { openFeedback(FeedbackType.BUG) }
+                )
+            }
+            AppScreen.MAIN -> {
+                StudioScreen(
+                    state = state,
+                    pagerState = studioPagerState,
+                    pageStateHolder = pageStateHolder,
+                    navigation = NavigationActions(
+                        onRefreshEnvironment = viewModel::refreshEnvironment,
+                        onRequestRoot = viewModel::requestRoot,
+                        onOpenRollback = { currentScreen = AppScreen.ROLLBACK },
+                        onOpenAdvancedSettings = { currentScreen = AppScreen.SETTINGS },
+                        onOpenAbout = { currentScreen = AppScreen.ABOUT },
+                        onOpenThemeSettings = {
+                            themeParentScreen = AppScreen.MAIN
+                            currentScreen = AppScreen.THEME_SETTINGS
+                        }
+                    ),
+                    workspace = WorkspaceActions(
+                        onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },
+                        onExtract = viewModel::extractActivePartition,
+                        onPackage = viewModel::packageStagedChanges,
+                        onReset = viewModel::resetStagedChanges,
+                        onUndoLastTransaction = viewModel::undoLastTransaction,
+                        onUndoThroughTransaction = viewModel::undoThroughTransaction
+                    ),
+                    timing = TimingActions(
+                        onSelect = viewModel::selectCandidate,
+                        onTarget = viewModel::setTargetHz,
+                        onStrategy = viewModel::setStrategy,
+                        onPatchMode = viewModel::setPatchMode,
+                        onCustomPixelClock = viewModel::setCustomPixelClock,
+                        onCustomVfp = viewModel::setCustomVfp,
+                        onCustomVbp = viewModel::setCustomVbp,
+                        onCustomHfp = viewModel::setCustomHfp,
+                        onCustomHbp = viewModel::setCustomHbp,
+                        onApplySuggestedCustom = viewModel::applySuggestedCustomParams,
+                        onStageChange = viewModel::stageTimingChange,
+                        onStageCharging = viewModel::stageChargingChange,
+                        onReportPanelIssue = { openFeedback(FeedbackType.PANEL_RECOMMEND) }
+                    ),
+                    deviceTree = DeviceTreeActions(
+                        onSetProperty = viewModel::setDeviceTreeProperty,
+                        onAddProperty = viewModel::addDeviceTreeProperty,
+                        onDeleteProperty = viewModel::deleteDeviceTreeProperty,
+                        onAddNode = viewModel::addDeviceTreeNode,
+                        onCloneNode = viewModel::cloneDeviceTreeNode,
+                        onRenameNode = viewModel::renameDeviceTreeNode,
+                        onDeleteNode = viewModel::deleteDeviceTreeNode
+                    ),
+                    output = OutputActions(
+                        onSavePatched = { file ->
+                            pendingBinary = file
+                            saveBinary.launch(file.name)
+                        },
+                        onRecoveryZip = {
+                            viewModel.prepareRecoveryZip { file ->
+                                pendingZip = file
+                                saveZip.launch(file.name)
+                            }
+                        },
+                        onFastbootBundle = {
+                            viewModel.prepareFastbootBundle { file ->
+                                pendingZip = file
+                                saveZip.launch(file.name)
+                            }
+                        },
+                        onModuleZip = {
+                            viewModel.prepareModuleZip { file ->
+                                pendingZip = file
+                                saveZip.launch(file.name)
+                            }
+                        },
+                        onFlash = {
+                            flashViaModule = false
+                            showFlashDialog = true
+                        },
+                        onFlashModule = {
+                            flashViaModule = true
+                            showFlashDialog = true
+                        },
+                        onExportBackup = { file ->
+                            pendingBinary = file
+                            saveBinary.launch(file.name)
+                        },
+                        onExportRescue = { file ->
+                            pendingZip = file
+                            saveZip.launch(file.name)
+                        },
+                        onScreenshot = {
+                            saveScreenshot.launch("DTBO_rescue_memo_${System.currentTimeMillis()}.png")
+                        },
+                        onCopy = { text -> copyText(context, "DTBO rollback", text, strings.copied) },
+                        onClearLogs = viewModel::clearLogs
+                    )
+                )
+            }
         }
-}
+    }
 
     if (state.busy) {
         Box(
