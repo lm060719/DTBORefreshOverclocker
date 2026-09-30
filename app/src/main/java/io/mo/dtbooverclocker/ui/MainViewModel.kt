@@ -88,6 +88,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_DISCLAIMER_ACCEPTED = "disclaimer_accepted"
         private const val KEY_APP_LANGUAGE = "app_language"
         private const val KEY_UI_STYLE = "ui_style"
+        private const val KEY_MONET = "monet_colors"
+        private const val KEY_FLOATING_BOTTOM_BAR = "floating_bottom_bar"
+        private const val KEY_LIQUID_GLASS = "liquid_glass"
     }
 
     init {
@@ -95,7 +98,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val savedLang = AppLanguage.fromCode(prefs.getString(KEY_APP_LANGUAGE, null))
         val accepted = prefs.getBoolean(KEY_DISCLAIMER_ACCEPTED, false)
         val savedStyle = UiStyle.fromCode(prefs.getString(KEY_UI_STYLE, null))
-        _state.update { it.copy(isDisclaimerAccepted = accepted, appLanguage = savedLang, uiStyle = savedStyle) }
+        _state.update { it.copy(
+            isDisclaimerAccepted = accepted,
+            appLanguage = savedLang,
+            uiStyle = savedStyle,
+            monetColors = prefs.getBoolean(KEY_MONET, true),
+            floatingBottomBar = prefs.getBoolean(KEY_FLOATING_BOTTOM_BAR, false),
+            liquidGlass = prefs.getBoolean(KEY_LIQUID_GLASS, false)
+        ) }
         if (accepted) {
             refreshEnvironment()
         } else {
@@ -114,6 +124,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setUiStyle(style: UiStyle) {
         prefs.edit().putString(KEY_UI_STYLE, style.code).apply()
         _state.update { it.copy(uiStyle = style) }
+    }
+
+    fun setMonetColors(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MONET, enabled).apply()
+        _state.update { it.copy(monetColors = enabled) }
+    }
+
+    fun setFloatingBottomBar(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_FLOATING_BOTTOM_BAR, enabled).apply()
+        _state.update { it.copy(floatingBottomBar = enabled) }
+    }
+
+    fun setLiquidGlass(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_LIQUID_GLASS, enabled).apply()
+        _state.update { it.copy(liquidGlass = enabled) }
     }
 
     fun acceptDisclaimer() {
@@ -1192,6 +1217,9 @@ data class MainUiState(
     val isDisclaimerAccepted: Boolean = false,
     val appLanguage: AppLanguage = AppLanguage.FOLLOW_SYSTEM,
     val uiStyle: UiStyle = UiStyle.MATERIAL,
+    val monetColors: Boolean = true,
+    val floatingBottomBar: Boolean = false,
+    val liquidGlass: Boolean = false,
     val rootState: RootState = RootState(),
     val slotInfo: SlotInfo? = null,
     val sourceMode: SourceMode = SourceMode.LOCAL_IMAGE,

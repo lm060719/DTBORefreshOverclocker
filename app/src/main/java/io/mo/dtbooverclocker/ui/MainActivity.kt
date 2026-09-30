@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
                 LocalConfiguration provides localizedConfiguration,
                 LocalContext provides localizedContext
             ) {
-                AppTheme(uiStyle = state.uiStyle) {
+                AppTheme(uiStyle = state.uiStyle, monet = state.monetColors) {
                     DtboOverclockerApp(viewModel)
                 }
             }
@@ -265,7 +265,10 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 },
                 onClearAllLogs = viewModel::clearLogFiles,
                 onSetLanguage = viewModel::setAppLanguage,
-                onSetUiStyle = viewModel::setUiStyle
+                onSetUiStyle = viewModel::setUiStyle,
+                onSetMonetColors = viewModel::setMonetColors,
+                onSetFloatingBottomBar = viewModel::setFloatingBottomBar,
+                onSetLiquidGlass = viewModel::setLiquidGlass
             )
         }
         AppScreen.ABOUT -> {
@@ -288,7 +291,10 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     onOpenRollback = { currentScreen = AppScreen.ROLLBACK },
                     onOpenAdvancedSettings = { currentScreen = AppScreen.SETTINGS },
                     onOpenAbout = { currentScreen = AppScreen.ABOUT },
-                    onSetUiStyle = viewModel::setUiStyle
+                    onSetUiStyle = viewModel::setUiStyle,
+                    onSetMonetColors = viewModel::setMonetColors,
+                    onSetFloatingBottomBar = viewModel::setFloatingBottomBar,
+                    onSetLiquidGlass = viewModel::setLiquidGlass
                 ),
                 workspace = WorkspaceActions(
                     onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },

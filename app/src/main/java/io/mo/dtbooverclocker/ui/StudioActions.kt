@@ -13,7 +13,10 @@ class NavigationActions(
     val onOpenRollback: () -> Unit,
     val onOpenAdvancedSettings: () -> Unit,
     val onOpenAbout: () -> Unit,
-    val onSetUiStyle: (UiStyle) -> Unit = {}
+    val onSetUiStyle: (UiStyle) -> Unit = {},
+    val onSetMonetColors: (Boolean) -> Unit = {},
+    val onSetFloatingBottomBar: (Boolean) -> Unit = {},
+    val onSetLiquidGlass: (Boolean) -> Unit = {}
 )
 
 /** 镜像导入与事务队列。 */

@@ -1,6 +1,5 @@
 package io.mo.dtbooverclocker.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.LocalOverscrollFactory
@@ -16,18 +15,20 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import top.yukonga.miuix.kmp.theme.Colors
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import top.yukonga.miuix.kmp.theme.ThemeController
 import top.yukonga.miuix.kmp.theme.defaultTextStyles
-import top.yukonga.miuix.kmp.theme.darkColorScheme as miuixDarkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme as miuixLightColorScheme
 import io.mo.dtbooverclocker.model.UiStyle
 
 /** 全局间距刻度，页面与组件只使用这些值。 */
@@ -151,15 +152,28 @@ object AppTheme {
 fun AppTheme(
     uiStyle: UiStyle = UiStyle.MATERIAL,
     dark: Boolean = isSystemInDarkTheme(),
+    monet: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
     val miuix = uiStyle == UiStyle.MIUIX
-    val colors = if (dark) miuixDarkColorScheme() else miuixLightColorScheme()
+    val dynamic = monet && supportsMonet()
+    val configuration = LocalConfiguration.current
+    val paletteRevision = rememberMonetRevision(dynamic)
+    // Refresh the palette controller without replacing the theme host or page composition.
+    val controller = remember(miuix, dynamic, dark, configuration, paletteRevision) {
+        ThemeController(colorSchemeMode = when {
+            miuix && dynamic && dark -> ColorSchemeMode.MonetDark
+            miuix && dynamic -> ColorSchemeMode.MonetLight
+            dark -> ColorSchemeMode.Dark
+            else -> ColorSchemeMode.Light
+        })
+    }
+    val colors = controller.currentColors()
     val scheme = when {
-        miuix -> colors.materialScheme(dark)
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && dark -> dynamicDarkColorScheme(context)
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> dynamicLightColorScheme(context)
+        miuix -> colors.materialScheme(dark, dynamic)
+        dynamic && dark -> dynamicDarkColorScheme(context)
+        dynamic -> dynamicLightColorScheme(context)
         dark -> darkColorScheme()
         else -> lightColorScheme()
     }
@@ -174,7 +188,7 @@ fun AppTheme(
         ) {
             val materialIndication = LocalIndication.current
             val materialOverscroll = LocalOverscrollFactory.current
-            MiuixTheme(colors = colors) {
+            MiuixTheme(controller = controller) {
                 CompositionLocalProvider(
                     LocalContentColor provides scheme.onBackground,
                     LocalIndication provides if (miuix) LocalIndication.current else materialIndication,
@@ -187,16 +201,16 @@ fun AppTheme(
 }
 
 /** Keep the editor's Material inputs and dialogs in the same palette as Miuix. */
-private fun Colors.materialScheme(dark: Boolean) =
+private fun Colors.materialScheme(dark: Boolean, monet: Boolean) =
     (if (dark) darkColorScheme() else lightColorScheme()).copy(
         primary = primary,
         onPrimary = onPrimary,
-        primaryContainer = tertiaryContainer,
-        onPrimaryContainer = onTertiaryContainer,
+        primaryContainer = if (monet) primaryContainer else tertiaryContainer,
+        onPrimaryContainer = if (monet) onPrimaryContainer else onTertiaryContainer,
         secondary = onSurfaceSecondary,
         onSecondary = background,
-        secondaryContainer = secondaryVariant,
-        onSecondaryContainer = onSecondaryVariant,
+        secondaryContainer = if (monet) secondaryContainer else secondaryVariant,
+        onSecondaryContainer = if (monet) onSecondaryContainer else onSecondaryVariant,
         tertiary = primary,
         onTertiary = onPrimary,
         tertiaryContainer = tertiaryContainer,

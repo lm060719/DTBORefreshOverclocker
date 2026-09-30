@@ -32,8 +32,16 @@ import androidx.compose.material3.NavigationBarItem as MaterialNavigationBarItem
 import io.mo.dtbooverclocker.ui.components.Scaffold
 import io.mo.dtbooverclocker.ui.components.TopAppBar
 import io.mo.dtbooverclocker.ui.components.UiStyleSelector
+import io.mo.dtbooverclocker.ui.components.MonetPreference
 import io.mo.dtbooverclocker.ui.components.AppCard
 import io.mo.dtbooverclocker.ui.components.PreferenceIcon
+import io.mo.dtbooverclocker.ui.components.BottomBarPreferences
+import io.mo.dtbooverclocker.ui.components.FloatingStudioBar
+import io.mo.dtbooverclocker.ui.components.LocalFloatingBarInset
+import io.mo.dtbooverclocker.ui.components.supportsLiquidGlass
+import top.yukonga.miuix.kmp.basic.NavigationItem
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import io.mo.dtbooverclocker.ui.theme.AppTheme
 import io.mo.dtbooverclocker.model.CapabilityFinding
@@ -83,7 +91,10 @@ fun StudioScreen(
     deviceTree: DeviceTreeActions,
     output: OutputActions
 ) {
-    StudioNavigation(pagerState, pageStateHolder, !state.busy, navigation.onOpenRollback, navigation.onRefreshEnvironment) { tab, padding ->
+    StudioNavigation(
+        pagerState, pageStateHolder, !state.busy, navigation.onOpenRollback, navigation.onRefreshEnvironment,
+        floatingBottomBar = state.floatingBottomBar, liquidGlass = state.liquidGlass
+    ) { tab, padding ->
         when (tab) {
             StudioTab.OVERVIEW -> OverviewTab(state, padding, workspace, output)
             StudioTab.MODULES -> ModulesTab(state, padding, timing)
@@ -112,10 +123,15 @@ internal fun StudioNavigation(
     enabled: Boolean,
     onOpenRollback: () -> Unit,
     onRefreshEnvironment: () -> Unit,
+    floatingBottomBar: Boolean = false,
+    liquidGlass: Boolean = false,
     content: @Composable (StudioTab, PaddingValues) -> Unit
 ) {
     val strings = I18n.current
     val selectedTab = StudioTab.entries[pagerState.currentPage]
+    val glassActive = floatingBottomBar && liquidGlass && supportsLiquidGlass()
+    val background = MaterialTheme.colorScheme.background
+    val backdrop = rememberLayerBackdrop { drawRect(background); drawContent() }
     val scope = rememberCoroutineScope()
     var navigationJob by remember { mutableStateOf<Job?>(null) }
     val scrollBehavior = key(selectedTab) { MiuixScrollBehavior(canScroll = { enabled }) }
@@ -140,7 +156,9 @@ internal fun StudioNavigation(
             )
         },
         bottomBar = {
-            if (AppTheme.isMiuix) {
+            if (floatingBottomBar) {
+                // The floating toolbar is over the scrolling content, outside its captured backdrop.
+            } else if (AppTheme.isMiuix) {
                 NavigationBar(showDivider = false) {
                     StudioTab.entries.forEach { tab ->
                         NavigationBarItem(
@@ -165,17 +183,30 @@ internal fun StudioNavigation(
                     }
                 }
             }
+        },
+        floatingToolbar = {
+            if (floatingBottomBar) FloatingStudioBar(
+                items = StudioTab.entries.map { NavigationItem(label = it.getLabel(strings), icon = it.icon) },
+                selectedIndex = selectedTab.ordinal,
+                onSelect = { selectTab(StudioTab.entries[it]) },
+                enabled = enabled,
+                glass = glassActive,
+                backdrop = backdrop
+            )
         }
     ) { padding ->
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize().padding(padding),
-            key = { StudioTab.entries[it].name },
-            userScrollEnabled = enabled
-        ) { page ->
-            val tab = StudioTab.entries[page]
-            pageStateHolder.SaveableStateProvider(tab.name) {
-                content(tab, PaddingValues())
+        CompositionLocalProvider(LocalFloatingBarInset provides if (floatingBottomBar) 80.dp else 0.dp) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize().padding(padding)
+                    .then(if (glassActive) Modifier.layerBackdrop(backdrop) else Modifier),
+                key = { StudioTab.entries[it].name },
+                userScrollEnabled = enabled
+            ) { page ->
+                val tab = StudioTab.entries[page]
+                pageStateHolder.SaveableStateProvider(tab.name) {
+                    content(tab, PaddingValues())
+                }
             }
         }
     }
@@ -187,7 +218,7 @@ private fun OverviewTab(
 ) {
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         item(key = "hero") { WorkflowCard(state) }
@@ -252,7 +283,7 @@ private fun ModulesTab(
     val workspace = state.workspace
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         item {
@@ -396,10 +427,14 @@ private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigatio
     val miuix = AppTheme.isMiuix
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         item(key = "appearance") { UiStyleSelector(state.uiStyle, navigation.onSetUiStyle) }
+        item(key = "monet") { MonetPreference(state.monetColors, navigation.onSetMonetColors) }
+        item(key = "bottom-bar") {
+            BottomBarPreferences(state.floatingBottomBar, state.liquidGlass, navigation.onSetFloatingBottomBar, navigation.onSetLiquidGlass)
+        }
         item {
             SectionCard(
                 title = strings.envStatus,

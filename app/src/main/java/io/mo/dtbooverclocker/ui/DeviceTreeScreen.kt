@@ -20,6 +20,7 @@ import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import io.mo.dtbooverclocker.ui.components.LocalFloatingBarInset
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -282,7 +283,7 @@ fun DeviceTreeScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(contentPadding),
-        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = Spacing.xs, bottom = Spacing.xl),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs)
     ) {
         item {

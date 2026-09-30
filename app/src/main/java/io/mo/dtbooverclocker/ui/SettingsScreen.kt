@@ -60,8 +60,12 @@ import io.mo.dtbooverclocker.model.AppLanguage
 import io.mo.dtbooverclocker.model.UiStyle
 import io.mo.dtbooverclocker.ui.components.UiStyleSelector
 import io.mo.dtbooverclocker.ui.components.UiStylePreference
+import io.mo.dtbooverclocker.ui.components.MonetPreference
+import io.mo.dtbooverclocker.ui.components.MonetPreferenceRow
 import io.mo.dtbooverclocker.ui.components.LanguagePreference
 import io.mo.dtbooverclocker.ui.components.PreferenceIcon
+import io.mo.dtbooverclocker.ui.components.BottomBarPreferences
+import io.mo.dtbooverclocker.ui.components.BottomBarPreferenceRows
 import io.mo.dtbooverclocker.ui.i18n.I18n
 import io.mo.dtbooverclocker.ui.theme.AppTheme
 import io.mo.dtbooverclocker.ui.theme.Spacing
@@ -81,7 +85,10 @@ fun SettingsScreen(
     onExportLogs: () -> Unit,
     onClearAllLogs: (onCleared: () -> Unit) -> Unit,
     onSetLanguage: (AppLanguage) -> Unit,
-    onSetUiStyle: (UiStyle) -> Unit
+    onSetUiStyle: (UiStyle) -> Unit,
+    onSetMonetColors: (Boolean) -> Unit,
+    onSetFloatingBottomBar: (Boolean) -> Unit,
+    onSetLiquidGlass: (Boolean) -> Unit
 ) {
     BackHandler(onBack = onNavigateBack)
     val strings = I18n.current
@@ -131,7 +138,9 @@ fun SettingsScreen(
                 item(key = "appearance") {
                     AppCard(Modifier.fillMaxWidth()) {
                         UiStylePreference(state.uiStyle, onSetUiStyle)
+                        MonetPreferenceRow(state.monetColors, onSetMonetColors)
                         LanguagePreference(state.appLanguage, onSetLanguage)
+                        BottomBarPreferenceRows(state.floatingBottomBar, state.liquidGlass, onSetFloatingBottomBar, onSetLiquidGlass)
                     }
                 }
                 item(key = "cache") {
@@ -170,6 +179,10 @@ fun SettingsScreen(
                 }
             } else {
                 item(key = "appearance") { UiStyleSelector(state.uiStyle, onSetUiStyle) }
+                item(key = "monet") { MonetPreference(state.monetColors, onSetMonetColors) }
+                item(key = "bottom-bar") {
+                    BottomBarPreferences(state.floatingBottomBar, state.liquidGlass, onSetFloatingBottomBar, onSetLiquidGlass)
+                }
 
                 // 1. Language Settings Section
                 item {

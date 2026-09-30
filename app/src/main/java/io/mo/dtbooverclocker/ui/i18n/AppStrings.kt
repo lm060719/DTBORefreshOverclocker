@@ -35,6 +35,16 @@ interface AppStrings {
     val settingsTitle: String
     val settingsAppearance: String
     val settingsAppearanceDesc: String
+    val monetColor: String
+    val monetColorDesc: String
+    val monetColorUnsupported: String
+    val settingsBottomBar: String
+    val floatingBottomBar: String
+    val floatingBottomBarDesc: String
+    val liquidGlass: String
+    val liquidGlassDesc: String
+    val liquidGlassNeedsFloating: String
+    val liquidGlassUnsupported: String
     val settingsLanguage: String
     val settingsLanguageDesc: String
     val langFollowSystem: String
