@@ -27,6 +27,8 @@ object StringsEn : AppStrings {
 
     // Settings
     override val settingsTitle: String = "Settings"
+    override val settingsTheme: String = "Theme settings"
+    override val settingsThemeDesc: String = "Interface style, dynamic colors, and bottom bar effects"
     override val settingsAppearance: String = "Interface style"
     override val settingsAppearanceDesc: String = "Choose Miuix or Material 3. Changes apply immediately."
     override val monetColor: String = "Monet dynamic colors"

@@ -27,6 +27,8 @@ object StringsZh : AppStrings {
 
     // Settings
     override val settingsTitle: String = "设置"
+    override val settingsTheme: String = "主题设置"
+    override val settingsThemeDesc: String = "界面风格、动态配色和底栏效果"
     override val settingsAppearance: String = "界面风格"
     override val settingsAppearanceDesc: String = "选择 Miuix 或 Material 3，立即生效。"
     override val monetColor: String = "Monet 动态配色"

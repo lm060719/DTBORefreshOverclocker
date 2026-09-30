@@ -33,6 +33,8 @@ interface AppStrings {
 
     // Settings
     val settingsTitle: String
+    val settingsTheme: String
+    val settingsThemeDesc: String
     val settingsAppearance: String
     val settingsAppearanceDesc: String
     val monetColor: String

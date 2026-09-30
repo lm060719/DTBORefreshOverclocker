@@ -20,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.SaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -31,11 +32,9 @@ import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import androidx.compose.material3.NavigationBarItem as MaterialNavigationBarItem
 import io.mo.dtbooverclocker.ui.components.Scaffold
 import io.mo.dtbooverclocker.ui.components.TopAppBar
-import io.mo.dtbooverclocker.ui.components.UiStyleSelector
-import io.mo.dtbooverclocker.ui.components.MonetPreference
+import io.mo.dtbooverclocker.ui.components.ThemeSettingsEntry
 import io.mo.dtbooverclocker.ui.components.AppCard
 import io.mo.dtbooverclocker.ui.components.PreferenceIcon
-import io.mo.dtbooverclocker.ui.components.BottomBarPreferences
 import io.mo.dtbooverclocker.ui.components.FloatingStudioBar
 import io.mo.dtbooverclocker.ui.components.LocalFloatingBarInset
 import io.mo.dtbooverclocker.ui.components.supportsLiquidGlass
@@ -426,15 +425,11 @@ private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigatio
     val strings = I18n.current
     val miuix = AppTheme.isMiuix
     LazyColumn(
-        Modifier.fillMaxSize().padding(padding),
+        Modifier.fillMaxSize().padding(padding).testTag("settings-hub-list"),
         contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        item(key = "appearance") { UiStyleSelector(state.uiStyle, navigation.onSetUiStyle) }
-        item(key = "monet") { MonetPreference(state.monetColors, navigation.onSetMonetColors) }
-        item(key = "bottom-bar") {
-            BottomBarPreferences(state.floatingBottomBar, state.liquidGlass, navigation.onSetFloatingBottomBar, navigation.onSetLiquidGlass)
-        }
+        item(key = "theme") { ThemeSettingsEntry(navigation.onOpenThemeSettings) }
         item {
             SectionCard(
                 title = strings.envStatus,

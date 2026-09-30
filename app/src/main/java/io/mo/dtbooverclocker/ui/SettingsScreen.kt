@@ -53,19 +53,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.model.AppLanguage
-import io.mo.dtbooverclocker.model.UiStyle
-import io.mo.dtbooverclocker.ui.components.UiStyleSelector
-import io.mo.dtbooverclocker.ui.components.UiStylePreference
-import io.mo.dtbooverclocker.ui.components.MonetPreference
-import io.mo.dtbooverclocker.ui.components.MonetPreferenceRow
+import io.mo.dtbooverclocker.ui.components.ThemeSettingsEntry
 import io.mo.dtbooverclocker.ui.components.LanguagePreference
 import io.mo.dtbooverclocker.ui.components.PreferenceIcon
-import io.mo.dtbooverclocker.ui.components.BottomBarPreferences
-import io.mo.dtbooverclocker.ui.components.BottomBarPreferenceRows
 import io.mo.dtbooverclocker.ui.i18n.I18n
 import io.mo.dtbooverclocker.ui.theme.AppTheme
 import io.mo.dtbooverclocker.ui.theme.Spacing
@@ -85,10 +80,7 @@ fun SettingsScreen(
     onExportLogs: () -> Unit,
     onClearAllLogs: (onCleared: () -> Unit) -> Unit,
     onSetLanguage: (AppLanguage) -> Unit,
-    onSetUiStyle: (UiStyle) -> Unit,
-    onSetMonetColors: (Boolean) -> Unit,
-    onSetFloatingBottomBar: (Boolean) -> Unit,
-    onSetLiquidGlass: (Boolean) -> Unit
+    onOpenThemeSettings: () -> Unit
 ) {
     BackHandler(onBack = onNavigateBack)
     val strings = I18n.current
@@ -104,7 +96,7 @@ fun SettingsScreen(
     }
 
     Scaffold(
-        modifier = Modifier.appBarScroll(scrollBehavior),
+        modifier = Modifier.testTag("advanced-settings-screen").appBarScroll(scrollBehavior),
         topBar = {
             TopAppBar(
                 title = strings.settingsTitle,
@@ -134,13 +126,11 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.section)
         ) {
             item { Spacer(Modifier.height(if (AppTheme.isMiuix) 0.dp else 4.dp)) }
+            item(key = "theme") { ThemeSettingsEntry(onOpenThemeSettings) }
             if (miuix) {
-                item(key = "appearance") {
+                item(key = "language") {
                     AppCard(Modifier.fillMaxWidth()) {
-                        UiStylePreference(state.uiStyle, onSetUiStyle)
-                        MonetPreferenceRow(state.monetColors, onSetMonetColors)
                         LanguagePreference(state.appLanguage, onSetLanguage)
-                        BottomBarPreferenceRows(state.floatingBottomBar, state.liquidGlass, onSetFloatingBottomBar, onSetLiquidGlass)
                     }
                 }
                 item(key = "cache") {
@@ -178,12 +168,6 @@ fun SettingsScreen(
                     }
                 }
             } else {
-                item(key = "appearance") { UiStyleSelector(state.uiStyle, onSetUiStyle) }
-                item(key = "monet") { MonetPreference(state.monetColors, onSetMonetColors) }
-                item(key = "bottom-bar") {
-                    BottomBarPreferences(state.floatingBottomBar, state.liquidGlass, onSetFloatingBottomBar, onSetLiquidGlass)
-                }
-
                 // 1. Language Settings Section
                 item {
                     AppCard(

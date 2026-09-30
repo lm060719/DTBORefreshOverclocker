@@ -88,6 +88,7 @@ enum class AppScreen {
     MAIN,
     ROLLBACK,
     SETTINGS,
+    THEME_SETTINGS,
     ABOUT
 }
 
@@ -213,6 +214,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     }
 
     var currentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
+    var themeParentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
     val studioPagerState = rememberPagerState { StudioTab.entries.size }
     val pageStateHolder = rememberSaveableStateHolder()
     val navigationScope = rememberCoroutineScope()
@@ -265,6 +267,16 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                 },
                 onClearAllLogs = viewModel::clearLogFiles,
                 onSetLanguage = viewModel::setAppLanguage,
+                onOpenThemeSettings = {
+                    themeParentScreen = AppScreen.SETTINGS
+                    currentScreen = AppScreen.THEME_SETTINGS
+                }
+            )
+        }
+        AppScreen.THEME_SETTINGS -> {
+            ThemeSettingsScreen(
+                state = state,
+                onNavigateBack = { currentScreen = themeParentScreen },
                 onSetUiStyle = viewModel::setUiStyle,
                 onSetMonetColors = viewModel::setMonetColors,
                 onSetFloatingBottomBar = viewModel::setFloatingBottomBar,
@@ -291,10 +303,10 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     onOpenRollback = { currentScreen = AppScreen.ROLLBACK },
                     onOpenAdvancedSettings = { currentScreen = AppScreen.SETTINGS },
                     onOpenAbout = { currentScreen = AppScreen.ABOUT },
-                    onSetUiStyle = viewModel::setUiStyle,
-                    onSetMonetColors = viewModel::setMonetColors,
-                    onSetFloatingBottomBar = viewModel::setFloatingBottomBar,
-                    onSetLiquidGlass = viewModel::setLiquidGlass
+                    onOpenThemeSettings = {
+                        themeParentScreen = AppScreen.MAIN
+                        currentScreen = AppScreen.THEME_SETTINGS
+                    }
                 ),
                 workspace = WorkspaceActions(
                     onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },

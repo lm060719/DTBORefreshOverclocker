@@ -3,7 +3,6 @@ package io.mo.dtbooverclocker.ui
 import io.mo.dtbooverclocker.model.ChargingNode
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
-import io.mo.dtbooverclocker.model.UiStyle
 import java.io.File
 
 /** 环境与页面跳转。 */
@@ -13,10 +12,7 @@ class NavigationActions(
     val onOpenRollback: () -> Unit,
     val onOpenAdvancedSettings: () -> Unit,
     val onOpenAbout: () -> Unit,
-    val onSetUiStyle: (UiStyle) -> Unit = {},
-    val onSetMonetColors: (Boolean) -> Unit = {},
-    val onSetFloatingBottomBar: (Boolean) -> Unit = {},
-    val onSetLiquidGlass: (Boolean) -> Unit = {}
+    val onOpenThemeSettings: () -> Unit
 )
 
 /** 镜像导入与事务队列。 */
