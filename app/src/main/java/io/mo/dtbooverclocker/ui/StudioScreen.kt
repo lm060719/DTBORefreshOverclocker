@@ -95,7 +95,7 @@ fun StudioScreen(
         floatingBottomBar = state.floatingBottomBar, liquidGlass = state.liquidGlass
     ) { tab, padding ->
         when (tab) {
-            StudioTab.OVERVIEW -> OverviewTab(state, padding, workspace, output)
+            StudioTab.OVERVIEW -> OverviewTab(state, padding, workspace, output, navigation.onOpenRollback)
             StudioTab.MODULES -> ModulesTab(state, padding, timing)
             StudioTab.DEVICE_TREE -> DeviceTreeScreen(
                 state = state,
@@ -212,64 +212,32 @@ internal fun StudioNavigation(
 }
 
 @Composable
-private fun OverviewTab(
-    state: MainUiState, padding: PaddingValues, workspace: WorkspaceActions, output: OutputActions
+internal fun OverviewTab(
+    state: MainUiState, padding: PaddingValues, workspace: WorkspaceActions, output: OutputActions,
+    onOpenRollback: () -> Unit
 ) {
     LazyColumn(
-        Modifier.fillMaxSize().padding(padding),
+        Modifier.fillMaxSize().padding(padding).testTag("overview-list"),
         contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        item(key = "hero") { WorkflowCard(state) }
+        item(key = "environment") { OverviewEnvironment(state) }
         item(key = "source") { SourceCard(state, workspace.onImport, workspace.onExtract) }
         if (state.workspace != null) {
+            item(key = "preview") { RefreshOverviewCard(state) }
             item(key = "summary") { ImageSummaryCard(state) }
+            item(key = "workflow") { WorkflowCard(state) }
             if (state.transactions.isNotEmpty()) item(key = "transactions") {
                 TransactionQueueCard(state, workspace.onPackage, workspace.onReset, workspace.onUndoLastTransaction)
             }
+            item(key = "output") { OverviewOutputCard(state, output) }
+            item(key = "protection") { OverviewProtectionCard(state, onOpenRollback) }
+        } else {
+            item(key = "workflow") { WorkflowCard(state) }
         }
-        state.patchReport?.let { report -> item(key = "output") { OutputCard(state, { output.onSavePatched(report.outputImage) }, output.onRecoveryZip, output.onFastbootBundle, output.onModuleZip, output.onFlash, output.onFlashModule) } }
         state.lastFlash?.let { flash -> item(key = "rescue") { RescueMemoCard(state, output.onCopy, { output.onExportBackup(flash.backupFile) }, { output.onExportRescue(flash.rescueZip) }, output.onScreenshot) } }
         item(key = "terminal") { TerminalCard(state.logs, output.onClearLogs) }
         item(key = "status") { HintText(state.status, Modifier.padding(horizontal = Spacing.xs)) }
-    }
-}
-
-@Composable
-private fun TransactionQueueCard(
-    state: MainUiState,
-    onPackage: () -> Unit,
-    onReset: () -> Unit,
-    onUndoLastTransaction: () -> Unit
-) {
-    val strings = I18n.current
-    SectionCard(
-        title = strings.dtTransactions(state.transactions.size),
-        subtitle = strings.dtOperationsPending(state.transactions.sumOf { it.operationCount }),
-        icon = Icons.Default.PendingActions,
-        tone = Tone.Primary
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            state.transactions.takeLast(5).forEach { transaction ->
-                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
-                        Text(
-                            "${transaction.kind.displayName} · ${transaction.risk.displayName} · ${transaction.operationCount} ops",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(transaction.summary, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-        Button(onClick = onPackage, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-            IconLabel(Icons.Default.Build, strings.packageBatch)
-        }
-        ActionRow {
-            OutlinedButton(onClick = onUndoLastTransaction, enabled = !state.busy) { Text(strings.undoLastTransaction) }
-            TextButton(onClick = onReset, enabled = !state.busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(strings.resetAll) }
-        }
     }
 }
 

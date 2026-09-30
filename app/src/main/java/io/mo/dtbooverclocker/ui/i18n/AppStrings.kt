@@ -91,6 +91,41 @@ interface AppStrings {
     val aboutStudioSubtitle: String
 
     // Workflow & Overview Cards
+    val overviewProgress: String
+    val overviewRefreshPreview: String
+    val overviewOriginalTiming: String
+    val overviewStagedTarget: String
+    val overviewFrameInterval: String
+    val overviewPendingTimingHint: String
+    val overviewOriginalTimingHint: String
+    val overviewPackagedTimingHint: String
+    val overviewFlashedTimingHint: String
+    val overviewNoTiming: String
+    val overviewPendingChanges: String
+    val overviewPackagedChanges: String
+    val overviewPending: String
+    val overviewPackaged: String
+    val overviewChangeScope: String
+    val overviewDetails: String
+    val overviewVendor: String
+    val overviewReference: String
+    val overviewSimulation: String
+    val overviewUnknown: String
+    val overviewOutputFormats: String
+    val overviewOutputPending: String
+    val overviewImageFormat: String
+    val overviewRecoveryFormat: String
+    val overviewFastbootFormat: String
+    val overviewModuleFormat: String
+    val overviewProtection: String
+    val overviewAvbHint: String
+    val overviewLocalSource: String
+    val overviewPartitionSource: String
+    val overviewChangeImage: String
+    val overviewPackageAction: String
+    fun overviewScope(changed: Int, total: Int, operations: Int): String
+    fun overviewTransactionCount(count: Int): String
+    fun overviewTimingLocation(panel: String, entry: Int): String
     val workflowSubtitle: String
     val rootGrantedStatus: String
     val nonRootAvailable: String
