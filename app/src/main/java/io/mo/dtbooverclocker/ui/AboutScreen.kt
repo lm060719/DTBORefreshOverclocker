@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.takeOrElse
 import androidx.compose.ui.viewinterop.AndroidView
 import io.mo.dtbooverclocker.BuildConfig
 import io.mo.dtbooverclocker.ui.components.UpdateCheckDialog
@@ -325,7 +326,10 @@ fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
                         text = strings.coreArchContent,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.3
+                        // Miuix body styles leave lineHeight unspecified; resolve it before scaling.
+                        lineHeight = MaterialTheme.typography.bodySmall.run {
+                            lineHeight.takeOrElse { fontSize } * 1.3
+                        }
                     )
                 }
             }

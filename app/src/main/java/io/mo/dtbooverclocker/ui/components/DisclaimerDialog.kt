@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.takeOrElse
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 
@@ -133,7 +134,9 @@ fun DisclaimerDialog(
                     text = strings.disclaimerWelcome,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * 1.2
+                    lineHeight = MaterialTheme.typography.bodyMedium.run {
+                        lineHeight.takeOrElse { fontSize } * 1.2
+                    }
                 )
 
                 // 1. 高危操作声明
@@ -274,7 +277,9 @@ private fun DisclaimerSection(
                 text = content,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
-                lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.25
+                lineHeight = MaterialTheme.typography.bodySmall.run {
+                    lineHeight.takeOrElse { fontSize } * 1.25
+                }
             )
         }
     }
