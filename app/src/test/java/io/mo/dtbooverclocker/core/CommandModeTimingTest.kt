@@ -53,7 +53,22 @@ class CommandModeTimingTest {
         assertTrue(preview.calculationNote.contains("6083"))
     }
 
-    private fun panelFixture(panelType: String, secondSwitchCommand: String): File =
+    private val sharedTiming = """
+        qcom,mdss-dsi-panel-width = <1264>;
+        qcom,mdss-dsi-panel-height = <2780>;
+        qcom,mdss-dsi-panel-clockrate = <1360000000>;
+        qcom,mdss-dsi-v-front-porch = <20>;
+        qcom,mdss-dsi-v-back-porch = <18>;
+        qcom,mdss-mdp-transfer-time-us = <6000>;
+    """.trimIndent().replace("\n", "\n                                ")
+
+    private fun panelFixture(
+        panelType: String,
+        secondSwitchCommand: String,
+        firstTiming: String = sharedTiming,
+        secondTiming: String = sharedTiming,
+        secondHz: Int = 165
+    ): File =
         File.createTempFile("switch_panel", ".dts").apply {
             deleteOnExit()
             writeText("""
@@ -64,10 +79,12 @@ class CommandModeTimingTest {
                         qcom,mdss-dsi-display-timings {
                             timing@0 {
                                 qcom,mdss-dsi-panel-framerate = <120>;
+                                $firstTiming
                                 qcom,mdss-dsi-timing-switch-command = [39 00 00 40 00 00 04 ff 5a a5 00 39 00 00 40 00 00 02 53 20];
                             };
                             timing@1 {
-                                qcom,mdss-dsi-panel-framerate = <165>;
+                                qcom,mdss-dsi-panel-framerate = <$secondHz>;
+                                $secondTiming
                                 qcom,mdss-dsi-timing-switch-command = [$secondSwitchCommand];
                             };
                         };
@@ -76,18 +93,133 @@ class CommandModeTimingTest {
             """.trimIndent())
         }
 
+    private val differentSwitch = "39 00 00 40 00 00 04 ff 5a a5 2d 39 00 00 40 00 00 02 cd 01"
+
     @Test fun flagsCommandModePanelWhoseModesSendDifferentSwitchCommands() {
-        val flagged = DtsTimingPatcher.analyzeEntry(0,
-            panelFixture("dsi_cmd_mode", "39 00 00 40 00 00 04 ff 5a a5 2d 39 00 00 40 00 00 02 cd 01"))
+        val flagged = DtsTimingPatcher.analyzeEntry(0, panelFixture("dsi_cmd_mode", differentSwitch))
         assertEquals(listOf(true, true), flagged.map { it.refreshSetByPanelCommands })
 
         val identical = DtsTimingPatcher.analyzeEntry(0,
             panelFixture("dsi_cmd_mode", "39 00 00 40 00 00 04 ff 5a a5 00 39 00 00 40 00 00 02 53 20"))
         assertTrue(identical.none { it.refreshSetByPanelCommands })
 
-        val video = DtsTimingPatcher.analyzeEntry(0,
-            panelFixture("dsi_video_mode", "39 00 00 40 00 00 04 ff 5a a5 2d 39 00 00 40 00 00 02 cd 01"))
+        val video = DtsTimingPatcher.analyzeEntry(0, panelFixture("dsi_video_mode", differentSwitch))
         assertTrue(video.none { it.refreshSetByPanelCommands })
+    }
+
+    @Test fun doesNotFlagSameRateModesThatOnlySwitchResolution() {
+        val fhd = sharedTiming.replace("<1264>", "<948>").replace("<2780>", "<2085>")
+        val candidates = DtsTimingPatcher.analyzeEntry(0,
+            panelFixture("dsi_cmd_mode", differentSwitch, secondTiming = fhd, secondHz = 120))
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.none { it.refreshSetByPanelCommands })
+    }
+
+    @Test fun doesNotFlagWhenModesCarryNoOwnTimingValues() {
+        val bare = DtsTimingPatcher.analyzeEntry(0,
+            panelFixture("dsi_cmd_mode", differentSwitch, firstTiming = "", secondTiming = ""))
+        assertTrue(bare.none { it.refreshSetByPanelCommands })
+
+        // A clock inherited from the panel node is shared by every mode and must not count as "identical timing".
+        val inherited = File.createTempFile("inherited_clock", ".dts").apply {
+            deleteOnExit()
+            writeText("""
+                /dts-v1/;
+                / {
+                    panel {
+                        qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
+                        qcom,mdss-dsi-panel-clockrate = <1360000000>;
+                        qcom,mdss-dsi-display-timings {
+                            timing@0 {
+                                qcom,mdss-dsi-panel-framerate = <60>;
+                                qcom,mdss-dsi-timing-switch-command = [39 00 00 00 00 00 02 2f 02];
+                            };
+                            timing@1 {
+                                qcom,mdss-dsi-panel-framerate = <120>;
+                                qcom,mdss-dsi-timing-switch-command = [39 00 00 00 00 00 02 2f 00];
+                            };
+                        };
+                    };
+                };
+            """.trimIndent())
+        }
+        val candidates = DtsTimingPatcher.analyzeEntry(0, inherited)
+        assertEquals(listOf(1_360_000_000L, 1_360_000_000L), candidates.map { it.pixelClockHz })
+        assertTrue(candidates.none { it.refreshSetByPanelCommands })
+    }
+
+    @Test fun videoPanelWithoutTimingsWrapperIgnoresSiblingCommandPanel() {
+        val file = File.createTempFile("flat_panels", ".dts").apply {
+            deleteOnExit()
+            writeText("""
+                /dts-v1/;
+                / {
+                    dsi_panels {
+                        cmd_panel {
+                            qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
+                        };
+                        video_panel {
+                            qcom,mdss-dsi-panel-type = "dsi_video_mode";
+                            timing@0 {
+                                qcom,mdss-dsi-panel-framerate = <60>;
+                                $sharedTiming
+                                qcom,mdss-dsi-timing-switch-command = [39 00 00 00 00 00 02 2f 02];
+                            };
+                            timing@1 {
+                                qcom,mdss-dsi-panel-framerate = <120>;
+                                $sharedTiming
+                                qcom,mdss-dsi-timing-switch-command = [39 00 00 00 00 00 02 2f 00];
+                            };
+                        };
+                    };
+                };
+            """.trimIndent())
+        }
+        val candidates = DtsTimingPatcher.analyzeEntry(0, file)
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.none { it.refreshSetByPanelCommands })
+    }
+
+    @Test fun switchCommandsDifferingOnlyInWhitespaceOrCaseAreTheSame() {
+        val reformatted = "39 00 00 40  00 00 04 FF 5A A5 00\n39 00 00 40 00 00 02 53 20"
+        val candidates = DtsTimingPatcher.analyzeEntry(0, panelFixture("dsi_cmd_mode", reformatted))
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.none { it.refreshSetByPanelCommands })
+    }
+
+    @Test fun doesNotFlagCommandModePanelWhoseModesAlsoDifferInTiming() {
+        val file = File.createTempFile("xiaomi_panel", ".dts").apply {
+            deleteOnExit()
+            writeText("""
+                /dts-v1/;
+                / {
+                    qcom,mdss_dsi_m16t_36_02_0a_dsc_cmd {
+                        qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
+                        qcom,mdss-dsi-display-timings {
+                            timing@wqhd_normal_60hz_index_00 {
+                                qcom,mdss-dsi-panel-framerate = <60>;
+                                qcom,mdss-dsi-panel-clockrate = <680000000>;
+                                qcom,mdss-mdp-transfer-time-us = <14600>;
+                                qcom,mdss-dsi-v-front-porch = <16>;
+                                qcom,mdss-dsi-v-back-porch = <24>;
+                                qcom,mdss-dsi-timing-switch-command = [39 00 00 00 00 00 02 2f 02];
+                            };
+                            timing@wqhd_normal_120hz_index_01 {
+                                qcom,mdss-dsi-panel-framerate = <120>;
+                                qcom,mdss-dsi-panel-clockrate = <1360000000>;
+                                qcom,mdss-mdp-transfer-time-us = <7300>;
+                                qcom,mdss-dsi-v-front-porch = <16>;
+                                qcom,mdss-dsi-v-back-porch = <24>;
+                                qcom,mdss-dsi-timing-switch-command = [39 00 00 00 00 00 02 2f 00];
+                            };
+                        };
+                    };
+                };
+            """.trimIndent())
+        }
+        val candidates = DtsTimingPatcher.analyzeEntry(0, file)
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.none { it.refreshSetByPanelCommands })
     }
 
     @Test fun refusesDynamicTemplateForBothAppendAndOverwrite() {
