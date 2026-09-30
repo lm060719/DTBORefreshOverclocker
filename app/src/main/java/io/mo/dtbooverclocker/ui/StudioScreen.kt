@@ -5,6 +5,7 @@ import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material.icons.Icons
@@ -90,13 +91,41 @@ fun StudioScreen(
     deviceTree: DeviceTreeActions,
     output: OutputActions
 ) {
+    // Keep the expanded module when temporarily opening theme settings or another app screen.
+    pageStateHolder.SaveableStateProvider("studio-controls") {
+        StudioScreenContent(state, pagerState, pageStateHolder, navigation, workspace, timing, deviceTree, output)
+    }
+}
+
+@Composable
+private fun StudioScreenContent(
+    state: MainUiState,
+    pagerState: PagerState,
+    pageStateHolder: SaveableStateHolder,
+    navigation: NavigationActions,
+    workspace: WorkspaceActions,
+    timing: TimingActions,
+    deviceTree: DeviceTreeActions,
+    output: OutputActions
+) {
+    var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
+    var timingNavigationRequest by rememberSaveable { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    val openTiming: (String) -> Unit = { candidateId ->
+        if (!state.busy && state.workspace?.candidates?.any { it.id == candidateId } == true) {
+            timing.onSelect(candidateId)
+            activeModule = StudioModule.REFRESH_RATE
+            timingNavigationRequest++
+            scope.launch { pagerState.animateScrollToPage(StudioTab.MODULES.ordinal) }
+        }
+    }
     StudioNavigation(
         pagerState, pageStateHolder, !state.busy, navigation.onOpenRollback, navigation.onRefreshEnvironment,
         floatingBottomBar = state.floatingBottomBar, liquidGlass = state.liquidGlass
     ) { tab, padding ->
         when (tab) {
-            StudioTab.OVERVIEW -> OverviewTab(state, padding, workspace, output, navigation.onOpenRollback)
-            StudioTab.MODULES -> ModulesTab(state, padding, timing)
+            StudioTab.OVERVIEW -> OverviewTab(state, padding, workspace, output, navigation.onOpenRollback, openTiming)
+            StudioTab.MODULES -> ModulesTab(state, padding, timing, activeModule, { activeModule = it }, timingNavigationRequest)
             StudioTab.DEVICE_TREE -> DeviceTreeScreen(
                 state = state,
                 contentPadding = padding,
@@ -214,7 +243,8 @@ internal fun StudioNavigation(
 @Composable
 internal fun OverviewTab(
     state: MainUiState, padding: PaddingValues, workspace: WorkspaceActions, output: OutputActions,
-    onOpenRollback: () -> Unit
+    onOpenRollback: () -> Unit,
+    onOpenTiming: ((String) -> Unit)? = null
 ) {
     LazyColumn(
         Modifier.fillMaxSize().padding(padding).testTag("overview-list"),
@@ -224,8 +254,8 @@ internal fun OverviewTab(
         item(key = "environment") { OverviewEnvironment(state) }
         item(key = "source") { SourceCard(state, workspace.onImport, workspace.onExtract) }
         if (state.workspace != null) {
-            item(key = "preview") { RefreshOverviewCard(state) }
-            item(key = "summary") { ImageSummaryCard(state) }
+            item(key = "preview") { RefreshOverviewCard(state, onOpenTiming) }
+            item(key = "summary") { ImageSummaryCard(state, onOpenTiming) }
             item(key = "workflow") { WorkflowCard(state) }
             if (state.transactions.isNotEmpty()) item(key = "transactions") {
                 TransactionQueueCard(state, workspace.onPackage, workspace.onReset, workspace.onUndoLastTransaction)
@@ -243,13 +273,25 @@ internal fun OverviewTab(
 
 @Composable
 private fun ModulesTab(
-    state: MainUiState, padding: PaddingValues, timing: TimingActions
+    state: MainUiState, padding: PaddingValues, timing: TimingActions,
+    activeModule: StudioModule?, onActiveModuleChange: (StudioModule?) -> Unit,
+    timingNavigationRequest: Int
 ) {
     val strings = I18n.current
-    var activeModule by rememberSaveable { mutableStateOf<StudioModule?>(null) }
+    val listState = rememberLazyListState()
+    var handledTimingRequest by rememberSaveable { mutableIntStateOf(0) }
     val workspace = state.workspace
+    LaunchedEffect(timingNavigationRequest, workspace != null) {
+        if (timingNavigationRequest > handledTimingRequest && activeModule == StudioModule.REFRESH_RATE &&
+            workspace?.candidates?.isNotEmpty() == true) {
+            // Header, capability scan, and module choices precede the timing editor.
+            listState.scrollToItem(3)
+            handledTimingRequest = timingNavigationRequest
+        }
+    }
     LazyColumn(
-        Modifier.fillMaxSize().padding(padding),
+        Modifier.fillMaxSize().padding(padding).testTag("modules-list"),
+        state = listState,
         contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
@@ -274,13 +316,19 @@ private fun ModulesTab(
             item {
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     val refreshFinding = state.capabilityReport?.finding(CapabilityKind.REFRESH_RATE)
-                    ModuleCard(strings.moduleRefreshRate, capabilitySubtitle(strings, state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE, Modifier.weight(1f)) { activeModule = if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE }
-                    ModuleCard(strings.moduleCharging, capabilitySubtitle(strings, state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING, Modifier.weight(1f)) { activeModule = if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING }
+                    ModuleCard(strings.moduleRefreshRate, capabilitySubtitle(strings, state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, !state.busy && (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE, Modifier.weight(1f)) { onActiveModuleChange(if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE) }
+                    ModuleCard(strings.moduleCharging, capabilitySubtitle(strings, state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING, Modifier.weight(1f)) { onActiveModuleChange(if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING) }
                     ModuleCard(strings.moduleAdvancedProps, strings.moduleEditorAlwaysAvailable, Icons.Default.Code, false, modifier = Modifier.weight(1f))
                 }
             }
             if (activeModule == StudioModule.REFRESH_RATE && workspace.candidates.isNotEmpty()) {
-                item { TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange, timing.onReportPanelIssue) }
+                item(key = "timing_panel") {
+                    Box(Modifier.testTag("timing-editor")) {
+                        key(timingNavigationRequest) {
+                            TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange, timing.onReportPanelIssue)
+                        }
+                    }
+                }
             }
             if (activeModule == StudioModule.CHARGING) {
                 item(key = "charging_panel") { ChargingPanel(state, timing.onStageCharging) }

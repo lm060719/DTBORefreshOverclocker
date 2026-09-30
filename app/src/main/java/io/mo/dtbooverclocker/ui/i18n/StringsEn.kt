@@ -104,6 +104,7 @@ object StringsEn : AppStrings {
     override val overviewPackaged = "Packaged"
     override val overviewChangeScope = "Change scope"
     override val overviewDetails = "Details"
+    override val overviewEditTiming = "Edit timings"
     override val overviewVendor = "Vendor"
     override val overviewReference = "QCOM reference"
     override val overviewSimulation = "Simulation"

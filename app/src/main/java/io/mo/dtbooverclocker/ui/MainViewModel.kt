@@ -239,15 +239,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectCandidate(id: String) {
-        val candidate = _state.value.workspace?.candidates?.firstOrNull { it.id == id } ?: return
-        _state.update {
-            it.copy(
-                selectedCandidateId = id,
-                targetHz = suggestedTarget(candidate.currentHz),
-                patchReport = null,
-                lastFlash = null
-            )
-        }
+        _state.update { it.selectTimingCandidate(id) }
     }
 
     fun setTargetHz(value: Int) {
@@ -1062,7 +1054,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 sourceMode = sourceMode,
                 workspace = workspace,
                 selectedCandidateId = selectedCandidate?.id,
-                targetHz = suggestedTarget(selectedCandidate?.currentHz ?: 60),
+                targetHz = suggestedTimingTarget(selectedCandidate?.currentHz ?: 60),
                 patchReport = null,
                 transactions = emptyList(),
                 lastFlash = null,
@@ -1171,17 +1163,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!TimingUtils.isNonProductionPanel(TimingUtils.parsePanelIdentifier(nodePath))) return this
         appendLog("[WARN] ${TimingUtils.NON_PRODUCTION_PANEL_WARNING}：$nodePath")
         return copy(warnings = (warnings + TimingUtils.NON_PRODUCTION_PANEL_WARNING).distinct())
-    }
-
-    private fun suggestedTarget(currentHz: Int): Int {
-        return when {
-            currentHz < 60 -> 60
-            currentHz < 90 -> 90
-            currentHz < 120 -> 120
-            currentHz < 144 -> 144
-            currentHz < 165 -> 165
-            else -> (currentHz + 15).coerceAtMost(240)
-        }
     }
 
     private fun setBusy(busy: Boolean, status: String? = null) {

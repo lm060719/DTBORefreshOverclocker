@@ -103,6 +103,7 @@ object StringsZh : AppStrings {
     override val overviewPackaged = "已打包"
     override val overviewChangeScope = "修改范围"
     override val overviewDetails = "查看详情"
+    override val overviewEditTiming = "编辑时序"
     override val overviewVendor = "厂商"
     override val overviewReference = "高通参考"
     override val overviewSimulation = "仿真"

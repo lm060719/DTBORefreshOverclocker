@@ -56,6 +56,7 @@ import io.mo.dtbooverclocker.ui.components.TextButton
 import androidx.compose.foundation.layout.PaddingValues
 import io.mo.dtbooverclocker.ui.i18n.I18n
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +65,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -149,6 +153,16 @@ fun TimingCandidateSelector(
             baseFiltered.toList().sortedByDescending { (key, _) -> isActivePanel(key) }.toMap()
         } else {
             baseFiltered
+        }
+    }
+
+    // A selection from the overview must remain visible even if this selector had a filter/search.
+    // Filter clicks alone do not trigger this effect, so manual browsing still works normally.
+    LaunchedEffect(selectedCandidateId, candidates) {
+        if (candidates.any { it.id == selectedCandidateId } &&
+            filteredGroups.values.none { list -> list.any { it.id == selectedCandidateId } }) {
+            filterScope = PanelFilterScope.ALL
+            searchQuery = ""
         }
     }
 
@@ -639,6 +653,8 @@ private fun TimingCandidateCard(
     OutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("timing-candidate-${candidate.id}")
+            .semantics { this.selected = selected }
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.outlinedCardColors(

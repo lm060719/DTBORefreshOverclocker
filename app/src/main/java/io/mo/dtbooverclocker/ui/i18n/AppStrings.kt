@@ -107,6 +107,7 @@ interface AppStrings {
     val overviewPackaged: String
     val overviewChangeScope: String
     val overviewDetails: String
+    val overviewEditTiming: String
     val overviewVendor: String
     val overviewReference: String
     val overviewSimulation: String

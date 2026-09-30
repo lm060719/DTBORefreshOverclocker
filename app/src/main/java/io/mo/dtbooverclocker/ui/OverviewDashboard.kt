@@ -3,11 +3,13 @@ package io.mo.dtbooverclocker.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -29,6 +31,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -37,6 +40,7 @@ import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransactionKind
 import io.mo.dtbooverclocker.model.AvbProtectionState
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.SourceMode
+import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.*
 import io.mo.dtbooverclocker.ui.components.Button
 import io.mo.dtbooverclocker.ui.components.TextButton
@@ -124,7 +128,7 @@ private fun FlowActions(content: @Composable FlowRowScope.() -> Unit) {
 }
 
 @Composable
-internal fun RefreshOverviewCard(state: MainUiState) {
+internal fun RefreshOverviewCard(state: MainUiState, onOpenTiming: ((String) -> Unit)? = null) {
     val workspace = state.workspace ?: return
     val strings = I18n.current
     val change = state.stagedChanges.lastOrNull()
@@ -148,7 +152,9 @@ internal fun RefreshOverviewCard(state: MainUiState) {
                 tone = if (state.patchReport == null) Tone.Warning else Tone.Primary)
         },
         container = lerp(scheme.surfaceContainerLow, scheme.primaryContainer, 0.65f)) {
-        HintText(strings.overviewTimingLocation(panel, entry))
+        OverviewTimingLink(strings.overviewTimingLocation(panel, entry),
+            state.overviewTimingCandidate(TimingUtils.parsePanelIdentifier(path), entry, path), state.busy,
+            onOpenTiming, Modifier.testTag("overview-preview-panel"))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             TimingValue(original.toString(), strings.overviewOriginalTiming, Modifier.weight(1f), scheme.onSurface)
@@ -223,7 +229,7 @@ private fun FrameIntervalRow(label: String, ms: Float, fraction: Float, color: C
 }
 
 @Composable
-internal fun ImageSummaryCard(state: MainUiState) {
+internal fun ImageSummaryCard(state: MainUiState, onOpenTiming: ((String) -> Unit)? = null) {
     val workspace = state.workspace ?: return
     val strings = I18n.current
     val groups = remember(workspace.candidates) { TimingUtils.groupCandidates(workspace.candidates) }
@@ -266,12 +272,12 @@ internal fun ImageSummaryCard(state: MainUiState) {
             }
         }
         state.activePanelDisplayName?.let {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Icon(Icons.Default.CheckCircle, null, tint = AppTheme.status.success, modifier = Modifier.size(16.dp))
-                Text(strings.panelInUse(it), style = MaterialTheme.typography.bodySmall)
-            }
+            val identifier = state.activePanelIdentifier
+                ?: groups.keys.singleOrNull { group -> group.panelDisplayName == it }?.panelIdentifier
+            OverviewTimingLink(strings.panelInUse(it), identifier?.let { id -> state.overviewTimingCandidate(id) }, state.busy,
+                onOpenTiming, Modifier.testTag("overview-active-panel"), Icons.Default.CheckCircle)
         }
-        TextButton({ expanded = !expanded }, Modifier.fillMaxWidth()) {
+        TextButton({ expanded = !expanded }, Modifier.fillMaxWidth().testTag("overview-summary-details")) {
             IconLabel(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                 if (expanded) strings.collapse else strings.overviewDetails)
         }
@@ -283,8 +289,35 @@ internal fun ImageSummaryCard(state: MainUiState) {
                 HintText(strings.panelDtbInstances(instances))
                 HintText(strings.panelDeduplicationHint(counts[0], counts[1], counts[2], counts[3]))
                 if (state.activePanelDisplayName != null) HintText(strings.activePanelHint)
+                if (onOpenTiming != null) groups.keys.forEach { group ->
+                    val target = state.overviewTimingCandidate(group.panelIdentifier)
+                    OverviewTimingLink(target?.let { strings.overviewTimingLocation(group.panelDisplayName, it.entryIndex) }
+                        ?: group.panelDisplayName, target, state.busy, onOpenTiming,
+                        Modifier.testTag("overview-panel-${group.panelIdentifier}"))
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun OverviewTimingLink(
+    label: String, candidate: TimingCandidate?, busy: Boolean, onOpenTiming: ((String) -> Unit)?,
+    modifier: Modifier = Modifier, icon: ImageVector? = null
+) {
+    val strings = I18n.current
+    val canOpen = candidate != null && onOpenTiming != null
+    Row(modifier.fillMaxWidth()
+        .then(if (onOpenTiming != null) Modifier.heightIn(min = 48.dp).clip(MaterialTheme.shapes.small)
+            .clickable(enabled = canOpen && !busy, role = Role.Button, onClickLabel = strings.overviewEditTiming) {
+                candidate?.let { onOpenTiming(it.id) }
+            } else Modifier),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        if (icon != null) Icon(icon, null, tint = AppTheme.status.success, modifier = Modifier.size(16.dp))
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+            color = if (canOpen && !busy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        if (canOpen) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
     }
 }
 
