@@ -19,7 +19,7 @@ import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Card
+import io.mo.dtbooverclocker.ui.components.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon

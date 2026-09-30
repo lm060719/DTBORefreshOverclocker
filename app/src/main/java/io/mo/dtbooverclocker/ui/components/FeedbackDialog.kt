@@ -21,9 +21,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import io.mo.dtbooverclocker.ui.components.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier

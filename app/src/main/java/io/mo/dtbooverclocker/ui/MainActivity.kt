@@ -38,15 +38,15 @@ import androidx.compose.material.icons.filled.Warning
 import io.mo.dtbooverclocker.ui.theme.AppTheme
 import java.util.Locale
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import io.mo.dtbooverclocker.ui.components.Button
+import io.mo.dtbooverclocker.ui.components.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import io.mo.dtbooverclocker.ui.components.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
                 LocalConfiguration provides localizedConfiguration,
                 LocalContext provides localizedContext
             ) {
-                AppTheme {
+                AppTheme(uiStyle = state.uiStyle) {
                     DtboOverclockerApp(viewModel)
                 }
             }
@@ -264,7 +264,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     saveLogs.launch("DTBO_Log_${timestamp}.txt")
                 },
                 onClearAllLogs = viewModel::clearLogFiles,
-                onSetLanguage = viewModel::setAppLanguage
+                onSetLanguage = viewModel::setAppLanguage,
+                onSetUiStyle = viewModel::setUiStyle
             )
         }
         AppScreen.ABOUT -> {
@@ -286,7 +287,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     onRequestRoot = viewModel::requestRoot,
                     onOpenRollback = { currentScreen = AppScreen.ROLLBACK },
                     onOpenAdvancedSettings = { currentScreen = AppScreen.SETTINGS },
-                    onOpenAbout = { currentScreen = AppScreen.ABOUT }
+                    onOpenAbout = { currentScreen = AppScreen.ABOUT },
+                    onSetUiStyle = viewModel::setUiStyle
                 ),
                 workspace = WorkspaceActions(
                     onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },

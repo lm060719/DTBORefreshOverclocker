@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -17,9 +17,16 @@ import io.mo.dtbooverclocker.model.*
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 import java.io.File
 
-class ChargingPanelTest {
+@RunWith(Parameterized::class)
+class ChargingPanelTest(private val style: UiStyle) {
+    companion object {
+        @JvmStatic @Parameterized.Parameters(name = "{0}")
+        fun styles() = UiStyle.entries.map { arrayOf(it) }
+    }
     @get:Rule val compose = createComposeRule()
     private val source = """
         /dts-v1/;
@@ -43,7 +50,7 @@ class ChargingPanelTest {
             DtboBinaryImage(metadata, byteArrayOf(), emptyList()), emptyList(), emptyList(), emptyList()), capabilityReport = report(text))
         return StateRestorationTester(compose).also { restoration ->
             restoration.setContent {
-                MaterialTheme {
+                AppTheme(uiStyle = style) {
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                         ChargingPanel(state.value) { node, inputs -> staged = node to inputs }
                     }
@@ -175,9 +182,11 @@ class ChargingPanelTest {
             assertEquals("1400", staged?.second?.get("qcom,thermal-mitigation[1]"))
             assertEquals(4, staged?.second?.size)
         }
+        compose.onNodeWithText("切换充电节点（2）").assertDoesNotExist()
+        compose.onNodeWithContentDescription("显示只读节点").performScrollTo().performClick()
         compose.onNodeWithText("切换充电节点（2）").performScrollTo().performClick()
         compose.onNodeWithText("/charger_therm0").performScrollTo().performClick()
-        compose.onNodeWithText("切换到可编辑节点").performScrollTo().performClick()
+        compose.onNodeWithText("返回可编辑节点").performScrollTo().performClick()
         cell("温控限流 · 第 2 档").assertTextContains("1400")
     }
 }

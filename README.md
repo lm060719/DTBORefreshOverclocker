@@ -14,6 +14,8 @@ Android DTBO（Device Tree Blob Overlay）的查看、编辑与重建工具：�
 
 所有修改先进入事务队列，可撤销、合并打包。导出方式：DTBO 镜像、Recovery 刷机包、PC Fastboot 包、KernelSU / Magisk / APatch 模块（安装时写入当前槽位，移除模块并重启即自动恢复原 DTBO；也可在应用内“制作成模块并刷入”）。
 
+在「设置 → 界面风格」中可选择 Material 3 或 [Miuix](https://github.com/compose-miuix-ui/miuix)。切换立即生效并保存，默认使用 Material 3；两种风格均支持系统深色模式。
+
 ## 使用流程
 
 第一次使用请先看 [新手教程：刷新率超频与温控表修改](docs/guide.md)。

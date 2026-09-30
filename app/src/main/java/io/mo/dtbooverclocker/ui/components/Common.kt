@@ -1,6 +1,5 @@
 package io.mo.dtbooverclocker.ui.components
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,8 +22,6 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonColors
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -37,6 +34,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
 import io.mo.dtbooverclocker.ui.theme.AppTheme
 import io.mo.dtbooverclocker.ui.theme.Spacing
 
@@ -60,7 +59,7 @@ private fun Tone.colors(): ToneColors {
 
 /**
  * 统一的内容卡片：可选图标 + 标题 + 副标题 + 右侧操作，下面是内容。
- * [tone] 为 Neutral 时使用普通 surface 容器，其他色调使用对应的 container 色。
+ * Material 使用语义底色，Miuix 使用统一卡片底色并保留语义图标。
  */
 @Composable
 fun SectionCard(
@@ -73,20 +72,25 @@ fun SectionCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val colors = tone.colors()
-    val container = if (tone == Tone.Neutral) MaterialTheme.colorScheme.surfaceContainerLow else colors.container.copy(alpha = 0.55f)
-    Card(
+    AppCard(
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = container)
+        containerColor = if (AppTheme.isMiuix || tone == Tone.Neutral) MaterialTheme.colorScheme.surfaceContainerLow
+            else colors.container.copy(alpha = 0.55f)
     ) {
         Column(
             Modifier.padding(Spacing.card),
             verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
             if (title != null) {
-                SectionHeader(title, subtitle, icon, if (tone == Tone.Neutral) MaterialTheme.colorScheme.primary else colors.accent, trailing)
+                SectionHeader(title, subtitle, icon, when {
+                    AppTheme.isMiuix && tone == Tone.Neutral -> MaterialTheme.colorScheme.onSurface
+                    tone == Tone.Neutral -> MaterialTheme.colorScheme.primary
+                    else -> colors.accent
+                }, trailing)
             }
-            content()
+            CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+                content()
+            }
         }
     }
 }
@@ -224,12 +228,22 @@ fun NavigationEntry(
     tone: Tone = Tone.Primary
 ) {
     val colors = tone.colors()
-    Card(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    if (AppTheme.isMiuix) {
+        AppCard(modifier.fillMaxWidth()) {
+            top.yukonga.miuix.kmp.preference.ArrowPreference(
+                title = title,
+                summary = subtitle,
+                startAction = { PreferenceIcon(icon) },
+                onClick = onClick
+            )
+        }
+        return
+    }
+    AppCard(
+        modifier = modifier.fillMaxWidth(),
+        onClick = onClick
     ) {
-        Row(Modifier.padding(Spacing.lg), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(Spacing.card), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = MaterialTheme.shapes.medium, color = colors.container, contentColor = colors.onContainer, modifier = Modifier.size(44.dp)) {
                 Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = null) }
             }

@@ -14,6 +14,8 @@ An Android DTBO (Device Tree Blob Overlay) viewer, editor and rebuilder: import 
 
 Every edit goes into a transaction queue, where it can be undone or packaged together with others. Export formats: DTBO image, Recovery flashable ZIP, PC Fastboot bundle, KernelSU / Magisk / APatch module (flashes the active slot on install; removing the module and rebooting restores the original DTBO; can also be installed from the app via "flash as module").
 
+Choose Material 3 or [Miuix](https://github.com/compose-miuix-ui/miuix) under **Settings → Interface style**. Changes apply immediately and are saved. Material 3 is the default; both styles follow the system dark mode.
+
 ## Workflow
 
 1. **Import**: pick a local `dtbo.img`, or extract the active slot's partition with Root.

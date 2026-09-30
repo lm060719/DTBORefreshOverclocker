@@ -35,16 +35,16 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalButton
+import io.mo.dtbooverclocker.ui.components.Button
+import io.mo.dtbooverclocker.ui.components.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import io.mo.dtbooverclocker.ui.components.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import io.mo.dtbooverclocker.ui.components.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -71,6 +71,7 @@ import io.mo.dtbooverclocker.ui.components.Tone
 import io.mo.dtbooverclocker.ui.components.dangerButtonColors
 import io.mo.dtbooverclocker.ui.i18n.I18n
 import io.mo.dtbooverclocker.ui.theme.Spacing
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 
 private enum class StepState { DONE, CURRENT, PENDING }
 
@@ -91,7 +92,7 @@ internal fun WorkflowCard(state: MainUiState) {
 
     SectionCard(tone = Tone.Primary) {
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
-            Text("DTBO Studio", style = MaterialTheme.typography.titleLarge)
+            if (!AppTheme.isMiuix) Text("DTBO Studio", style = MaterialTheme.typography.titleLarge)
             HintText(strings.workflowSubtitle)
         }
         FlowRow(

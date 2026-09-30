@@ -1,7 +1,7 @@
 package io.mo.dtbooverclocker.ui
 
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material3.MaterialTheme
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -12,8 +12,15 @@ import java.io.File
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 
-class DeviceTreeScreenTest {
+@RunWith(Parameterized::class)
+class DeviceTreeScreenTest(private val style: UiStyle) {
+    companion object {
+        @JvmStatic @Parameterized.Parameters(name = "{0}")
+        fun styles() = UiStyle.entries.map { arrayOf(it) }
+    }
     @get:Rule val compose = createComposeRule()
     @get:Rule val temporary = TemporaryFolder()
     private val state = mutableStateOf(MainUiState())
@@ -34,7 +41,7 @@ class DeviceTreeScreenTest {
             transactions = transactions
         )
         compose.setContent {
-            MaterialTheme {
+            AppTheme(uiStyle = style) {
                 DeviceTreeScreen(state.value, PaddingValues(0.dp),
                     onSetProperty = { _, _, _, _ -> }, onAddProperty = { _, _, _, _ -> },
                     onDeleteProperty = { _, _, _ -> }, onAddNode = { _, _, _ -> },

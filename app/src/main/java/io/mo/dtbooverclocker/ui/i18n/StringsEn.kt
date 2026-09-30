@@ -27,6 +27,8 @@ object StringsEn : AppStrings {
 
     // Settings
     override val settingsTitle: String = "Settings"
+    override val settingsAppearance: String = "Interface style"
+    override val settingsAppearanceDesc: String = "Choose Miuix or Material 3. Changes apply immediately."
     override val settingsLanguage: String = "Language"
     override val settingsLanguageDesc: String = "Switch application display language."
     override val langFollowSystem: String = "Follow System"

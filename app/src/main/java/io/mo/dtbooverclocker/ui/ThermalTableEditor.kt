@@ -10,6 +10,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
+import io.mo.dtbooverclocker.ui.components.OutlinedCard
+import io.mo.dtbooverclocker.ui.components.Switch
+import io.mo.dtbooverclocker.ui.components.TextButton
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
+import io.mo.dtbooverclocker.ui.components.Button
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable

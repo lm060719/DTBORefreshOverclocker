@@ -37,23 +37,25 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import io.mo.dtbooverclocker.ui.components.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
+import io.mo.dtbooverclocker.ui.components.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
+import io.mo.dtbooverclocker.ui.components.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import io.mo.dtbooverclocker.ui.components.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import io.mo.dtbooverclocker.ui.components.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import io.mo.dtbooverclocker.ui.components.TextButton
+import io.mo.dtbooverclocker.ui.components.TopAppBar
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import io.mo.dtbooverclocker.ui.components.appBarScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -95,20 +97,16 @@ fun RollbackScreen(
     var showManualBackupDialog by remember { mutableStateOf(false) }
     var pendingFlashRecord by remember { mutableStateOf<BackupRecord?>(null) }
     var pendingDeleteRecord by remember { mutableStateOf<BackupRecord?>(null) }
+    val scrollBehavior = MiuixScrollBehavior()
 
     Scaffold(
+        modifier = Modifier.appBarScroll(scrollBehavior),
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text(strings.rollbackTitle, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            strings.rollbackSubtitle,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
+                title = strings.rollbackTitle,
+                subtitle = strings.rollbackSubtitle,
+                scrollBehavior = scrollBehavior,
+                titlePadding = Spacing.title,
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -141,7 +139,7 @@ fun RollbackScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(horizontal = Spacing.lg),
+                    .padding(horizontal = Spacing.page),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
                 item {

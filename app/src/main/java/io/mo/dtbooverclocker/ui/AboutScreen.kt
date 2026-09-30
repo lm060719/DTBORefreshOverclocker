@@ -31,18 +31,19 @@ import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import io.mo.dtbooverclocker.ui.components.Button
+import io.mo.dtbooverclocker.ui.components.AppCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import io.mo.dtbooverclocker.ui.components.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
+import io.mo.dtbooverclocker.ui.components.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import io.mo.dtbooverclocker.ui.components.TopAppBar
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import io.mo.dtbooverclocker.ui.components.appBarScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,11 +73,15 @@ fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
     val context = LocalContext.current
     var showDisclaimerDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
+    val scrollBehavior = MiuixScrollBehavior()
 
     Scaffold(
+        modifier = Modifier.appBarScroll(scrollBehavior),
         topBar = {
             TopAppBar(
-                title = { Text(strings.aboutTitle, fontWeight = FontWeight.SemiBold) },
+                title = strings.aboutTitle,
+                scrollBehavior = scrollBehavior,
+                titlePadding = Spacing.title,
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -93,7 +98,7 @@ fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                .padding(horizontal = Spacing.page, vertical = Spacing.sm),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.lg)
         ) {
@@ -182,10 +187,9 @@ fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
             }
 
             // Source Code Section
-            Card(
+            AppCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Column(
                     modifier = Modifier.padding(Spacing.lg),
@@ -251,10 +255,9 @@ fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
             }
 
             // Feedback Section
-            Card(
+            AppCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Column(
                     modifier = Modifier.padding(Spacing.lg),
@@ -294,10 +297,9 @@ fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
             }
 
             // Architecture & Features Section
-            Card(
+            AppCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Column(
                     modifier = Modifier.padding(Spacing.lg),
@@ -329,10 +331,9 @@ fun AboutScreen(onNavigateBack: () -> Unit, onOpenFeedback: () -> Unit) {
             }
 
             // Disclaimer Card
-            Card(
+            AppCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Column(
                     modifier = Modifier.padding(Spacing.lg),

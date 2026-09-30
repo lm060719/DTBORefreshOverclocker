@@ -28,6 +28,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import io.mo.dtbooverclocker.ui.components.IconButton
+import io.mo.dtbooverclocker.ui.components.TextButton
+import io.mo.dtbooverclocker.ui.components.Button
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment

@@ -27,6 +27,8 @@ object StringsZh : AppStrings {
 
     // Settings
     override val settingsTitle: String = "设置"
+    override val settingsAppearance: String = "界面风格"
+    override val settingsAppearanceDesc: String = "选择 Miuix 或 Material 3，立即生效。"
     override val settingsLanguage: String = "界面语言"
     override val settingsLanguageDesc: String = "切换应用界面显示语言。"
     override val langFollowSystem: String = "跟随系统"

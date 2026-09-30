@@ -10,6 +10,11 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import io.mo.dtbooverclocker.ui.components.IconButton
+import io.mo.dtbooverclocker.ui.components.Card
+import io.mo.dtbooverclocker.ui.components.TextButton
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
+import io.mo.dtbooverclocker.ui.components.Button
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.SaveableStateHolder
@@ -19,6 +24,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.mo.dtbooverclocker.ui.components.appBarScroll
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
+import androidx.compose.material3.NavigationBarItem as MaterialNavigationBarItem
+import io.mo.dtbooverclocker.ui.components.Scaffold
+import io.mo.dtbooverclocker.ui.components.TopAppBar
+import io.mo.dtbooverclocker.ui.components.UiStyleSelector
+import io.mo.dtbooverclocker.ui.components.AppCard
+import io.mo.dtbooverclocker.ui.components.PreferenceIcon
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import io.mo.dtbooverclocker.model.CapabilityFinding
 import io.mo.dtbooverclocker.model.CapabilityKind
 import io.mo.dtbooverclocker.model.CapabilityStatus
@@ -101,10 +118,19 @@ internal fun StudioNavigation(
     val selectedTab = StudioTab.entries[pagerState.currentPage]
     val scope = rememberCoroutineScope()
     var navigationJob by remember { mutableStateOf<Job?>(null) }
+    val scrollBehavior = key(selectedTab) { MiuixScrollBehavior(canScroll = { enabled }) }
+    val selectTab: (StudioTab) -> Unit = { tab ->
+        navigationJob?.cancel()
+        navigationJob = scope.launch { pagerState.animateScrollToPage(tab.ordinal) }
+    }
     Scaffold(
+        modifier = Modifier.appBarScroll(scrollBehavior),
         topBar = {
             TopAppBar(
-                title = { Column { Text("DTBO Studio", fontWeight = FontWeight.SemiBold); Text(selectedTab.getLabel(strings), style = MaterialTheme.typography.labelSmall) } },
+                title = if (AppTheme.isMiuix && selectedTab != StudioTab.OVERVIEW) selectedTab.getLabel(strings) else "DTBO Studio",
+                subtitle = if (AppTheme.isMiuix) "" else selectedTab.getLabel(strings),
+                scrollBehavior = scrollBehavior,
+                titlePadding = Spacing.title,
                 actions = {
                     if (selectedTab != StudioTab.SETTINGS) {
                         IconButton(onClick = onOpenRollback, enabled = enabled) { Icon(Icons.Default.Restore, strings.backupAndRestore) }
@@ -114,18 +140,31 @@ internal fun StudioNavigation(
             )
         },
         bottomBar = {
-            NavigationBar { StudioTab.entries.forEach { tab ->
-                NavigationBarItem(
-                    selected = selectedTab == tab,
-                    onClick = {
-                        navigationJob?.cancel()
-                        navigationJob = scope.launch { pagerState.animateScrollToPage(tab.ordinal) }
-                    },
-                    icon = { Icon(tab.icon, null) },
-                    label = { Text(tab.getLabel(strings)) },
-                    enabled = enabled
-                )
-            } }
+            if (AppTheme.isMiuix) {
+                NavigationBar(showDivider = false) {
+                    StudioTab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectTab(tab) },
+                            icon = tab.icon,
+                            label = tab.getLabel(strings),
+                            enabled = enabled
+                        )
+                    }
+                }
+            } else {
+                androidx.compose.material3.NavigationBar {
+                    StudioTab.entries.forEach { tab ->
+                        MaterialNavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectTab(tab) },
+                            icon = { Icon(tab.icon, null) },
+                            label = { Text(tab.getLabel(strings)) },
+                            enabled = enabled
+                        )
+                    }
+                }
+            }
         }
     ) { padding ->
         HorizontalPager(
@@ -148,7 +187,7 @@ private fun OverviewTab(
 ) {
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = Spacing.xs, bottom = Spacing.xl),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         item(key = "hero") { WorkflowCard(state) }
@@ -213,12 +252,12 @@ private fun ModulesTab(
     val workspace = state.workspace
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = Spacing.xs, bottom = Spacing.xl),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         item {
             Column(Modifier.padding(horizontal = Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                Text(strings.modulesTitle, style = MaterialTheme.typography.headlineSmall)
+                if (!AppTheme.isMiuix) Text(strings.modulesTitle, style = MaterialTheme.typography.headlineSmall)
                 HintText(strings.modulesSubtitle)
             }
         }
@@ -354,11 +393,13 @@ private fun ModuleCard(
 @Composable
 private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigation: NavigationActions) {
     val strings = I18n.current
+    val miuix = AppTheme.isMiuix
     LazyColumn(
         Modifier.fillMaxSize().padding(padding),
-        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = Spacing.xs, bottom = Spacing.xl),
+        contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
+        item(key = "appearance") { UiStyleSelector(state.uiStyle, navigation.onSetUiStyle) }
         item {
             SectionCard(
                 title = strings.envStatus,
@@ -377,8 +418,33 @@ private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigatio
                 }
             }
         }
-        item { NavigationEntry(Icons.Default.Restore, strings.backupAndRestore, strings.backupCountSubtitle(state.backups.size), navigation.onOpenRollback) }
-        item { NavigationEntry(Icons.Default.Settings, strings.advancedSettings, strings.advancedSettingsSubtitle, navigation.onOpenAdvancedSettings) }
-        item { NavigationEntry(Icons.Default.Info, strings.aboutStudio, strings.aboutStudioSubtitle, navigation.onOpenAbout) }
+        if (miuix) {
+            item {
+                AppCard(Modifier.fillMaxWidth()) {
+                    ArrowPreference(
+                        title = strings.backupAndRestore,
+                        summary = strings.backupCountSubtitle(state.backups.size),
+                        startAction = { PreferenceIcon(Icons.Default.Restore) },
+                        onClick = navigation.onOpenRollback
+                    )
+                    ArrowPreference(
+                        title = strings.advancedSettings,
+                        summary = strings.advancedSettingsSubtitle,
+                        startAction = { PreferenceIcon(Icons.Default.Settings) },
+                        onClick = navigation.onOpenAdvancedSettings
+                    )
+                    ArrowPreference(
+                        title = strings.aboutStudio,
+                        summary = strings.aboutStudioSubtitle,
+                        startAction = { PreferenceIcon(Icons.Default.Info) },
+                        onClick = navigation.onOpenAbout
+                    )
+                }
+            }
+        } else {
+            item { NavigationEntry(Icons.Default.Restore, strings.backupAndRestore, strings.backupCountSubtitle(state.backups.size), navigation.onOpenRollback) }
+            item { NavigationEntry(Icons.Default.Settings, strings.advancedSettings, strings.advancedSettingsSubtitle, navigation.onOpenAdvancedSettings) }
+            item { NavigationEntry(Icons.Default.Info, strings.aboutStudio, strings.aboutStudioSubtitle, navigation.onOpenAbout) }
+        }
     }
 }

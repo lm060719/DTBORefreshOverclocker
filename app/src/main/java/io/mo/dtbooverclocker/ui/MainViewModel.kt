@@ -26,6 +26,7 @@ import io.mo.dtbooverclocker.feedback.FeedbackDeviceInfo
 import io.mo.dtbooverclocker.feedback.FeedbackReport
 import io.mo.dtbooverclocker.feedback.FeedbackType
 import io.mo.dtbooverclocker.model.AppLanguage
+import io.mo.dtbooverclocker.model.UiStyle
 import io.mo.dtbooverclocker.model.BackupRecord
 import io.mo.dtbooverclocker.model.BackupType
 import io.mo.dtbooverclocker.model.BackupVerificationState
@@ -86,13 +87,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_AUTO_CHECK_ROOT = "auto_check_root"
         private const val KEY_DISCLAIMER_ACCEPTED = "disclaimer_accepted"
         private const val KEY_APP_LANGUAGE = "app_language"
+        private const val KEY_UI_STYLE = "ui_style"
     }
 
     init {
         AppLogger.init(application)
         val savedLang = AppLanguage.fromCode(prefs.getString(KEY_APP_LANGUAGE, null))
         val accepted = prefs.getBoolean(KEY_DISCLAIMER_ACCEPTED, false)
-        _state.update { it.copy(isDisclaimerAccepted = accepted, appLanguage = savedLang) }
+        val savedStyle = UiStyle.fromCode(prefs.getString(KEY_UI_STYLE, null))
+        _state.update { it.copy(isDisclaimerAccepted = accepted, appLanguage = savedLang, uiStyle = savedStyle) }
         if (accepted) {
             refreshEnvironment()
         } else {
@@ -106,6 +109,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setAppLanguage(language: AppLanguage) {
         prefs.edit().putString(KEY_APP_LANGUAGE, language.code).apply()
         _state.update { it.copy(appLanguage = language) }
+    }
+
+    fun setUiStyle(style: UiStyle) {
+        prefs.edit().putString(KEY_UI_STYLE, style.code).apply()
+        _state.update { it.copy(uiStyle = style) }
     }
 
     fun acceptDisclaimer() {
@@ -1183,6 +1191,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 data class MainUiState(
     val isDisclaimerAccepted: Boolean = false,
     val appLanguage: AppLanguage = AppLanguage.FOLLOW_SYSTEM,
+    val uiStyle: UiStyle = UiStyle.MATERIAL,
     val rootState: RootState = RootState(),
     val slotInfo: SlotInfo? = null,
     val sourceMode: SourceMode = SourceMode.LOCAL_IMAGE,

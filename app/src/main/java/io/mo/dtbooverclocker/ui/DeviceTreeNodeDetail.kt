@@ -22,6 +22,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
+import io.mo.dtbooverclocker.ui.components.OutlinedCard
+import io.mo.dtbooverclocker.ui.components.Card
+import io.mo.dtbooverclocker.ui.components.TextButton
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier

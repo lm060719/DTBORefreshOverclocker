@@ -24,21 +24,25 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import io.mo.dtbooverclocker.ui.components.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import io.mo.dtbooverclocker.ui.components.AppCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import io.mo.dtbooverclocker.ui.components.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
+import io.mo.dtbooverclocker.ui.components.RadioButton
+import io.mo.dtbooverclocker.ui.components.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import io.mo.dtbooverclocker.ui.components.TextButton
+import io.mo.dtbooverclocker.ui.components.TopAppBar
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import io.mo.dtbooverclocker.ui.components.appBarScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,9 +57,17 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.mo.dtbooverclocker.model.AppLanguage
+import io.mo.dtbooverclocker.model.UiStyle
+import io.mo.dtbooverclocker.ui.components.UiStyleSelector
+import io.mo.dtbooverclocker.ui.components.UiStylePreference
+import io.mo.dtbooverclocker.ui.components.LanguagePreference
+import io.mo.dtbooverclocker.ui.components.PreferenceIcon
 import io.mo.dtbooverclocker.ui.i18n.I18n
+import io.mo.dtbooverclocker.ui.theme.AppTheme
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import io.mo.dtbooverclocker.util.StorageUtils
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -68,13 +80,16 @@ fun SettingsScreen(
     onRefreshLogStats: () -> Unit,
     onExportLogs: () -> Unit,
     onClearAllLogs: (onCleared: () -> Unit) -> Unit,
-    onSetLanguage: (AppLanguage) -> Unit
+    onSetLanguage: (AppLanguage) -> Unit,
+    onSetUiStyle: (UiStyle) -> Unit
 ) {
     BackHandler(onBack = onNavigateBack)
     val strings = I18n.current
+    val miuix = AppTheme.isMiuix
     val context = LocalContext.current
     var showClearCacheDialog by remember { mutableStateOf(false) }
     var showClearLogsDialog by remember { mutableStateOf(false) }
+    val scrollBehavior = MiuixScrollBehavior()
 
     LaunchedEffect(Unit) {
         onRefreshCacheSize()
@@ -82,9 +97,12 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        modifier = Modifier.appBarScroll(scrollBehavior),
         topBar = {
             TopAppBar(
-                title = { Text(strings.settingsTitle, fontWeight = FontWeight.SemiBold) },
+                title = strings.settingsTitle,
+                scrollBehavior = scrollBehavior,
+                titlePadding = Spacing.title,
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -105,272 +123,313 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = Spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+                .padding(horizontal = Spacing.page),
+            verticalArrangement = Arrangement.spacedBy(Spacing.section)
         ) {
-            item { Spacer(Modifier.height(4.dp)) }
+            item { Spacer(Modifier.height(if (AppTheme.isMiuix) 0.dp else 4.dp)) }
+            if (miuix) {
+                item(key = "appearance") {
+                    AppCard(Modifier.fillMaxWidth()) {
+                        UiStylePreference(state.uiStyle, onSetUiStyle)
+                        LanguagePreference(state.appLanguage, onSetLanguage)
+                    }
+                }
+                item(key = "cache") {
+                    AppCard(Modifier.fillMaxWidth()) {
+                        BasicComponent(
+                            title = strings.appCache,
+                            summary = strings.appCacheDesc,
+                            startAction = { PreferenceIcon(Icons.Default.CleaningServices) },
+                            endActions = { Text(StorageUtils.formatFileSize(state.cacheSizeBytes), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        )
+                        ArrowPreference(
+                            title = strings.clearAllCache,
+                            startAction = { PreferenceIcon(Icons.Default.DeleteOutline) },
+                            onClick = { showClearCacheDialog = true }
+                        )
+                    }
+                }
+                item(key = "logs") {
+                    AppCard(Modifier.fillMaxWidth()) {
+                        BasicComponent(
+                            title = strings.runtimeLogs,
+                            summary = strings.logFilesStats(state.logFilesCount, StorageUtils.formatFileSize(state.logFilesSizeBytes)),
+                            startAction = { PreferenceIcon(Icons.AutoMirrored.Filled.Article) }
+                        )
+                        ArrowPreference(
+                            title = strings.exportFullLogs,
+                            startAction = { PreferenceIcon(Icons.Default.FileDownload) },
+                            onClick = onExportLogs
+                        )
+                        ArrowPreference(
+                            title = strings.clearLogs,
+                            startAction = { PreferenceIcon(Icons.Default.DeleteOutline) },
+                            onClick = { showClearLogsDialog = true }
+                        )
+                    }
+                }
+            } else {
+                item(key = "appearance") { UiStyleSelector(state.uiStyle, onSetUiStyle) }
 
-            // 1. Language Settings Section
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(Spacing.lg),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                // 1. Language Settings Section
+                item {
+                    AppCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier.padding(Spacing.lg),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.md)
                         ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Default.Language,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    strings.settingsLanguage,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Language,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        strings.settingsLanguage,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = MaterialTheme.shapes.small
+                                ) {
+                                    Text(
+                                        text = when (state.appLanguage) {
+                                            AppLanguage.FOLLOW_SYSTEM -> strings.langFollowSystem
+                                            AppLanguage.ENGLISH -> strings.langEnglish
+                                            AppLanguage.CHINESE -> strings.langChinese
+                                        },
+                                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
                             }
 
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                shape = MaterialTheme.shapes.small
-                            ) {
-                                Text(
-                                    text = when (state.appLanguage) {
-                                        AppLanguage.FOLLOW_SYSTEM -> strings.langFollowSystem
-                                        AppLanguage.ENGLISH -> strings.langEnglish
-                                        AppLanguage.CHINESE -> strings.langChinese
-                                    },
-                                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = strings.settingsLanguageDesc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(Spacing.xs)
-                        ) {
-                            val languageOptions = listOf(
-                                AppLanguage.FOLLOW_SYSTEM to strings.langFollowSystem,
-                                AppLanguage.ENGLISH to strings.langEnglish,
-                                AppLanguage.CHINESE to strings.langChinese
+                            Text(
+                                text = strings.settingsLanguageDesc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
-                            languageOptions.forEach { (lang, label) ->
-                                val selected = state.appLanguage == lang
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(MaterialTheme.shapes.medium)
-                                        .clickable { onSetLanguage(lang) },
-                                    shape = MaterialTheme.shapes.medium,
-                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                                    else MaterialTheme.colorScheme.surface
-                                ) {
-                                    Row(
+                            Column(
+                                modifier = Modifier.fillMaxWidth().selectableGroup(),
+                                verticalArrangement = Arrangement.spacedBy(Spacing.xs)
+                            ) {
+                                val languageOptions = listOf(
+                                    AppLanguage.FOLLOW_SYSTEM to strings.langFollowSystem,
+                                    AppLanguage.ENGLISH to strings.langEnglish,
+                                    AppLanguage.CHINESE to strings.langChinese
+                                )
+
+                                languageOptions.forEach { (lang, label) ->
+                                    val selected = state.appLanguage == lang
+                                    Surface(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                                            .clip(MaterialTheme.shapes.medium)
+                                            .selectable(selected = selected, role = Role.RadioButton, onClick = { onSetLanguage(lang) }),
+                                        shape = MaterialTheme.shapes.medium,
+                                        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                        else MaterialTheme.colorScheme.surface
                                     ) {
-                                        RadioButton(
-                                            selected = selected,
-                                            onClick = { onSetLanguage(lang) }
-                                        )
-                                        Text(
-                                            text = label,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = Spacing.md, vertical = Spacing.lg),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                                        ) {
+                                            RadioButton(
+                                                selected = selected,
+                                                onClick = null
+                                            )
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // 2. Cache Management Section
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(Spacing.lg),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                // 2. Cache Management Section
+                item {
+                    AppCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier.padding(Spacing.lg),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.md)
                         ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Default.CleaningServices,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    strings.appCache,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                                ) {
+                                    Icon(
+                                        Icons.Default.CleaningServices,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        strings.appCache,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = MaterialTheme.shapes.small
+                                ) {
+                                    Text(
+                                        text = StorageUtils.formatFileSize(state.cacheSizeBytes),
+                                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
                             }
 
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                shape = MaterialTheme.shapes.small
-                            ) {
-                                Text(
-                                    text = StorageUtils.formatFileSize(state.cacheSizeBytes),
-                                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-                        }
+                            Text(
+                                text = strings.appCacheDesc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
 
-                        Text(
-                            text = strings.appCacheDesc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            OutlinedButton(
-                                onClick = { showClearCacheDialog = true },
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
-                                )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
                             ) {
-                                Icon(
-                                    Icons.Default.DeleteOutline,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.clearAllCache)
+                                OutlinedButton(
+                                    onClick = { showClearCacheDialog = true },
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.error
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Default.DeleteOutline,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(strings.clearAllCache)
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // 3. Log Management Section
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(Spacing.lg),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                // 3. Log Management Section
+                item {
+                    AppCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier.padding(Spacing.lg),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.md)
                         ) {
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Article,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        strings.runtimeLogs,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = MaterialTheme.shapes.small
+                                ) {
+                                    Text(
+                                        text = strings.logFilesStats(state.logFilesCount, StorageUtils.formatFileSize(state.logFilesSizeBytes)),
+                                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
                             ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.Article,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    strings.runtimeLogs,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                                Button(
+                                    onClick = onExportLogs,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        Icons.Default.FileDownload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(strings.exportFullLogs)
+                                }
 
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                shape = MaterialTheme.shapes.small
-                            ) {
-                                Text(
-                                    text = strings.logFilesStats(state.logFilesCount, StorageUtils.formatFileSize(state.logFilesSizeBytes)),
-                                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
-                        ) {
-                            Button(
-                                onClick = onExportLogs,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    Icons.Default.FileDownload,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.exportFullLogs)
-                            }
-
-                            OutlinedButton(
-                                onClick = { showClearLogsDialog = true },
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
-                                )
-                            ) {
-                                Icon(
-                                    Icons.Default.DeleteOutline,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.clearLogs)
+                                OutlinedButton(
+                                    onClick = { showClearLogsDialog = true },
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.error
+                                    )
+                                ) {
+                                    Icon(
+                                        Icons.Default.DeleteOutline,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(strings.clearLogs)
+                                }
                             }
                         }
                     }
                 }
-            }
 
+            }
             item { Spacer(Modifier.height(24.dp)) }
         }
     }

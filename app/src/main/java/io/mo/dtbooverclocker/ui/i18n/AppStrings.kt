@@ -33,6 +33,8 @@ interface AppStrings {
 
     // Settings
     val settingsTitle: String
+    val settingsAppearance: String
+    val settingsAppearanceDesc: String
     val settingsLanguage: String
     val settingsLanguageDesc: String
     val langFollowSystem: String

@@ -17,6 +17,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
+import io.mo.dtbooverclocker.ui.components.OutlinedCard
+import io.mo.dtbooverclocker.ui.components.Switch
+import io.mo.dtbooverclocker.ui.components.TextButton
+import io.mo.dtbooverclocker.ui.components.OutlinedButton
+import io.mo.dtbooverclocker.ui.components.FilledTonalButton
+import io.mo.dtbooverclocker.ui.components.Button
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -26,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import io.mo.dtbooverclocker.core.ChargingAnalyzer
 import io.mo.dtbooverclocker.core.ChargingPlanner
 import io.mo.dtbooverclocker.model.ChargingNode
@@ -92,6 +100,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     }
                     Switch(
                         checked = showReadOnlyNodes,
+                        modifier = Modifier.semantics { contentDescription = strings.showReadOnlyNodes },
                         onCheckedChange = {
                             showReadOnlyNodes = it
                             selecting = false
