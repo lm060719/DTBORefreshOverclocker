@@ -1,5 +1,12 @@
 package io.mo.dtbooverclocker.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import io.mo.dtbooverclocker.ui.theme.Spacing
 import androidx.compose.material3.MaterialTheme
@@ -287,8 +294,8 @@ private fun ModulesTab(
     LaunchedEffect(timingNavigationRequest, workspace != null) {
         if (timingNavigationRequest > handledTimingRequest && activeModule == StudioModule.REFRESH_RATE &&
             workspace?.candidates?.isNotEmpty() == true) {
-            // Header, capability scan, and module choices precede the timing editor.
-            listState.scrollToItem(3)
+            // The scan progress shares the module choices item, so this index stays stable.
+            listState.scrollToItem(2)
             handledTimingRequest = timingNavigationRequest
         }
     }
@@ -304,9 +311,6 @@ private fun ModulesTab(
                 Text(strings.modulesTitle, Modifier.padding(horizontal = Spacing.xs), style = MaterialTheme.typography.headlineSmall)
             }
         }
-        if (workspace != null) {
-            item { CapabilityScanCard(state) }
-        }
         if (workspace == null) {
             item {
                 EmptyState(
@@ -316,12 +320,29 @@ private fun ModulesTab(
                 )
             }
         } else {
-            item {
-                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    val refreshFinding = state.capabilityReport?.finding(CapabilityKind.REFRESH_RATE)
-                    ModuleCard(strings.moduleRefreshRate, capabilitySubtitle(strings, state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, !state.busy && (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE, Modifier.weight(1f)) { onActiveModuleChange(if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE) }
-                    ModuleCard(strings.moduleCharging, capabilitySubtitle(strings, state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING, Modifier.weight(1f)) { onActiveModuleChange(if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING) }
-                    ModuleCard(strings.moduleAdvancedProps, strings.moduleEditorAlwaysAvailable, Icons.Default.Code, false, modifier = Modifier.weight(1f))
+            item(key = "module_choices") {
+                Column(Modifier.fillMaxWidth()) {
+                    AnimatedVisibility(
+                        visible = state.capabilityScanInProgress,
+                        enter = fadeIn(tween(180)) + expandVertically(
+                            tween(300, easing = FastOutSlowInEasing), expandFrom = Alignment.Top
+                        ),
+                        exit = fadeOut(tween(180)) + shrinkVertically(
+                            tween(300, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top
+                        )
+                    ) {
+                        // Collapse the spacing with the progress bar to leave no empty scan area.
+                        Column(Modifier.fillMaxWidth()) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth().testTag("capability-scan-progress"))
+                            Spacer(Modifier.height(Spacing.md))
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        val refreshFinding = state.capabilityReport?.finding(CapabilityKind.REFRESH_RATE)
+                        ModuleCard(strings.moduleRefreshRate, capabilitySubtitle(strings, state, refreshFinding, workspace.candidates.size), Icons.Default.Monitor, !state.busy && (refreshFinding?.matchCount ?: workspace.candidates.size) > 0, activeModule == StudioModule.REFRESH_RATE, Modifier.weight(1f)) { onActiveModuleChange(if (activeModule == StudioModule.REFRESH_RATE) null else StudioModule.REFRESH_RATE) }
+                        ModuleCard(strings.moduleCharging, capabilitySubtitle(strings, state, state.capabilityReport?.finding(CapabilityKind.CHARGING), 0), Icons.Default.BatteryChargingFull, !state.busy, activeModule == StudioModule.CHARGING, Modifier.weight(1f)) { onActiveModuleChange(if (activeModule == StudioModule.CHARGING) null else StudioModule.CHARGING) }
+                        ModuleCard(strings.moduleAdvancedProps, strings.moduleEditorAlwaysAvailable, Icons.Default.Code, false, modifier = Modifier.weight(1f))
+                    }
                 }
             }
             if (activeModule == StudioModule.REFRESH_RATE && workspace.candidates.isNotEmpty()) {
@@ -336,47 +357,6 @@ private fun ModulesTab(
             if (activeModule == StudioModule.CHARGING) {
                 item(key = "charging_panel") { ChargingPanel(state, timing.onStageCharging) }
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun CapabilityScanCard(state: MainUiState) {
-    val strings = I18n.current
-    val report = state.capabilityReport
-    val (statusText, statusTone) = when {
-        state.capabilityScanInProgress -> strings.scanning to Tone.Warning
-        report != null -> strings.scanCompleted to Tone.Success
-        else -> strings.waitingForScan to Tone.Neutral
-    }
-    SectionCard(
-        title = strings.capabilityScan,
-        subtitle = report?.let { strings.scanStats(it.scannedEntryCount, it.nodeCount, it.propertyCount) },
-        icon = Icons.Default.Radar,
-        trailing = { StatusPill(statusText, tone = statusTone) }
-    ) {
-        if (state.capabilityScanInProgress) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-        }
-        if (report != null) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
-            ) {
-                report.findings.forEach { finding ->
-                    StatusPill(
-                        "${finding.kind.getDisplayName(strings)}: ${finding.status.getDisplayName(strings)} ${finding.matchCount}",
-                        tone = when (finding.status) {
-                            CapabilityStatus.AVAILABLE -> Tone.Success
-                            CapabilityStatus.ANALYSIS_ONLY -> Tone.Primary
-                            CapabilityStatus.NOT_FOUND -> Tone.Neutral
-                        }
-                    )
-                }
-            }
-        } else {
-            HintText(strings.scanHint)
         }
     }
 }
