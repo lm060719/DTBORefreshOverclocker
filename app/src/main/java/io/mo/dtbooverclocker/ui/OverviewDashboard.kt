@@ -115,8 +115,7 @@ internal fun SourceCard(state: MainUiState, onImport: () -> Unit, onExtract: () 
                 IconLabel(Icons.Default.Save, strings.extractCurrentPartition)
             }
         }
-        if (workspace == null) HintText(if (state.rootState.suPresent)
-            strings.hintRootExtract(state.slotInfo?.blockDevice ?: "dtbo") else strings.hintNoRootImport)
+        if (workspace == null && !state.rootState.suPresent) HintText(strings.hintNoRootImport)
     }
 }
 
@@ -180,13 +179,13 @@ internal fun RefreshOverviewCard(state: MainUiState, onOpenTiming: ((String) -> 
                 lerp(scheme.primary, scheme.surfaceContainerHighest, 0.5f), "overview-original-interval")
             FrameIntervalRow(strings.overviewStagedTarget, targetMs, targetMs / scale, scheme.primary, "overview-target-interval")
         }
-        if (change?.mode == PatchMode.APPEND_NEW) HintText(change.mode.getDescription(strings))
-        HintText(when {
-            change == null -> strings.overviewOriginalTimingHint
-            state.lastFlash != null && state.patchReport != null -> strings.overviewFlashedTimingHint
-            state.patchReport != null -> strings.overviewPackagedTimingHint
-            else -> strings.overviewPendingTimingHint
-        })
+        if (change != null) {
+            HintText(when {
+                state.lastFlash != null && state.patchReport != null -> strings.overviewFlashedTimingHint
+                state.patchReport != null -> strings.overviewPackagedTimingHint
+                else -> strings.overviewPendingTimingHint
+            })
+        }
     }
 }
 

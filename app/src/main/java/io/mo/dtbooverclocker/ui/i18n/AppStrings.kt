@@ -101,7 +101,6 @@ interface AppStrings {
     val overviewStagedTarget: String
     val overviewFrameInterval: String
     val overviewPendingTimingHint: String
-    val overviewOriginalTimingHint: String
     val overviewPackagedTimingHint: String
     val overviewFlashedTimingHint: String
     val overviewNoTiming: String
@@ -145,7 +144,6 @@ interface AppStrings {
     val manualImport: String
     val extractCurrentPartition: String
     val hintNoRootImport: String
-    fun hintRootExtract(device: String): String
     val imageParseResult: String
     val dtbCount: String
     val uniquePanels: String
@@ -262,7 +260,6 @@ interface AppStrings {
     val stageAppendNewMode: String
     val stageApplyCurrentMode: String
     val syncAllDtbTitle: String
-    val syncAllDtbDesc: String
     val deleteCandidateConfirmTitle: String
     fun deleteCandidateConfirmBody(name: String, hz: Int): String
 
@@ -440,11 +437,8 @@ interface AppStrings {
     val strategyCustomDesc: String
 
     val patchModeOverwriteName: String
-    val patchModeOverwriteDesc: String
     val patchModeAppendName: String
-    val patchModeAppendDesc: String
     val patchModeDeleteName: String
-    val patchModeDeleteDesc: String
 
     // Capabilities
     val capabilityRefreshRate: String

@@ -98,7 +98,6 @@ object StringsEn : AppStrings {
     override val overviewStagedTarget = "Staged target"
     override val overviewFrameInterval = "Theoretical frame interval"
     override val overviewPendingTimingHint = "Pending packaging and flashing. Verify the actual effect after flashing."
-    override val overviewOriginalTimingHint = "No refresh rate changes staged. These are image timings, not measured refresh rates."
     override val overviewPackagedTimingHint = "Packaged, not flashed. Verify the actual effect after flashing."
     override val overviewFlashedTimingHint = "Flashed. This is still a timing preview; verify the actual effect after rebooting."
     override val overviewNoTiming = "No refresh rate timings found. Check modules or the device tree for other editable nodes."
@@ -144,8 +143,6 @@ object StringsEn : AppStrings {
     override val extractCurrentPartition: String = "Extract Partition"
     override val hintNoRootImport: String =
         "Root permission not detected. Tap \"Manual Import\" to select an external dtbo.img file."
-    override fun hintRootExtract(device: String): String =
-        "Manual import supports external images (no root required); extracting partition only reads $device"
     override val imageParseResult: String = "Image Analysis Result"
     override val dtbCount: String = "DTB"
     override val uniquePanels: String = "Unique Panels"
@@ -279,7 +276,6 @@ object StringsEn : AppStrings {
     override val stageAppendNewMode: String = "Append as New Mode for Panel (Stage)"
     override val stageApplyCurrentMode: String = "Apply to Current Timing (Stage)"
     override val syncAllDtbTitle: String = "Sync to all DTBs of this panel"
-    override val syncAllDtbDesc: String = "Also applies this change to the equivalent timing (same resolution and refresh rate) in other DTBs; each DTB becomes its own undoable transaction."
     override val deleteCandidateConfirmTitle: String = "Confirm Deleting This Timing Mode?"
     override fun deleteCandidateConfirmBody(name: String, hz: Int): String =
         "Will remove $name ($hz Hz) node from workspace device tree.\nOnce removed, it will be added to the pending package list until unified packaging."
@@ -503,14 +499,8 @@ object StringsEn : AppStrings {
         "Manually specify Pixel Clock, Vertical Front Porch (VFP), Vertical Back Porch (VBP), and horizontal porches."
 
     override val patchModeOverwriteName: String = "Modify Existing Mode"
-    override val patchModeOverwriteDesc: String =
-        "Overclocks selected timing mode directly to target refresh rate (replaces mode)."
     override val patchModeAppendName: String = "Append New Mode"
-    override val patchModeAppendDesc: String =
-        "Preserves original modes, clones candidate as blueprint, and appends a new mode node."
     override val patchModeDeleteName: String = "Delete Mode"
-    override val patchModeDeleteDesc: String =
-        "Completely removes selected timing node from device tree (at least one mode must remain)."
 
     // Capabilities
     override val capabilityRefreshRate: String = "Refresh Rate"

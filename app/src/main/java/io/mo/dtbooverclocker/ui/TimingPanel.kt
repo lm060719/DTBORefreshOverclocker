@@ -147,7 +147,6 @@ internal fun TimingPanel(
                         )
                     }
                 }
-                HintText(state.patchMode.getDescription(strings))
             }
 
             // 同一面板存在于多个 DTB 时，可把本次操作一并同步到其他 DTB 的等价档位。
@@ -159,10 +158,7 @@ internal fun TimingPanel(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.md)
                 ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        SubsectionTitle(strings.syncAllDtbTitle)
-                        HintText(strings.syncAllDtbDesc)
-                    }
+                    SubsectionTitle(strings.syncAllDtbTitle, Modifier.weight(1f))
                     Switch(
                         checked = state.syncAllDtbEntries,
                         onCheckedChange = onSyncAllDtbEntries,

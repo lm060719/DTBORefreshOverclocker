@@ -97,7 +97,6 @@ object StringsZh : AppStrings {
     override val overviewStagedTarget = "暂存目标"
     override val overviewFrameInterval = "理论帧间隔"
     override val overviewPendingTimingHint = "待打包、未刷入；实际效果需刷入后验证。"
-    override val overviewOriginalTimingHint = "尚未暂存刷新率修改；此处显示镜像中的时序，并非实测刷新率。"
     override val overviewPackagedTimingHint = "已打包、未刷入；实际效果需刷入后验证。"
     override val overviewFlashedTimingHint = "已刷写；此处仍为时序预览，实际效果请在重启后验证。"
     override val overviewNoTiming = "未识别到刷新率时序，可在功能模块或设备树中查看其他可编辑节点。"
@@ -142,8 +141,6 @@ object StringsZh : AppStrings {
     override val manualImport: String = "手动导入"
     override val extractCurrentPartition: String = "提取当前分区"
     override val hintNoRootImport: String = "未检测到 Root 权限，可点击“手动导入”选择外部 dtbo.img 文件。"
-    override fun hintRootExtract(device: String): String =
-        "手动导入支持外部镜像（免 Root）；提取当前分区只读取 $device"
     override val imageParseResult: String = "镜像解析结果"
     override val dtbCount: String = "DTB"
     override val uniquePanels: String = "唯一面板"
@@ -277,7 +274,6 @@ object StringsZh : AppStrings {
     override val stageAppendNewMode: String = "追加为此面板新档位 (暂存)"
     override val stageApplyCurrentMode: String = "应用修改到当前时序 (暂存)"
     override val syncAllDtbTitle: String = "同步修改该面板所有 DTB"
-    override val syncAllDtbDesc: String = "将本次操作一并应用到其他 DTB 中同分辨率、同刷新率的等价档位，每个 DTB 单独生成一个可撤销事务。"
     override val deleteCandidateConfirmTitle: String = "确认删除该时序档位？"
     override fun deleteCandidateConfirmBody(name: String, hz: Int): String =
         "将从工作区设备树中移除 $name ($hz Hz) 节点。\n删除后将记入待打包修改清单，全部调整完成后可统一打包生成 DTBO 镜像。"
@@ -500,14 +496,8 @@ object StringsZh : AppStrings {
         "手动指定 Pixel Clock、垂直前肩 (VFP)、垂直后肩 (VBP) 及水平消隐等时序参数。"
 
     override val patchModeOverwriteName: String = "编辑修改档位"
-    override val patchModeOverwriteDesc: String =
-        "将选中的原始时序档位直接超频为目标刷新率（替换原档位）。"
     override val patchModeAppendName: String = "新增独立档位"
-    override val patchModeAppendDesc: String =
-        "完整保留原有时序档位，以此档位为蓝本克隆并追加全新的刷新率节点。"
     override val patchModeDeleteName: String = "删除指定档位"
-    override val patchModeDeleteDesc: String =
-        "从设备树中彻底移除所选的时序档位节点（需保留至少一个档位以供显示驱动初始化）。"
 
     // Capabilities
     override val capabilityRefreshRate: String = "刷新率"

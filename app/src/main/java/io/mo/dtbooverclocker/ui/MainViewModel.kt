@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.mo.dtbooverclocker.core.ActivePanelDetectionResult
-import io.mo.dtbooverclocker.core.ImageCache
 import io.mo.dtbooverclocker.core.WorkspaceOperationRunner
 import io.mo.dtbooverclocker.core.ActivePanelDetector
 import io.mo.dtbooverclocker.core.AppliedDtboEntries
@@ -211,7 +210,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     activePanelDetector.detect()
                 } else null
                 applyWorkspace(workspace, SourceMode.LOCAL_IMAGE, detectedActive)
-                noteCacheHit(image)
                 refreshCacheSize()
             }.onFailure(::showError)
             setBusy(false)
@@ -233,16 +231,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val detectedActive = activePanelDetector.detect()
                 val appliedDtbo = activePanelDetector.detectAppliedDtboEntries()
                 applyWorkspace(workspace, SourceMode.ROOT_PARTITION, detectedActive, appliedDtbo)
-                noteCacheHit(image)
                 refreshCacheSize()
             }.onFailure(::showError)
             setBusy(false)
         }
-    }
-
-    private fun noteCacheHit(image: ImageCache.CachedImage) {
-        if (!image.reused) return
-        _state.update { it.copy(status = "镜像 MD5 与缓存一致，已直接使用缓存镜像（MD5 ${image.md5.take(8)}…）；${it.status}") }
     }
 
     fun selectCandidate(id: String) {

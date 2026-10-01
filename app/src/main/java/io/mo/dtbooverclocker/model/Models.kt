@@ -47,19 +47,10 @@ enum class PatchStrategy(val displayName: String, val description: String) {
     }
 }
 
-enum class PatchMode(val displayName: String, val description: String) {
-    OVERWRITE_EXISTING(
-        "编辑修改档位",
-        "将选中的原始时序档位直接超频为目标刷新率（替换原档位）。"
-    ),
-    APPEND_NEW(
-        "新增独立档位",
-        "完整保留原有时序档位，以此档位为蓝本克隆并追加全新的刷新率节点。"
-    ),
-    DELETE_EXISTING(
-        "删除指定档位",
-        "从设备树中彻底移除所选的时序档位节点（需保留至少一个档位以供显示驱动初始化）。"
-    );
+enum class PatchMode(val displayName: String) {
+    OVERWRITE_EXISTING("编辑修改档位"),
+    APPEND_NEW("新增独立档位"),
+    DELETE_EXISTING("删除指定档位");
 
     fun getDisplayName(strings: AppStrings): String = when (this) {
         OVERWRITE_EXISTING -> strings.patchModeOverwriteName
@@ -67,11 +58,6 @@ enum class PatchMode(val displayName: String, val description: String) {
         DELETE_EXISTING -> strings.patchModeDeleteName
     }
 
-    fun getDescription(strings: AppStrings): String = when (this) {
-        OVERWRITE_EXISTING -> strings.patchModeOverwriteDesc
-        APPEND_NEW -> strings.patchModeAppendDesc
-        DELETE_EXISTING -> strings.patchModeDeleteDesc
-    }
 }
 
 data class CustomTimingParams(

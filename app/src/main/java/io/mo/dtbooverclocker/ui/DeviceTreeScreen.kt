@@ -378,16 +378,6 @@ fun DeviceTreeScreen(
                         }
                         ParseWarningsText(document.warnings)
 
-                        val externalFixupCount = referenceIndex?.externalFixups()?.size ?: 0
-                        if (externalFixupCount > 0)
-                        {
-                            Text(
-                                "$externalFixupCount 条外部 Fixup 指向基础设备树，属于 DTBO 正常外部依赖。",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
                         val unresolvedCount = referenceIndex?.unresolved()?.size ?: 0
                         if (unresolvedCount > 0)
                         {
