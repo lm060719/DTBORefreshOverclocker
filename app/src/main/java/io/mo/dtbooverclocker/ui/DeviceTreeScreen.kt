@@ -258,21 +258,28 @@ fun DeviceTreeScreen(
     }
     val referenceIndex = loaded.referenceIndex
     val filteredMode = query.isNotBlank() || searchScope != DeviceTreeSearchScope.ALL
-    val visibleRows by key(document, query, searchScope, expandedSet, referenceIndex, modifiedNodePaths) {
-        produceState<List<TreeRow>>(initialValue = emptyList()) {
-            if (document == null) return@produceState
-            if (query.isNotBlank()) delay(180)
-            value = withContext(Dispatchers.Default) {
-                val search = query.trim()
-                if (filteredMode) {
-                    val modifiedIndex = ModifiedPathIndex(modifiedNodePaths)
-                    loaded.nodes.asSequence().filter { node ->
-                        ensureActive()
-                        matchesSearchScope(node, search, searchScope, referenceIndex, modifiedIndex)
-                    }.map { TreeRow(it, depthOf(it.path)) }.toList()
-                } else {
-                    buildVisibleRows(document.root, expandedSet) { ensureActive() }
-                }
+    // produceState with keys keeps the previous rows while recomputing; resetting to an empty list
+    // would collapse the LazyColumn for a frame and clamp the scroll position back to the top.
+    val visibleRows by produceState<List<TreeRow>>(
+        initialValue = emptyList(),
+        document, query, searchScope, expandedSet, referenceIndex, modifiedNodePaths
+    ) {
+        if (document == null)
+        {
+            value = emptyList()
+            return@produceState
+        }
+        if (query.isNotBlank()) delay(180)
+        value = withContext(Dispatchers.Default) {
+            val search = query.trim()
+            if (filteredMode) {
+                val modifiedIndex = ModifiedPathIndex(modifiedNodePaths)
+                loaded.nodes.asSequence().filter { node ->
+                    ensureActive()
+                    matchesSearchScope(node, search, searchScope, referenceIndex, modifiedIndex)
+                }.map { TreeRow(it, depthOf(it.path)) }.toList()
+            } else {
+                buildVisibleRows(document.root, expandedSet) { ensureActive() }
             }
         }
     }
