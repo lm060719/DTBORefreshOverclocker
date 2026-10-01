@@ -21,6 +21,7 @@
         <activity
             android:name=".ui.MainActivity"
             android:configChanges="locale|layoutDirection"
+            android:theme="@style/Theme.DTBORefreshOverclocker.Starting"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -101,6 +101,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        // 启动窗口用 Starting 主题铺开屏底色，进入后切回正式主题。
+        setTheme(io.mo.dtbooverclocker.R.style.Theme_DTBORefreshOverclocker)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -138,7 +140,12 @@ class MainActivity : ComponentActivity() {
                 LocalContext provides localizedContext
             ) {
                 AppTheme(uiStyle = state.uiStyle, monet = state.monetColors) {
-                    DtboOverclockerApp(viewModel)
+                    // 重建（如旋转）后不再重播开屏。
+                    var splashDone by rememberSaveable { mutableStateOf(false) }
+                    Box(Modifier.fillMaxSize()) {
+                        DtboOverclockerApp(viewModel, splashDone)
+                        if (!splashDone) SplashOverlay(onFinished = { splashDone = true })
+                    }
                 }
             }
         }
@@ -147,7 +154,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
+private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel(), splashDone: Boolean = true) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
@@ -432,7 +439,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
         }
     }
 
-    if (!state.isDisclaimerAccepted) {
+    // 免责声明是独立窗口，会盖在开屏之上，等开屏结束再弹。
+    if (splashDone && !state.isDisclaimerAccepted) {
         DisclaimerDialog(
             isFirstLaunch = true,
             onConfirm = viewModel::acceptDisclaimer,

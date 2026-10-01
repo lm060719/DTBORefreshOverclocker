@@ -1,0 +1,8 @@
+<resources>
+    <!-- 系统 SplashScreen 只铺纯色、不画图标，图标动画由 SplashOverlay 接管。 -->
+    <style name="Theme.DTBORefreshOverclocker.Starting" parent="Theme.DTBORefreshOverclocker">
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+</resources>

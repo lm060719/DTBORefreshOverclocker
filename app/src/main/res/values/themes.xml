@@ -6,4 +6,9 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
+
+    <!-- 仅用于启动窗口，onCreate 中切回主题；背景与开屏动画同色。 -->
+    <style name="Theme.DTBORefreshOverclocker.Starting" parent="Theme.DTBORefreshOverclocker">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
 </resources>
