@@ -224,16 +224,20 @@ internal fun StudioNavigation(
         }
     ) { padding ->
         CompositionLocalProvider(LocalFloatingBarInset provides if (floatingBottomBar) 80.dp else 0.dp) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize().padding(padding)
-                    .then(if (glassActive) Modifier.layerBackdrop(backdrop) else Modifier),
-                key = { StudioTab.entries[it].name },
-                userScrollEnabled = enabled
-            ) { page ->
-                val tab = StudioTab.entries[page]
-                pageStateHolder.SaveableStateProvider(tab.name) {
-                    content(tab, PaddingValues())
+            // Record the backdrop on a fixed full-size host: the pager's padding changes every frame while the
+            // Miuix title collapses, and a layer lagging one frame behind leaves a transparent (black) strip
+            // under the floating bar.
+            Box(Modifier.fillMaxSize().then(if (glassActive) Modifier.layerBackdrop(backdrop) else Modifier)) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    key = { StudioTab.entries[it].name },
+                    userScrollEnabled = enabled
+                ) { page ->
+                    val tab = StudioTab.entries[page]
+                    pageStateHolder.SaveableStateProvider(tab.name) {
+                        content(tab, PaddingValues())
+                    }
                 }
             }
         }
@@ -325,7 +329,7 @@ private fun ModulesTab(
                 item(key = "timing_panel") {
                     Box(Modifier.testTag("timing-editor")) {
                         key(timingNavigationRequest) {
-                            TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange, timing.onReportPanelIssue)
+                            TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onSyncAllDtbEntries, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange, timing.onReportPanelIssue)
                         }
                     }
                 }

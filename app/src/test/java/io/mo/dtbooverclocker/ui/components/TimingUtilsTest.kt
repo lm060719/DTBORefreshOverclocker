@@ -211,5 +211,23 @@ class TimingUtilsTest {
         assertEquals(10, sim.estimatedVbp)
         assertTrue("Note should contain theoretical calculation: ${sim.calculationNote}", sim.calculationNote.contains("理论物理刷新率"))
     }
+    @Test
+    fun testFindMirrorCandidatesAcrossEntries() {
+        val panel = "/fragment@1/__overlay__/qcom,mdss_dsi_nt37801_wqhd_plus_cmd/qcom,mdss-dsi-display-timings"
+        fun cand(id: String, entry: Int, node: String, hz: Int, panelPath: String = panel) = TimingCandidate(
+            id = id, entryIndex = entry, dtsFile = File("entry_$entry.dts"), nodePath = "$panelPath/$node",
+            nodeStart = 0, nodeEndExclusive = 0, currentHz = hz, hActive = 1440, vActive = 3200
+        )
+        val source = cand("s", 0, "timing@0", 120)
+        val all = listOf(
+            source,
+            cand("e1", 1, "timing@1", 120),                       // 同 entry 唯一等价档位，节点名不同也匹配
+            cand("e1-60", 1, "timing@0", 60),                     // 刷新率不同
+            cand("e2a", 2, "timing@0", 120), cand("e2b", 2, "timing@3", 120), // 多个等价时取同名节点
+            cand("e3a", 3, "timing@4", 120), cand("e3b", 3, "timing@5", 120), // 无法唯一确定，跳过
+            cand("other", 4, "timing@0", 120, "/fragment@1/__overlay__/qcom,mdss_dsi_other_panel/qcom,mdss-dsi-display-timings")
+        )
+        assertEquals(listOf("e1", "e2a"), TimingUtils.findMirrorCandidates(all, source).map { it.id })
+    }
 }
 

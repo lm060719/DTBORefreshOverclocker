@@ -280,6 +280,8 @@ object StringsEn : AppStrings {
         "Theoretical physical refresh rate: $hz Hz (Target: $target Hz)"
     override val stageAppendNewMode: String = "Append as New Mode for Panel (Stage)"
     override val stageApplyCurrentMode: String = "Apply to Current Timing (Stage)"
+    override val syncAllDtbTitle: String = "Sync to all DTBs of this panel"
+    override val syncAllDtbDesc: String = "Also applies this change to the equivalent timing (same resolution and refresh rate) in other DTBs; each DTB becomes its own undoable transaction."
     override val deleteCandidateConfirmTitle: String = "Confirm Deleting This Timing Mode?"
     override fun deleteCandidateConfirmBody(name: String, hz: Int): String =
         "Will remove $name ($hz Hz) node from workspace device tree.\nOnce removed, it will be added to the pending package list until unified packaging."

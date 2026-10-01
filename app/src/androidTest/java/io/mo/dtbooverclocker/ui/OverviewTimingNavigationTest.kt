@@ -55,7 +55,7 @@ class OverviewTimingNavigationTest(private val style: UiStyle) {
         val timing = TimingActions(
             onSelect = { id -> current = current.selectTimingCandidate(id) },
             onTarget = { value -> current = current.copy(targetHz = value) },
-            onStrategy = {}, onPatchMode = {}, onCustomPixelClock = {}, onCustomVfp = {}, onCustomVbp = {},
+            onStrategy = {}, onPatchMode = {}, onSyncAllDtbEntries = {}, onCustomPixelClock = {}, onCustomVfp = {}, onCustomVbp = {},
             onCustomHfp = {}, onCustomHbp = {}, onApplySuggestedCustom = action, onStageChange = action,
             onStageCharging = { _, _ -> }, onReportPanelIssue = action)
         return StateRestorationTester(compose).also { restoration ->

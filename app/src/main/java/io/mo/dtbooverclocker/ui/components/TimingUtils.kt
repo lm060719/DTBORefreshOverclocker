@@ -285,6 +285,30 @@ object TimingUtils {
     }
 
     /**
+     * 找出同一面板在其他 DTB entry 中与 [source] 等价的档位（同分辨率、同刷新率），每个 entry 至多一个。
+     * 同一 entry 内有多个等价档位时优先取同名 timing 节点，仍无法唯一确定则跳过该 entry，避免改错档位。
+     */
+    fun findMirrorCandidates(candidates: List<TimingCandidate>, source: TimingCandidate): List<TimingCandidate>
+    {
+        val panel = parsePanelIdentifier(source.nodePath)
+        val nodeName = parseTimingNodeName(source.nodePath)
+        return candidates
+            .filter {
+                it.entryIndex != source.entryIndex &&
+                    !it.hasVendorDynamicMode &&
+                    it.currentHz == source.currentHz &&
+                    it.hActive == source.hActive &&
+                    it.vActive == source.vActive &&
+                    parsePanelIdentifier(it.nodePath) == panel
+            }
+            .groupBy { it.entryIndex }
+            .toSortedMap()
+            .mapNotNull { (_, matches) ->
+                matches.singleOrNull() ?: matches.filter { parseTimingNodeName(it.nodePath) == nodeName }.singleOrNull()
+            }
+    }
+
+    /**
      * 实时预估超频参数
      */
     fun calculateSimulation(

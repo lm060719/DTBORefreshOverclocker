@@ -278,6 +278,8 @@ object StringsZh : AppStrings {
         "理论推算物理刷新率: $hz Hz (目标: $target Hz)"
     override val stageAppendNewMode: String = "追加为此面板新档位 (暂存)"
     override val stageApplyCurrentMode: String = "应用修改到当前时序 (暂存)"
+    override val syncAllDtbTitle: String = "同步修改该面板所有 DTB"
+    override val syncAllDtbDesc: String = "将本次操作一并应用到其他 DTB 中同分辨率、同刷新率的等价档位，每个 DTB 单独生成一个可撤销事务。"
     override val deleteCandidateConfirmTitle: String = "确认删除该时序档位？"
     override fun deleteCandidateConfirmBody(name: String, hz: Int): String =
         "将从工作区设备树中移除 $name ($hz Hz) 节点。\n删除后将记入待打包修改清单，全部调整完成后可统一打包生成 DTBO 镜像。"

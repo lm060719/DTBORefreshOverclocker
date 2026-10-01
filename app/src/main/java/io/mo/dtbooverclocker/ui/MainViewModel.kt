@@ -260,6 +260,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(patchMode = mode, patchReport = null) }
     }
 
+    fun setSyncAllDtbEntries(enabled: Boolean) {
+        _state.update { it.copy(syncAllDtbEntries = enabled, patchReport = null) }
+    }
+
     fun setCustomPixelClock(value: String) {
         _state.update { it.copy(customPixelClockText = value, patchReport = null) }
     }
@@ -320,37 +324,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 p
             } else null
 
-            val transactionId = UUID.randomUUID().toString()
-            runCatching {
-                patchEngine.applyTimingChange(
-                    workspace = workspace,
-                    candidate = candidate,
-                    targetHz = current.targetHz,
-                    strategy = current.strategy,
-                    mode = current.patchMode,
-                    customParams = customParams,
-                    transactionId = transactionId
-                )
-            }.onSuccess { result ->
-                val transaction = DeviceTreeTransaction.refreshRate(
+            // 同步模式：同一面板在其他 DTB entry 中的等价档位逐个独立暂存（每个 entry 一个事务，可单独撤销）。
+            val mirrors = if (current.syncAllDtbEntries) {
+                TimingUtils.findMirrorCandidates(workspace.candidates, candidate).filter { mirror ->
+                    current.patchMode != PatchMode.DELETE_EXISTING ||
+                        workspace.candidates.count { it.entryIndex == mirror.entryIndex } > 1
+                }
+            } else emptyList()
+
+            var latestWorkspace = workspace
+            var selectedId: String? = current.selectedCandidateId
+            val staged = mutableListOf<DeviceTreeTransaction>()
+            var failure: Throwable? = null
+            for (target in listOf(candidate) + mirrors) {
+                // 其他 entry 的候选不受本次写入影响，但仍按 id 在最新工作区中重新定位。
+                val live = latestWorkspace.candidates.firstOrNull { it.id == target.id } ?: continue
+                val transactionId = UUID.randomUUID().toString()
+                val result = runCatching {
+                    patchEngine.applyTimingChange(
+                        workspace = latestWorkspace,
+                        candidate = live,
+                        targetHz = current.targetHz,
+                        strategy = current.strategy,
+                        mode = current.patchMode,
+                        customParams = customParams,
+                        transactionId = transactionId
+                    )
+                }.getOrElse {
+                    failure = it
+                    break
+                }
+                staged += DeviceTreeTransaction.refreshRate(
                     stagedChange = result.stagedChange,
                     operations = result.operations,
                     warnings = result.warnings,
                     id = transactionId
-                ).withPanelWarning(candidate.nodePath)
-                val newTransactions = current.transactions + transaction
+                ).withPanelWarning(live.nodePath)
+                latestWorkspace = result.updatedWorkspace
+                if (target === candidate) selectedId = result.selectedCandidateId
+            }
+
+            if (staged.isNotEmpty()) {
+                val newTransactions = current.transactions + staged
+                val summary = if (staged.size > 1) {
+                    "${staged.first().summary}（已同步到 ${staged.size} 个 DTB）"
+                } else staged.first().summary
                 _state.update {
                     it.copy(
-                        workspace = result.updatedWorkspace,
-                        selectedCandidateId = result.selectedCandidateId,
+                        workspace = latestWorkspace,
+                        selectedCandidateId = selectedId,
                         transactions = newTransactions,
                         patchReport = null,
-                        status = "已暂存修改：${transaction.summary} (共 ${newTransactions.size} 个事务待打包)",
+                        status = "已暂存修改：$summary (共 ${newTransactions.size} 个事务待打包)",
                         patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode
                     )
                 }
-                refreshCapabilities(result.updatedWorkspace, transaction.entryIndices)
-            }.onFailure(::showError)
+                refreshCapabilities(latestWorkspace, staged.flatMap { it.entryIndices }.toSet())
+            }
+            failure?.let { error ->
+                showError(
+                    if (staged.isEmpty()) error
+                    else IllegalStateException("已同步 ${staged.size} 个 DTB，后续 DTB 同步失败：${error.message}", error)
+                )
+            }
         }
     }
 
@@ -1213,6 +1249,7 @@ data class MainUiState(
     val targetHz: Int = 75,
     val strategy: PatchStrategy = PatchStrategy.BALANCED_BLANKING_TIME,
     val patchMode: PatchMode = PatchMode.OVERWRITE_EXISTING,
+    val syncAllDtbEntries: Boolean = false,
     val patchReport: PatchReport? = null,
     val transactions: List<DeviceTreeTransaction> = emptyList(),
     val lastFlash: FlashResult? = null,

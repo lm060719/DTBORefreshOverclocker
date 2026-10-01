@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import io.mo.dtbooverclocker.ui.components.Slider
+import io.mo.dtbooverclocker.ui.components.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import io.mo.dtbooverclocker.ui.components.TextButton
@@ -72,6 +73,7 @@ internal fun TimingPanel(
     onTarget: (Int) -> Unit,
     onStrategy: (PatchStrategy) -> Unit,
     onPatchMode: (PatchMode) -> Unit,
+    onSyncAllDtbEntries: (Boolean) -> Unit,
     onCustomPixelClock: (String) -> Unit,
     onCustomVfp: (String) -> Unit,
     onCustomVbp: (String) -> Unit,
@@ -89,6 +91,9 @@ internal fun TimingPanel(
     val candidatesInEntry = workspace.candidates.count { it.entryIndex == selected.entryIndex }
     val canDelete = candidatesInEntry > 1
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val mirrorCount = remember(workspace.candidates, selected) {
+        TimingUtils.findMirrorCandidates(workspace.candidates, selected).size
+    }
 
     SectionCard(
         title = strings.timingPanelTitle,
@@ -143,6 +148,27 @@ internal fun TimingPanel(
                     }
                 }
                 HintText(state.patchMode.getDescription(strings))
+            }
+
+            // 同一面板存在于多个 DTB 时，可把本次操作一并同步到其他 DTB 的等价档位。
+            if (mirrorCount > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !state.busy) { onSyncAllDtbEntries(!state.syncAllDtbEntries) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        SubsectionTitle(strings.syncAllDtbTitle)
+                        HintText(strings.syncAllDtbDesc)
+                    }
+                    Switch(
+                        checked = state.syncAllDtbEntries,
+                        onCheckedChange = onSyncAllDtbEntries,
+                        enabled = !state.busy
+                    )
+                }
             }
 
             HorizontalDivider()

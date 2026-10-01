@@ -326,6 +326,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                         onTarget = viewModel::setTargetHz,
                         onStrategy = viewModel::setStrategy,
                         onPatchMode = viewModel::setPatchMode,
+                        onSyncAllDtbEntries = viewModel::setSyncAllDtbEntries,
                         onCustomPixelClock = viewModel::setCustomPixelClock,
                         onCustomVfp = viewModel::setCustomVfp,
                         onCustomVbp = viewModel::setCustomVbp,

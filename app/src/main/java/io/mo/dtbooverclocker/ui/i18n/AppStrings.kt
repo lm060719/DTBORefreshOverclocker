@@ -260,6 +260,8 @@ interface AppStrings {
     fun theoreticalRefreshRate(hz: String, target: Int): String
     val stageAppendNewMode: String
     val stageApplyCurrentMode: String
+    val syncAllDtbTitle: String
+    val syncAllDtbDesc: String
     val deleteCandidateConfirmTitle: String
     fun deleteCandidateConfirmBody(name: String, hz: Int): String
 
