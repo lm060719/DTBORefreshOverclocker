@@ -107,14 +107,17 @@ class MainActivity : ComponentActivity() {
             val viewModel: MainViewModel = viewModel()
             val state by viewModel.state.collectAsState()
             val context = LocalContext.current
-            val strings = remember(state.appLanguage) { I18n.getStrings(state.appLanguage) }
-            val currentLocale = remember(state.appLanguage) { LocaleHelper.getEffectiveLocale(state.appLanguage) }
+            val configuration = LocalConfiguration.current
+            val currentLocale = remember(state.appLanguage, configuration) {
+                LocaleHelper.getEffectiveLocale(state.appLanguage)
+            }
+            val strings = remember(state.appLanguage, currentLocale) { I18n.getStrings(state.appLanguage) }
 
-            LaunchedEffect(state.appLanguage) {
+            LaunchedEffect(state.appLanguage, currentLocale) {
+                Locale.setDefault(currentLocale)
                 LocaleHelper.updateSystemLocale(context, state.appLanguage)
             }
 
-            val configuration = LocalConfiguration.current
             val localizedConfiguration = remember(configuration, currentLocale) {
                 android.content.res.Configuration(configuration).apply {
                     setLocale(currentLocale)
@@ -122,7 +125,7 @@ class MainActivity : ComponentActivity() {
             }
             // 只替换资源而保留 Activity 作为 base：createConfigurationContext 返回的 ContextImpl
             // 不是 Activity，强转和不带 NEW_TASK 的 startActivity 都会崩溃。
-            val localizedContext = remember(context, currentLocale) {
+            val localizedContext = remember(context, localizedConfiguration) {
                 val localizedResources = context.createConfigurationContext(localizedConfiguration).resources
                 object : android.content.ContextWrapper(context) {
                     override fun getResources(): android.content.res.Resources = localizedResources
