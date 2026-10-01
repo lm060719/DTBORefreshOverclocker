@@ -46,9 +46,7 @@ object DtsTimingPatcher {
         val text = dtsFile.readText()
         val nodes = parseNodeRanges(text)
         val refreshMatches = findAllProperties(text, refreshAliases)
-        val switchProbes = mutableMapOf<String, SwitchProbe>()
-
-        val candidates = refreshMatches.mapNotNull { refreshProp ->
+        return refreshMatches.mapNotNull { refreshProp ->
             val owner = nodes
                 .asSequence()
                 .filter { refreshProp.absoluteStart in it.start until it.endExclusive }
@@ -60,27 +58,11 @@ object DtsTimingPatcher {
             val hz = nodeRefresh.value.toIntOrNullExact() ?: return@mapNotNull null
             if (hz !in 1..1000) return@mapNotNull null
 
-            val ownClock = valueOf(nodeText, pixelClockAliases)
-            val clock = ownClock ?: findParentClock(text, owner, nodes)
-
-            val id = "$entryIndex:${owner.start}:${owner.path}"
-            val switchCommand = timingSwitchCommandRegex.find(nodeText)?.groupValues?.get(1)
-            if (switchCommand != null && isCommandModeTiming(text, owner, nodes)) {
-                // Only values written in the mode node itself count: an inherited parent clock is
-                // shared by every mode and says nothing about whether the timings actually differ.
-                switchProbes[id] = SwitchProbe(
-                    command = normalizeSwitchCommand(switchCommand),
-                    timing = listOf(
-                        ownClock,
-                        valueOf(nodeText, vFrontPorchAliases),
-                        valueOf(nodeText, vBackPorchAliases),
-                        valueOf(nodeText, listOf("qcom,mdss-mdp-transfer-time-us"))
-                    )
-                )
-            }
+            val clock = valueOf(nodeText, pixelClockAliases)
+                ?: findParentClock(text, owner, nodes)
 
             TimingCandidate(
-                id = id,
+                id = "$entryIndex:${owner.start}:${owner.path}",
                 entryIndex = entryIndex,
                 dtsFile = dtsFile,
                 nodePath = owner.path,
@@ -102,84 +84,6 @@ object DtsTimingPatcher {
                 hasVendorDynamicMode = hasVendorDynamicMode(nodeText)
             )
         }.distinctBy { it.id }
-
-        // A command-mode panel scans at whatever rate the DDIC registers select. When modes of the
-        // same resolution run different refresh rates on identical clock, porches and transfer time
-        // while sending different timing-switch commands, the rate can only come from those commands.
-        // Panels whose modes also differ in timing (e.g. Xiaomi) still respond to timing changes.
-        val commandDrivenGroups = candidates
-            .filter { it.id in switchProbes }
-            .groupBy { it.nodePath.substringBeforeLast('/', "") }
-            .filterValues { group ->
-                group
-                    .filter { switchProbes.getValue(it.id).timing.any { value -> value != null } }
-                    .groupBy { Triple(it.hActive, it.vActive, switchProbes.getValue(it.id).timing) }
-                    .values
-                    .any { same ->
-                        same.map { it.currentHz }.distinct().size > 1 &&
-                            same.map { switchProbes.getValue(it.id).command }.distinct().size > 1
-                    }
-            }
-            .keys
-        return candidates.map {
-            if (it.id in switchProbes && it.nodePath.substringBeforeLast('/', "") in commandDrivenGroups) {
-                it.copy(refreshSetByPanelCommands = true)
-            } else it
-        }
-    }
-
-    private data class SwitchProbe(val command: String, val timing: List<Long?>)
-
-    private val timingSwitchCommandRegex =
-        Regex("""(?m)^\s*qcom,mdss-dsi-timing-switch-command\s*=\s*([^;]*);""")
-    private val cmdModePanelTypeRegex =
-        Regex("""(?m)^\s*qcom,mdss-dsi-panel-type\s*=\s*"dsi_cmd_mode"\s*;""")
-    private val cmdModeFlagRegex = Regex("""(?m)^\s*qcom,mdss-dsi-cmd-mode\s*;""")
-
-    /** Whitespace and hex case differences do not make two commands different. */
-    private fun normalizeSwitchCommand(raw: String): String =
-        raw.trim().replace(Regex("""\s+"""), " ").lowercase()
-
-    /**
-     * The mode node itself or its panel node declares command mode. The panel is the parent of
-     * `qcom,mdss-dsi-display-timings`, or the mode's direct parent when there is no such wrapper;
-     * only the panel's own properties are checked, never those of sibling panels or child nodes.
-     */
-    private fun isCommandModeTiming(
-        fullText: String,
-        owner: NodeRange,
-        allNodes: List<NodeRange>
-    ): Boolean {
-        if (cmdModeFlagRegex.containsMatchIn(ownPropertiesText(fullText, owner, allNodes))) return true
-        val parentPath = owner.path.substringBeforeLast('/', "")
-        if (parentPath.isEmpty()) return false
-        val panelPath = if (parentPath.substringAfterLast('/') == "qcom,mdss-dsi-display-timings") {
-            parentPath.substringBeforeLast('/', "")
-        } else parentPath
-        if (panelPath.isEmpty()) return false
-        val panel = allNodes.firstOrNull {
-            it.path == panelPath && owner.start in it.start until it.endExclusive
-        } ?: return false
-        return cmdModePanelTypeRegex.containsMatchIn(ownPropertiesText(fullText, panel, allNodes))
-    }
-
-    /** Text of [node] with every direct child node cut out, leaving only its own properties. */
-    private fun ownPropertiesText(fullText: String, node: NodeRange, allNodes: List<NodeRange>): String {
-        val children = allNodes
-            .filter {
-                it.path.substringBeforeLast('/', "") == node.path &&
-                    it.start > node.start && it.endExclusive <= node.endExclusive
-            }
-            .sortedBy { it.start }
-        return buildString {
-            var cursor = node.start
-            for (child in children) {
-                if (child.start < cursor) continue
-                append(fullText, cursor, child.start)
-                cursor = child.endExclusive
-            }
-            append(fullText, cursor, node.endExclusive)
-        }
     }
 
     private fun findParentClock(

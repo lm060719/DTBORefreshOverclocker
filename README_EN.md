@@ -39,7 +39,6 @@ Choose Material 3 or [Miuix](https://github.com/compose-miuix-ui/miuix) under **
 - **Leftover partition data**: if a partition image without AVB has stale data after the DTBO (common on Realme), import shows a warning and packaging zero-fills that area.
 - **Multiple DTBs**: the same panel usually exists in every DTB, but the bootloader loads only one. Edit the DTB this device actually uses; the panel list marks it as "本机生效" (active on this device).
 - **Non-production panels**: Qualcomm reference and simulation panels show "非量产屏节点，改后不生效" (non-production panel node; changes have no effect).
-- **Command-mode panels**: on some panels the refresh rate is set by commands sent to the display driver IC, and all modes share the same clock and porches. Changing only the timing usually does not raise the real refresh rate; confirm with a frame-rate tool after flashing.
 - **Modes without clockrate**: the Qualcomm driver derives the link clock from the timing, so no clock property is written for these modes.
 
 ## Risks
