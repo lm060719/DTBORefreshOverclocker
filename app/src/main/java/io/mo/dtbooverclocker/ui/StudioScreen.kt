@@ -299,10 +299,10 @@ private fun ModulesTab(
         contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
+        // Header item is kept even when empty: timing navigation scrolls by item index.
         item {
-            Column(Modifier.padding(horizontal = Spacing.xs), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                if (!AppTheme.isMiuix) Text(strings.modulesTitle, style = MaterialTheme.typography.headlineSmall)
-                HintText(strings.modulesSubtitle)
+            if (!AppTheme.isMiuix) {
+                Text(strings.modulesTitle, Modifier.padding(horizontal = Spacing.xs), style = MaterialTheme.typography.headlineSmall)
             }
         }
         if (workspace != null) {

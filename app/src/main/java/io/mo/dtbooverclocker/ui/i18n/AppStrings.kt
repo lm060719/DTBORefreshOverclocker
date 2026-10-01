@@ -152,8 +152,6 @@ interface AppStrings {
     val avbUnsigned: String
     fun avbSigned(algorithm: String?): String
     fun panelInUse(displayName: String): String
-    fun panelDeduplicationHint(vendor: Int, ref: Int, sim: Int, unk: Int): String
-    val activePanelHint: String
     fun dtTransactions(size: Int): String
     fun dtOperationsPending(count: Int): String
     val packageBatch: String
@@ -192,7 +190,6 @@ interface AppStrings {
 
     // Modules Tab
     val modulesTitle: String
-    val modulesSubtitle: String
     val noWorkspaceYet: String
     val noWorkspaceHint: String
     val capabilityScan: String

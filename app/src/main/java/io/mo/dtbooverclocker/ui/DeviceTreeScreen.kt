@@ -231,13 +231,16 @@ fun DeviceTreeScreen(
     LaunchedEffect(document)
     {
         val currentPath = selectedNodePath
+        // document is also null while an edit reparses the entry; keep the node sheet open across that.
         if (document == null)
         {
-            showNodeSheet = false
+            if (!loaded.loading) showNodeSheet = false
         }
         else if (currentPath == null || loaded.nodesByPath[currentPath] == null)
         {
+            // The node went away (deleted, or a rename failed); don't reopen its sheet on the root.
             selectedNodePath = document.root.path
+            showNodeSheet = false
         }
     }
 
@@ -285,6 +288,10 @@ fun DeviceTreeScreen(
     }
 
     val selectedNode = loaded.nodesByPath[selectedNodePath ?: "/"]
+    // Keep showing the last node while the entry reparses after an edit, so the sheet does not flicker shut.
+    var lastSheetNode by remember(workspace?.rootDir?.path, selectedEntry) { mutableStateOf<DeviceTreeNode?>(null) }
+    if (selectedNode != null) lastSheetNode = selectedNode
+    val sheetNode = selectedNode ?: lastSheetNode?.takeIf { loaded.loading && it.path == selectedNodePath }
 
     LazyColumn(
         modifier = Modifier
@@ -508,13 +515,13 @@ fun DeviceTreeScreen(
 
     }
 
-    if (showNodeSheet && selectedNode != null)
+    if (showNodeSheet && sheetNode != null)
     {
         ModalBottomSheet(
             onDismissRequest = { showNodeSheet = false }
         ) {
             NodeDetailSheet(
-                node = selectedNode,
+                node = sheetNode,
                 onOpenChild = { child ->
                     selectedNodePath = child.path
                 },
@@ -545,7 +552,7 @@ fun DeviceTreeScreen(
                     showNodeSheet = false
                 },
                 onDeleteNode = {
-                    deleteNodePath = selectedNode.path
+                    deleteNodePath = sheetNode.path
                     showNodeSheet = false
                 },
                 referenceIndex = referenceIndex,
@@ -569,6 +576,7 @@ fun DeviceTreeScreen(
             onDismiss = {
                 addingProperty = false
                 editorProperty = null
+                showNodeSheet = true
             },
             onConfirm = { name, rawValue ->
                 if (addingProperty)
@@ -581,6 +589,7 @@ fun DeviceTreeScreen(
                 }
                 addingProperty = false
                 editorProperty = null
+                showNodeSheet = true
             }
         )
     }
@@ -589,7 +598,10 @@ fun DeviceTreeScreen(
     {
         val property = deleteProperty!!
         AlertDialog(
-            onDismissRequest = { deleteProperty = null },
+            onDismissRequest = {
+                deleteProperty = null
+                showNodeSheet = true
+            },
             title = { Text(strings.deleteProperty) },
             text = {
                 Text(
@@ -601,13 +613,17 @@ fun DeviceTreeScreen(
                     onClick = {
                         onDeleteProperty(entry, selectedNode.path, property.name)
                         deleteProperty = null
+                        showNodeSheet = true
                     }
                 ) {
                     Text(strings.delete)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteProperty = null }) {
+                TextButton(onClick = {
+                    deleteProperty = null
+                    showNodeSheet = true
+                }) {
                     Text(strings.cancel)
                 }
             }
@@ -620,7 +636,10 @@ fun DeviceTreeScreen(
         NodeNameDialog(
             mode = nodeEditMode!!,
             node = selectedNode,
-            onDismiss = { nodeEditMode = null },
+            onDismiss = {
+                nodeEditMode = null
+                showNodeSheet = true
+            },
             onConfirm = { name ->
                 when (nodeEditMode)
                 {
@@ -638,10 +657,14 @@ fun DeviceTreeScreen(
                     NodeEditMode.RENAME ->
                     {
                         onRenameNode(entry, selectedNode.path, name)
+                        // Follow the renamed node so its sheet reopens on the new path.
+                        val parent = parentPathForUi(selectedNode.path)
+                        selectedNodePath = if (parent == "/") "/$name" else "$parent/$name"
                     }
                     null -> Unit
                 }
                 nodeEditMode = null
+                showNodeSheet = true
             }
         )
     }
@@ -683,7 +706,10 @@ fun DeviceTreeScreen(
     {
         val targetPath = deleteNodePath!!
         AlertDialog(
-            onDismissRequest = { deleteNodePath = null },
+            onDismissRequest = {
+                deleteNodePath = null
+                showNodeSheet = true
+            },
             title = { Text(strings.deleteNode) },
             text = {
                 Text(
@@ -695,13 +721,17 @@ fun DeviceTreeScreen(
                     onClick = {
                         onDeleteNode(entry, targetPath)
                         deleteNodePath = null
+                        selectedNodePath = parentPathForUi(targetPath)
                     }
                 ) {
                     Text(strings.delete)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteNodePath = null }) {
+                TextButton(onClick = {
+                    deleteNodePath = null
+                    showNodeSheet = true
+                }) {
                     Text(strings.cancel)
                 }
             }

@@ -150,10 +150,6 @@ object StringsZh : AppStrings {
     override val avbUnsigned: String = "AVB: 未签名"
     override fun avbSigned(algorithm: String?): String = "AVB: 已签名${if (algorithm != null) " $algorithm" else ""}"
     override fun panelInUse(displayName: String): String = "在用: $displayName"
-    override fun panelDeduplicationHint(vendor: Int, ref: Int, sim: Int, unk: Int): String =
-        "面板统计按唯一 panel identifier 去重；同一面板出现在多个 DTB entry 时只算 1 个唯一面板。当前分类：厂商 $vendor / 高通参考 $ref / 仿真 $sim / 未分类 $unk。"
-    override val activePanelHint: String =
-        "已通过设备运行信息优先标记当前在用面板；“厂商面板”只做正向识别，未知标识不会再自动算作机型专属。"
     override fun dtTransactions(size: Int): String = "设备树事务 · $size 个"
     override fun dtOperationsPending(count: Int): String = "$count 个底层操作待打包"
     override val packageBatch: String = "集中打包"
@@ -195,8 +191,6 @@ object StringsZh : AppStrings {
 
     // Modules Tab
     override val modulesTitle: String = "功能模块"
-    override val modulesSubtitle: String =
-        "功能模块负责生成经过约束验证的设备树事务；能力扫描只负责发现，不会自动把检测结果变成写入。"
     override val noWorkspaceYet: String = "还没有工作区"
     override val noWorkspaceHint: String =
         "先到“概览”导入 dtbo.img，或在 Root 设备上提取当前 DTBO 分区。"

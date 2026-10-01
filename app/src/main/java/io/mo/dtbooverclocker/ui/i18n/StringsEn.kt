@@ -152,10 +152,6 @@ object StringsEn : AppStrings {
     override val avbUnsigned: String = "AVB: Unsigned"
     override fun avbSigned(algorithm: String?): String = "AVB: Signed${if (algorithm != null) " $algorithm" else ""}"
     override fun panelInUse(displayName: String): String = "Active: $displayName"
-    override fun panelDeduplicationHint(vendor: Int, ref: Int, sim: Int, unk: Int): String =
-        "Panel stats deduplicated by unique identifier; same panel across multiple DTB entries counts as 1. Breakdown: Vendor $vendor / QCOM Ref $ref / Sim $sim / Unknown $unk."
-    override val activePanelHint: String =
-        "Active panel detected from runtime device info; vendor classification uses positive match only."
     override fun dtTransactions(size: Int): String = "Device Tree Transactions · $size"
     override fun dtOperationsPending(count: Int): String = "$count operations pending packaging"
     override val packageBatch: String = "Package All"
@@ -197,8 +193,6 @@ object StringsEn : AppStrings {
 
     // Modules Tab
     override val modulesTitle: String = "Modules"
-    override val modulesSubtitle: String =
-        "Modules generate constraint-validated device tree transactions; scan discovers capabilities without altering DTS."
     override val noWorkspaceYet: String = "No Workspace Yet"
     override val noWorkspaceHint: String =
         "First import a dtbo.img on Overview tab or extract partition on rooted device."

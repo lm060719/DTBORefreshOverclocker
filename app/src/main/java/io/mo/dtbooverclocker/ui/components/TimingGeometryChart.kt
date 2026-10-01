@@ -61,24 +61,18 @@ fun TimingGeometryChart(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
-                Surface(
-                    color = if (candidate.hasFullGeometry) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.errorContainer
-                    },
-                    shape = MaterialTheme.shapes.extraSmall
-                ) {
-                    Text(
-                        text = if (candidate.hasFullGeometry) "完整几何" else "部分缺省",
-                        modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (candidate.hasFullGeometry) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onErrorContainer
-                        }
-                    )
+                if (!candidate.hasFullGeometry) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.extraSmall
+                    ) {
+                        Text(
+                            text = "部分缺省",
+                            modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
                 }
             }
 

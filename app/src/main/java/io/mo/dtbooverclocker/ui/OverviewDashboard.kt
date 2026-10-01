@@ -287,8 +287,6 @@ internal fun ImageSummaryCard(state: MainUiState, onOpenTiming: ((String) -> Uni
                     workspace.candidates.map { it.entryIndex to TimingUtils.parsePanelIdentifier(it.nodePath) }.distinct().size
                 }
                 HintText(strings.panelDtbInstances(instances))
-                HintText(strings.panelDeduplicationHint(counts[0], counts[1], counts[2], counts[3]))
-                if (state.activePanelDisplayName != null) HintText(strings.activePanelHint)
                 if (onOpenTiming != null) groups.keys.forEach { group ->
                     val target = state.overviewTimingCandidate(group.panelIdentifier)
                     OverviewTimingLink(target?.let { strings.overviewTimingLocation(group.panelDisplayName, it.entryIndex) }
