@@ -47,6 +47,10 @@ interface AppStrings {
     val liquidGlassDesc: String
     val liquidGlassNeedsFloating: String
     val liquidGlassUnsupported: String
+    val settingsInteraction: String
+    val predictiveBack: String
+    val predictiveBackDesc: String
+    val predictiveBackUnsupported: String
     val settingsLanguage: String
     val settingsLanguageDesc: String
     val langFollowSystem: String

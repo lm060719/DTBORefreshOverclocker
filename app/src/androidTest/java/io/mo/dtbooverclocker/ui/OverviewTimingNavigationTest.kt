@@ -64,7 +64,7 @@ class OverviewTimingNavigationTest(private val style: UiStyle) {
                     pager = rememberPagerState { 4 }
                     val holder = rememberSaveableStateHolder()
                     if (mounted) StudioScreen(current, pager, holder,
-                        NavigationActions(action, action, action, action, action, action),
+                        NavigationActions(action, action, action, action, action),
                         WorkspaceActions(action, action, action, action, action, {}), timing,
                         DeviceTreeActions({ _, _, _, _ -> }, { _, _, _, _ -> }, { _, _, _ -> }, { _, _, _ -> },
                             { _, _, _ -> }, { _, _, _ -> }, { _, _ -> }),

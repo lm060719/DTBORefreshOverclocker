@@ -66,6 +66,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.mo.dtbooverclocker.ui.components.DisclaimerDialog
 import io.mo.dtbooverclocker.ui.components.FeedbackDialog
+import io.mo.dtbooverclocker.ui.components.supportsPredictiveBack
 import io.mo.dtbooverclocker.feedback.FeedbackReport
 import io.mo.dtbooverclocker.feedback.FeedbackType
 import android.content.ActivityNotFoundException
@@ -214,18 +215,31 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
     }
 
     var currentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
-    var themeParentScreen by rememberSaveable { mutableStateOf(AppScreen.MAIN) }
     val studioPagerState = rememberPagerState { StudioTab.entries.size }
     val pageStateHolder = rememberSaveableStateHolder()
     val navigationScope = rememberCoroutineScope()
+    val navigateBack: () -> Unit = {
+        val parent = currentScreen.parent
+        if (parent != null) {
+            // 从设置页进入的二级页返回时回到「设置」标签。
+            if (parent == AppScreen.MAIN && currentScreen != AppScreen.ROLLBACK) {
+                navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
+            }
+            currentScreen = parent
+        }
+    }
 
-    AppScreenTransition(currentScreen) { screen, isActive ->
+    val predictiveBack = state.predictiveBack && supportsPredictiveBack()
+
+    AppScreenTransition(currentScreen, predictiveBack, navigateBack) { screen, isActive ->
+        // 预测性返回由 AppScreenTransition 统一处理，页面自身的 BackHandler 需让位。
+        val backEnabled = isActive && !predictiveBack
         when (screen) {
             AppScreen.ROLLBACK -> {
                 RollbackScreen(
                     state = state,
-                    backHandlerEnabled = isActive,
-                    onNavigateBack = { currentScreen = AppScreen.MAIN },
+                    backHandlerEnabled = backEnabled,
+                    onNavigateBack = navigateBack,
                     onRefresh = viewModel::loadBackups,
                     onManualBackup = { desc ->
                         viewModel.createManualBackup(desc) { ok, msg ->
@@ -255,11 +269,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
             AppScreen.SETTINGS -> {
                 SettingsScreen(
                     state = state,
-                    backHandlerEnabled = isActive,
-                    onNavigateBack = {
-                        navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
-                        currentScreen = AppScreen.MAIN
-                    },
+                    backHandlerEnabled = backEnabled,
+                    onNavigateBack = navigateBack,
                     onRefreshEnvironment = viewModel::refreshEnvironment,
                     onRefreshCacheSize = viewModel::refreshCacheSize,
                     onClearAllCache = viewModel::clearAllCache,
@@ -270,30 +281,25 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                     },
                     onClearAllLogs = viewModel::clearLogFiles,
                     onSetLanguage = viewModel::setAppLanguage,
-                    onOpenThemeSettings = {
-                        themeParentScreen = AppScreen.SETTINGS
-                        currentScreen = AppScreen.THEME_SETTINGS
-                    }
+                    onOpenThemeSettings = { currentScreen = AppScreen.THEME_SETTINGS }
                 )
             }
             AppScreen.THEME_SETTINGS -> {
                 ThemeSettingsScreen(
                     state = state,
-                    backHandlerEnabled = isActive,
-                    onNavigateBack = { currentScreen = themeParentScreen },
+                    backHandlerEnabled = backEnabled,
+                    onNavigateBack = navigateBack,
                     onSetUiStyle = viewModel::setUiStyle,
                     onSetMonetColors = viewModel::setMonetColors,
                     onSetFloatingBottomBar = viewModel::setFloatingBottomBar,
-                    onSetLiquidGlass = viewModel::setLiquidGlass
+                    onSetLiquidGlass = viewModel::setLiquidGlass,
+                    onSetPredictiveBack = viewModel::setPredictiveBack
                 )
             }
             AppScreen.ABOUT -> {
                 AboutScreen(
-                    backHandlerEnabled = isActive,
-                    onNavigateBack = {
-                        navigationScope.launch { studioPagerState.scrollToPage(StudioTab.SETTINGS.ordinal) }
-                        currentScreen = AppScreen.MAIN
-                    },
+                    backHandlerEnabled = backEnabled,
+                    onNavigateBack = navigateBack,
                     onOpenFeedback = { openFeedback(FeedbackType.BUG) }
                 )
             }
@@ -307,11 +313,7 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel()) {
                         onRequestRoot = viewModel::requestRoot,
                         onOpenRollback = { currentScreen = AppScreen.ROLLBACK },
                         onOpenAdvancedSettings = { currentScreen = AppScreen.SETTINGS },
-                        onOpenAbout = { currentScreen = AppScreen.ABOUT },
-                        onOpenThemeSettings = {
-                            themeParentScreen = AppScreen.MAIN
-                            currentScreen = AppScreen.THEME_SETTINGS
-                        }
+                        onOpenAbout = { currentScreen = AppScreen.ABOUT }
                     ),
                     workspace = WorkspaceActions(
                         onImport = { openImage.launch(arrayOf("application/octet-stream", "*/*")) },

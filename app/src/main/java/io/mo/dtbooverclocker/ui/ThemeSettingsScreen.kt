@@ -19,6 +19,7 @@ import io.mo.dtbooverclocker.ui.components.BottomBarPreferences
 import io.mo.dtbooverclocker.ui.components.IconButton
 import io.mo.dtbooverclocker.ui.components.MonetPreference
 import io.mo.dtbooverclocker.ui.components.MonetPreferenceRow
+import io.mo.dtbooverclocker.ui.components.PredictiveBackPreference
 import io.mo.dtbooverclocker.ui.components.Scaffold
 import io.mo.dtbooverclocker.ui.components.TopAppBar
 import io.mo.dtbooverclocker.ui.components.UiStylePreference
@@ -37,6 +38,7 @@ internal fun ThemeSettingsScreen(
     onSetMonetColors: (Boolean) -> Unit,
     onSetFloatingBottomBar: (Boolean) -> Unit,
     onSetLiquidGlass: (Boolean) -> Unit,
+    onSetPredictiveBack: (Boolean) -> Unit,
     backHandlerEnabled: Boolean = true
 ) {
     BackHandler(enabled = backHandlerEnabled, onBack = onNavigateBack)
@@ -78,6 +80,9 @@ internal fun ThemeSettingsScreen(
             }
             item(key = "bottom-bar") {
                 BottomBarPreferences(state.floatingBottomBar, state.liquidGlass, onSetFloatingBottomBar, onSetLiquidGlass)
+            }
+            item(key = "predictive-back") {
+                PredictiveBackPreference(state.predictiveBack, onSetPredictiveBack)
             }
         }
     }

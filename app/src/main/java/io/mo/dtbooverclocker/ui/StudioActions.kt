@@ -11,8 +11,7 @@ class NavigationActions(
     val onRequestRoot: () -> Unit,
     val onOpenRollback: () -> Unit,
     val onOpenAdvancedSettings: () -> Unit,
-    val onOpenAbout: () -> Unit,
-    val onOpenThemeSettings: () -> Unit
+    val onOpenAbout: () -> Unit
 )
 
 /** 镜像导入与事务队列。 */

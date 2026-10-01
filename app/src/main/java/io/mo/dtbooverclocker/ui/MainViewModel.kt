@@ -91,6 +91,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_MONET = "monet_colors"
         private const val KEY_FLOATING_BOTTOM_BAR = "floating_bottom_bar"
         private const val KEY_LIQUID_GLASS = "liquid_glass"
+        private const val KEY_PREDICTIVE_BACK = "predictive_back"
     }
 
     init {
@@ -104,7 +105,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             uiStyle = savedStyle,
             monetColors = prefs.getBoolean(KEY_MONET, true),
             floatingBottomBar = prefs.getBoolean(KEY_FLOATING_BOTTOM_BAR, false),
-            liquidGlass = prefs.getBoolean(KEY_LIQUID_GLASS, false)
+            liquidGlass = prefs.getBoolean(KEY_LIQUID_GLASS, false),
+            predictiveBack = prefs.getBoolean(KEY_PREDICTIVE_BACK, true)
         ) }
         if (accepted) {
             refreshEnvironment()
@@ -139,6 +141,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setLiquidGlass(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_LIQUID_GLASS, enabled).apply()
         _state.update { it.copy(liquidGlass = enabled) }
+    }
+
+    fun setPredictiveBack(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_PREDICTIVE_BACK, enabled).apply()
+        _state.update { it.copy(predictiveBack = enabled) }
     }
 
     fun acceptDisclaimer() {
@@ -1237,6 +1244,7 @@ data class MainUiState(
     val monetColors: Boolean = true,
     val floatingBottomBar: Boolean = false,
     val liquidGlass: Boolean = false,
+    val predictiveBack: Boolean = true,
     val rootState: RootState = RootState(),
     val slotInfo: SlotInfo? = null,
     val sourceMode: SourceMode = SourceMode.LOCAL_IMAGE,

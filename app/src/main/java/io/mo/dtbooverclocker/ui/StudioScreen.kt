@@ -33,7 +33,6 @@ import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import androidx.compose.material3.NavigationBarItem as MaterialNavigationBarItem
 import io.mo.dtbooverclocker.ui.components.Scaffold
 import io.mo.dtbooverclocker.ui.components.TopAppBar
-import io.mo.dtbooverclocker.ui.components.ThemeSettingsEntry
 import io.mo.dtbooverclocker.ui.components.AppCard
 import io.mo.dtbooverclocker.ui.components.PreferenceIcon
 import io.mo.dtbooverclocker.ui.components.FloatingStudioBar
@@ -449,7 +448,6 @@ private fun SettingsHubTab(state: MainUiState, padding: PaddingValues, navigatio
         contentPadding = PaddingValues(start = Spacing.page, end = Spacing.page, top = if (AppTheme.isMiuix) Spacing.md else Spacing.xs, bottom = Spacing.xl + LocalFloatingBarInset.current),
         verticalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
-        item(key = "theme") { ThemeSettingsEntry(navigation.onOpenThemeSettings) }
         item {
             SectionCard(
                 title = strings.envStatus,
