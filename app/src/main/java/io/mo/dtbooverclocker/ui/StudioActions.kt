@@ -39,7 +39,8 @@ class TimingActions(
     val onApplySuggestedCustom: () -> Unit,
     val onStageChange: () -> Unit,
     val onStageCharging: (ChargingNode, Map<String, String>) -> Unit,
-    val onReportPanelIssue: () -> Unit
+    val onReportPanelIssue: () -> Unit,
+    val onStageDeletion: (Set<String>) -> Unit
 )
 
 /** 通用设备树编辑。 */

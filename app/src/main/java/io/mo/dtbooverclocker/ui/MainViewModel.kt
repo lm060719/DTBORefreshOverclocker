@@ -12,6 +12,7 @@ import io.mo.dtbooverclocker.core.AppliedDtboEntries
 import io.mo.dtbooverclocker.core.CapabilityScanner
 import io.mo.dtbooverclocker.core.DtboPatchEngine
 import io.mo.dtbooverclocker.core.DtsTimingPatcher
+import io.mo.dtbooverclocker.core.TimingDeletionPlanner
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
@@ -300,6 +301,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stageTimingChange() {
+        stageTimingChanges(null)
+    }
+
+    fun stageTimingDeletion(ids: Set<String>) {
+        stageTimingChanges(ids.toSet())
+    }
+
+    private fun stageTimingChanges(deleteIds: Set<String>?) {
         launchWorkspaceOperation {
             val current = _state.value
             val workspace = current.workspace ?: return@launchWorkspaceOperation showError(
@@ -308,12 +317,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val candidate = workspace.candidates.firstOrNull { it.id == current.selectedCandidateId }
                 ?: return@launchWorkspaceOperation showError(IllegalStateException("请选择一个 DSI 时序节点"))
 
-            if (current.patchMode == PatchMode.DELETE_EXISTING) {
-                val countInEntry = workspace.candidates.count { it.entryIndex == candidate.entryIndex }
-                requireOrReport(countInEntry > 1) {
-                    "当前 DTB 镜像条目仅存 1 个时序档位，删除会导致设备无法点亮屏幕，已拒绝操作。"
-                } ?: return@launchWorkspaceOperation
-            }
+            if (deleteIds != null && current.patchMode != PatchMode.DELETE_EXISTING) return@launchWorkspaceOperation
+            val deletionPlan = if (current.patchMode == PatchMode.DELETE_EXISTING) {
+                runCatching {
+                    TimingDeletionPlanner.plan(workspace.candidates, candidate,
+                        deleteIds ?: setOf(candidate.id), current.syncAllDtbEntries)
+                }.getOrElse { return@launchWorkspaceOperation showError(it) }
+            } else null
 
             val customParams = if (current.strategy == PatchStrategy.CUSTOM && current.patchMode != PatchMode.DELETE_EXISTING) {
                 val p = current.customTimingParams
@@ -323,23 +333,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 p
             } else null
 
-            // 同步模式：同一面板在其他 DTB entry 中的等价档位逐个独立暂存（每个 entry 一个事务，可单独撤销）。
-            val mirrors = if (current.syncAllDtbEntries) {
-                TimingUtils.findMirrorCandidates(workspace.candidates, candidate).filter { mirror ->
-                    current.patchMode != PatchMode.DELETE_EXISTING ||
-                        workspace.candidates.count { it.entryIndex == mirror.entryIndex } > 1
-                }
+            // 同一面板在其他 DTB 中的等价档位逐个独立暂存，每个档位一个事务，可单独撤销。
+            val mirrors = if (current.syncAllDtbEntries && deletionPlan == null) {
+                TimingUtils.findMirrorCandidates(workspace.candidates, candidate)
             } else emptyList()
 
             var latestWorkspace = workspace
             var selectedId: String? = current.selectedCandidateId
             val staged = mutableListOf<DeviceTreeTransaction>()
             var failure: Throwable? = null
-            for (target in listOf(candidate) + mirrors) {
-                // 其他 entry 的候选不受本次写入影响，但仍按 id 在最新工作区中重新定位。
-                val live = latestWorkspace.candidates.firstOrNull { it.id == target.id } ?: continue
+            for (target in deletionPlan?.targets ?: (listOf(candidate) + mirrors)) {
                 val transactionId = UUID.randomUUID().toString()
                 val result = runCatching {
+                    // Deleting an earlier sibling shifts later candidate IDs; entry and path remain stable.
+                    val live = requireNotNull(latestWorkspace.candidates.firstOrNull {
+                        it.entryIndex == target.entryIndex && it.nodePath == target.nodePath
+                    }) { "待修改档位已失效：${target.nodePath}" }
                     patchEngine.applyTimingChange(
                         workspace = latestWorkspace,
                         candidate = live,
@@ -358,23 +367,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     operations = result.operations,
                     warnings = result.warnings,
                     id = transactionId
-                ).withPanelWarning(live.nodePath)
+                ).withPanelWarning(target.nodePath)
                 latestWorkspace = result.updatedWorkspace
                 if (target === candidate) selectedId = result.selectedCandidateId
             }
 
             if (staged.isNotEmpty()) {
+                if (deletionPlan != null) {
+                    selectedId = TimingDeletionPlanner.remainingSelection(latestWorkspace.candidates, candidate)
+                }
                 val newTransactions = current.transactions + staged
-                val summary = if (staged.size > 1) {
+                val summary = if (deletionPlan != null) {
+                    "删除 ${staged.size} 个档位（涉及 ${staged.flatMap { it.entryIndices }.distinct().size} 个 DTB）"
+                } else if (staged.size > 1) {
                     "${staged.first().summary}（已同步到 ${staged.size} 个 DTB）"
                 } else staged.first().summary
+                val skippedHint = deletionPlan?.skippedEntries?.takeIf { it.isNotEmpty() }
+                    ?.let { "；为保留可用档位，已跳过 DTB ${it.sorted().joinToString()}" }.orEmpty()
                 _state.update {
                     it.copy(
                         workspace = latestWorkspace,
                         selectedCandidateId = selectedId,
                         transactions = newTransactions,
                         patchReport = null,
-                        status = "已暂存修改：$summary (共 ${newTransactions.size} 个事务待打包)",
+                        status = "已暂存修改：$summary (共 ${newTransactions.size} 个事务待打包)$skippedHint",
                         patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode
                     )
                 }
@@ -383,7 +399,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             failure?.let { error ->
                 showError(
                     if (staged.isEmpty()) error
-                    else IllegalStateException("已同步 ${staged.size} 个 DTB，后续 DTB 同步失败：${error.message}", error)
+                    else IllegalStateException("已暂存 ${staged.size} 个档位修改，后续操作失败：${error.message}", error)
                 )
             }
         }

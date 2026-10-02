@@ -256,10 +256,15 @@ object StringsEn : AppStrings {
     override fun deleteNodeLabel(name: String, hz: Int): String = "Node to delete: $name ($hz Hz)"
     override fun fullNodePath(path: String): String = "Full node path: $path"
     override val deleteOnlyModeWarning: String =
-        "Black screen prevention: This DTB entry only has this single mode. The display panel must retain at least 1 timing mode for display driver initialization. Deletion prohibited!"
+        "This panel's timing group has only one mode left and cannot be deleted. Each timing group must retain at least one mode for display driver initialization."
     override fun deleteModeRetainHint(count: Int): String =
-        "After deletion, this DTB entry will still retain $count timing modes. If this was the default native-mode boot timing, the system will automatically redirect to a remaining mode."
+        "After deletion, this panel will retain $count timing modes. If the default native-mode boot timing is deleted, it will automatically redirect to a remaining mode."
     override val deleteThisCandidateBtn: String = "Delete This Candidate (Stage)"
+    override val selectTimingDeletionHint: String = "Select modes to delete from this panel and DTB. Keep at least one mode in each timing group."
+    override fun selectedTimingDeletionCount(count: Int, remaining: Int): String = "$count selected, $remaining modes will remain"
+    override fun deleteSelectedTimingsBtn(count: Int): String = "Delete $count Selected Modes (Stage)"
+    override fun confirmSelectedTimingDeletion(count: Int): String = "Delete $count Selected Modes?"
+    override val deleteSyncHint: String = "Delete matching modes in other DTBs. DTBs that would lose all usable panel modes will be skipped and reported in the result."
     override val autoDynamicModeUnsupported: String = "Dynamic Modes Do Not Support Direct Overclock"
     override val autoDynamicModeDesc1: String =
         "This mode contains dynamic frequency switching or low-power parameters and dedicated display commands. Altering refresh rate or copying it to a high refresh mode may cause black screen, abnormal refresh switching, or bootloop."

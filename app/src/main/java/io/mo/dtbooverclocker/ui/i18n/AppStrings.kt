@@ -247,6 +247,11 @@ interface AppStrings {
     val deleteOnlyModeWarning: String
     fun deleteModeRetainHint(count: Int): String
     val deleteThisCandidateBtn: String
+    val selectTimingDeletionHint: String
+    fun selectedTimingDeletionCount(count: Int, remaining: Int): String
+    fun deleteSelectedTimingsBtn(count: Int): String
+    fun confirmSelectedTimingDeletion(count: Int): String
+    val deleteSyncHint: String
     val autoDynamicModeUnsupported: String
     val autoDynamicModeDesc1: String
     val autoDynamicModeDesc2: String

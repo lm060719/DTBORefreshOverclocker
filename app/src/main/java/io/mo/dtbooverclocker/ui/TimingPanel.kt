@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import java.util.Locale
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import io.mo.dtbooverclocker.ui.components.Button
 import io.mo.dtbooverclocker.ui.components.Card
@@ -46,7 +45,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -54,12 +52,11 @@ import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.ui.components.HintText
 import io.mo.dtbooverclocker.ui.components.IconLabel
-import io.mo.dtbooverclocker.ui.components.NoticeBanner
 import io.mo.dtbooverclocker.ui.components.OverclockPreviewCard
 import io.mo.dtbooverclocker.ui.components.SectionCard
 import io.mo.dtbooverclocker.ui.components.StatusPill
 import io.mo.dtbooverclocker.ui.components.Tone
-import io.mo.dtbooverclocker.ui.components.dangerButtonColors
+import io.mo.dtbooverclocker.core.TimingDeletionPlanner
 import androidx.compose.foundation.layout.height
 import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
 import io.mo.dtbooverclocker.ui.components.TimingGeometryChart
@@ -81,18 +78,19 @@ internal fun TimingPanel(
     onCustomHbp: (String) -> Unit,
     onApplySuggestedCustom: () -> Unit,
     onStageChange: () -> Unit,
-    onReportPanelIssue: () -> Unit
+    onReportPanelIssue: () -> Unit,
+    onStageDeletion: (Set<String>) -> Unit
 ) {
     val workspace = state.workspace ?: return
     val strings = I18n.current
     val selected = workspace.candidates.firstOrNull { it.id == state.selectedCandidateId }
         ?: workspace.candidates.first()
 
-    val candidatesInEntry = workspace.candidates.count { it.entryIndex == selected.entryIndex }
-    val canDelete = candidatesInEntry > 1
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    val mirrorCount = remember(workspace.candidates, selected) {
-        TimingUtils.findMirrorCandidates(workspace.candidates, selected).size
+    val mirrorCount = remember(workspace.candidates, selected, state.patchMode) {
+        val sources = if (state.patchMode == PatchMode.DELETE_EXISTING)
+            TimingDeletionPlanner.panelCandidates(workspace.candidates, selected)
+        else listOf(selected)
+        sources.flatMap { TimingUtils.findMirrorCandidates(workspace.candidates, it) }.map { it.entryIndex }.distinct().size
     }
 
     SectionCard(
@@ -170,44 +168,7 @@ internal fun TimingPanel(
             HorizontalDivider()
 
             if (state.patchMode == PatchMode.DELETE_EXISTING) {
-                // 删除档位专属警告与详情卡片
-                SectionCard(title = strings.deleteTimingCandidateTitle, icon = Icons.Default.Warning, tone = Tone.Danger) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                        Text(
-                            strings.deleteNodeLabel(TimingUtils.parseTimingNodeName(selected.nodePath), selected.currentHz),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            strings.fullNodePath(selected.nodePath),
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (!canDelete) {
-                            NoticeBanner(
-                                strings.deleteOnlyModeWarning,
-                                tone = Tone.Danger
-                            )
-                        } else {
-                            Text(
-                                strings.deleteModeRetainHint(candidatesInEntry - 1),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                // 删除执行按钮
-                Button(
-                    onClick = { showDeleteDialog = true },
-                    enabled = canDelete && !state.busy,
-                    colors = dangerButtonColors(),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    IconLabel(Icons.Default.Delete, strings.deleteThisCandidateBtn)
-                }
+                TimingDeletionSelector(workspace.candidates, selected, state.busy, state.syncAllDtbEntries, onStageDeletion)
             } else if (selected.hasVendorDynamicMode) {
                 SectionCard(title = strings.autoDynamicModeUnsupported, icon = Icons.Default.Warning, tone = Tone.Danger) {
                     Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -499,38 +460,6 @@ internal fun TimingPanel(
                 }
             }
         }
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text(strings.deleteCandidateConfirmTitle) },
-            text = {
-                Text(
-                    strings.deleteCandidateConfirmBody(
-                        TimingUtils.parseTimingNodeName(selected.nodePath),
-                        selected.currentHz
-                    )
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteDialog = false
-                        onStageChange()
-                    },
-                    colors = dangerButtonColors()
-                ) {
-                    Text(strings.deleteThisCandidateBtn)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text(strings.cancel)
-                }
-            }
-        )
     }
 }
 

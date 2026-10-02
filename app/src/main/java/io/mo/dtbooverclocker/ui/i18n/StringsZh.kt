@@ -254,10 +254,15 @@ object StringsZh : AppStrings {
     override fun deleteNodeLabel(name: String, hz: Int): String = "待删除节点：$name ($hz Hz)"
     override fun fullNodePath(path: String): String = "完整节点路径：$path"
     override val deleteOnlyModeWarning: String =
-        "严防黑屏限制：当前 DTB 镜像条目仅存此单一档位。屏幕面板必须保留至少 1 个时序档位以供显示驱动初始化，禁止删除！"
+        "此面板的时序组仅剩 1 个档位，不能删除。每个时序组必须保留至少 1 个档位供显示驱动初始化。"
     override fun deleteModeRetainHint(count: Int): String =
-        "删除后，当前 DTB 镜像条目仍保留 $count 个时序档位。若此档位为默认 native-mode 开机档位，系统将自动重定向至剩余档位。"
+        "删除后，当前面板仍保留 $count 个时序档位。若删除了默认 native-mode 开机档位，系统将自动重定向至剩余档位。"
     override val deleteThisCandidateBtn: String = "删除此档位 (暂存)"
+    override val selectTimingDeletionHint: String = "勾选当前面板、当前 DTB 中要删除的档位。每个时序组至少保留 1 个档位。"
+    override fun selectedTimingDeletionCount(count: Int, remaining: Int): String = "已选择 $count 个档位，删除后保留 $remaining 个"
+    override fun deleteSelectedTimingsBtn(count: Int): String = "删除所选 $count 个档位 (暂存)"
+    override fun confirmSelectedTimingDeletion(count: Int): String = "确认删除所选 $count 个档位？"
+    override val deleteSyncHint: String = "同步删除其他 DTB 中的对应档位；会导致面板无可用档位的 DTB 将跳过，并在操作结果中提示。"
     override val autoDynamicModeUnsupported: String = "自动变频档位不支持直接超频"
     override val autoDynamicModeDesc1: String =
         "该档位包含自动变频或低功耗参数及专用屏幕命令。仅修改刷新率或复制为高刷档位，可能导致黑屏、刷新率切换异常或卡在开机画面。"

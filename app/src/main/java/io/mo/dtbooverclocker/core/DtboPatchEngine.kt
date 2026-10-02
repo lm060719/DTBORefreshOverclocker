@@ -212,22 +212,29 @@ class DtboPatchEngine(
         val updatedWorkspace = commitWorkspaceTexts(
             workspace, mapOf(candidate.entryIndex to plan.replayedText), undoSnapshotId = transactionId
         )
-        val refreshedForEntry = updatedWorkspace.candidates.filter { it.entryIndex == candidate.entryIndex }
+        // Keep selection in the original panel and DTB, including after its selected timing is deleted.
+        val panelIdentifier = TimingUtils.parsePanelIdentifier(candidate.nodePath)
+        val refreshedForPanel = updatedWorkspace.candidates.filter {
+            it.entryIndex == candidate.entryIndex &&
+                TimingUtils.parsePanelIdentifier(it.nodePath) == panelIdentifier
+        }
 
         val nodeName = TimingUtils.parseTimingNodeName(candidate.nodePath)
         val nextSelectedId = when (mode) {
             PatchMode.APPEND_NEW -> {
-                refreshedForEntry.firstOrNull { it.nodePath == plan.targetNodePath }?.id
-                    ?: refreshedForEntry.firstOrNull { it.currentHz == targetHz }?.id
-                    ?: refreshedForEntry.firstOrNull()?.id
+                refreshedForPanel.firstOrNull { it.nodePath == plan.targetNodePath }?.id
+                    ?: refreshedForPanel.firstOrNull { it.currentHz == targetHz }?.id
+                    ?: refreshedForPanel.firstOrNull()?.id
             }
             PatchMode.OVERWRITE_EXISTING -> {
-                refreshedForEntry.firstOrNull { it.nodePath == candidate.nodePath }?.id
-                    ?: refreshedForEntry.firstOrNull { it.currentHz == targetHz }?.id
-                    ?: refreshedForEntry.firstOrNull()?.id
+                refreshedForPanel.firstOrNull { it.nodePath == candidate.nodePath }?.id
+                    ?: refreshedForPanel.firstOrNull { it.currentHz == targetHz }?.id
+                    ?: refreshedForPanel.firstOrNull()?.id
             }
             PatchMode.DELETE_EXISTING -> {
-                refreshedForEntry.firstOrNull()?.id
+                val parentPath = candidate.nodePath.substringBeforeLast('/')
+                refreshedForPanel.firstOrNull { it.nodePath.substringBeforeLast('/') == parentPath }?.id
+                    ?: refreshedForPanel.firstOrNull()?.id
             }
         }
 

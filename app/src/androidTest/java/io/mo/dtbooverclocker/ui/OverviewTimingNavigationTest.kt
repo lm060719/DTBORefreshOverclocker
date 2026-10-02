@@ -57,7 +57,7 @@ class OverviewTimingNavigationTest(private val style: UiStyle) {
             onTarget = { value -> current = current.copy(targetHz = value) },
             onStrategy = {}, onPatchMode = {}, onSyncAllDtbEntries = {}, onCustomPixelClock = {}, onCustomVfp = {}, onCustomVbp = {},
             onCustomHfp = {}, onCustomHbp = {}, onApplySuggestedCustom = action, onStageChange = action,
-            onStageCharging = { _, _ -> }, onReportPanelIssue = action)
+            onStageCharging = { _, _ -> }, onReportPanelIssue = action, onStageDeletion = {})
         return StateRestorationTester(compose).also { restoration ->
             restoration.setContent {
                 AppTheme(uiStyle = style) {
