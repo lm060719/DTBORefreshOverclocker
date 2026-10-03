@@ -12,11 +12,16 @@ import java.security.MessageDigest
  * bootloader. Unknown nonzero trailers around an AVB envelope fail closed instead of silently
  * producing an incomplete flashable image. Without any AVB structure, bytes after total_size are leftovers of an older DTBO
  * (seen on Realme dumps); the loader never reads them, so rebuild zero-fills them.
+ * A footer whose vbmeta range is all zeros comes from `avbtool add_hash_footer
+ * --do_not_append_vbmeta_image` (seen on Xiaomi dumps): the dtbo hash lives in the vbmeta
+ * partition, so only the footer fields are rebuilt.
  */
 object AvbImageEnvelope {
     data class Layout(
         val footer: Int, val vbmeta: Int, val size: Int,
-        val originalSize: Int, val major: Long, val minor: Long
+        val originalSize: Int, val major: Long, val minor: Long,
+        // The vbmeta range is all zeros; the hash descriptor is in the vbmeta partition.
+        val detached: Boolean = false
     )
     data class Inspection(
         val containerSize: Int,
@@ -73,11 +78,14 @@ object AvbImageEnvelope {
             }
         }
         val vbmeta = original.copyOfRange(layout.vbmeta, layout.vbmeta + layout.size)
-        val fields = hashFields(vbmeta, allowUnknownDescriptors = signed)
-        val vb = buffer(vbmeta)
-        fields.forEach { field ->
-            vb.putLong(field.descriptor + 16, payload.size.toLong())
-            digest(field, payload, payload.size).copyInto(vbmeta, field.digest)
+        if (layout.detached) {
+            logSink("[WARN][AVB][REBUILD] footer 未内嵌 vbmeta，dtbo 哈希位于 vbmeta 分区，仅更新 footer 字段；刷入后需关闭 AVB 校验")
+        } else {
+            val vb = buffer(vbmeta)
+            hashFields(vbmeta, allowUnknownDescriptors = signed).forEach { field ->
+                vb.putLong(field.descriptor + 16, payload.size.toLong())
+                digest(field, payload, payload.size).copyInto(vbmeta, field.digest)
+            }
         }
         if (signed) {
             // Keep vbmeta self-consistent; only the RSA signature over it is now stale.
@@ -127,6 +135,16 @@ object AvbImageEnvelope {
         val layout = inspection.layout ?: return inspection
         try {
             require(layout.major == 1L && layout.minor == 0L) { "不支持的 AVB footer 版本 ${layout.major}.${layout.minor}" }
+            if (layout.detached) {
+                // Nothing in this image hashes the payload, so a stale original size is only informational.
+                if (layout.originalSize != total) {
+                    logSink("[WARN][AVB][$stage] footer original_image_size=${layout.originalSize} 与 DTBO total_size=$total 不一致，" +
+                        "分区可能曾被其他工具改写；打包时将按新 DTBO 更新 footer")
+                }
+                logSink("[AVB][$stage] footer 未内嵌 vbmeta (vbmetaOffset=${layout.vbmeta}, vbmetaSize=${layout.size} 全零)，" +
+                    "dtbo 哈希由 vbmeta 分区校验")
+                return inspection
+            }
             require(layout.originalSize == total) { "AVB footer 原始大小与 DTBO 不匹配" }
             val vbmeta = bytes.copyOfRange(layout.vbmeta, layout.vbmeta + layout.size)
             val b = buffer(vbmeta)
@@ -245,7 +263,7 @@ object AvbImageEnvelope {
             logSink("[ERROR] $message")
             throw IllegalArgumentException(message, e)
         }
-        val selectedAlgorithmType = selected?.let { layout ->
+        val selectedAlgorithmType = selected?.takeUnless { it.detached }?.let { layout ->
             buffer(bytes).getInt(layout.vbmeta + 28)
         }
         val selectedAuthenticationSize = selected?.let { layout ->
@@ -253,6 +271,7 @@ object AvbImageEnvelope {
         } ?: 0L
         val protectionState = when {
             selected == null -> AvbProtectionState.NONE
+            selected?.detached == true -> AvbProtectionState.DETACHED
             selectedAlgorithmType != 0 || selectedAuthenticationSize != 0L -> AvbProtectionState.SIGNED
             else -> AvbProtectionState.UNSIGNED
         }
@@ -282,6 +301,9 @@ object AvbImageEnvelope {
         val offset = bounded(b.getLong(f + 20), bytes.size)
         val size = bounded(b.getLong(f + 28), bytes.size)
         require(size >= 256 && offset >= maxOf(total, originalSize) && offset.toLong() + size <= f) { "AVB vbmeta 范围无效" }
+        if ((offset until offset + size).all { bytes[it] == 0.toByte() }) {
+            return Layout(f, offset, size, originalSize, major, minor, detached = true)
+        }
         require(b.getInt(offset) == 0x41564230) { "AVB vbmeta magic 无效" }
         val authSize = bounded(b.getLong(offset + 12), size - 256)
         val auxSize = bounded(b.getLong(offset + 20), size - 256 - authSize)

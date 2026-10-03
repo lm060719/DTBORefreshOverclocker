@@ -492,9 +492,11 @@ internal fun OverviewProtectionCard(state: MainUiState, onOpenRollback: () -> Un
                     AvbProtectionState.NONE -> strings.avbNone
                     AvbProtectionState.UNSIGNED -> strings.avbUnsigned
                     AvbProtectionState.SIGNED -> strings.avbSigned(source.avbAlgorithm)
+                    AvbProtectionState.DETACHED -> strings.avbDetached
                 }, style = MaterialTheme.typography.bodySmall)
             }
             if (source.avbProtectionState == AvbProtectionState.SIGNED) HintText(strings.overviewAvbHint)
+            if (source.avbProtectionState == AvbProtectionState.DETACHED) HintText(strings.overviewAvbDetachedHint)
         }
         TextButton(onOpenRollback, Modifier.fillMaxWidth(), enabled = !state.busy) {
             IconLabel(Icons.Default.Restore, strings.backupCountSubtitle(state.backups.size))

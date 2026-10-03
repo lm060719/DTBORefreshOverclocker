@@ -123,6 +123,7 @@ interface AppStrings {
     val overviewModuleFormat: String
     val overviewProtection: String
     val overviewAvbHint: String
+    val overviewAvbDetachedHint: String
     val overviewLocalSource: String
     val overviewPartitionSource: String
     val overviewChangeImage: String
@@ -153,6 +154,7 @@ interface AppStrings {
     val avbNone: String
     val avbUnsigned: String
     fun avbSigned(algorithm: String?): String
+    val avbDetached: String
     fun panelInUse(displayName: String): String
     fun dtTransactions(size: Int): String
     fun dtOperationsPending(count: Int): String

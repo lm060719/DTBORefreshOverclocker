@@ -437,6 +437,80 @@ class AvbImageEnvelopeTest {
             AvbImageEnvelope.validate(raw, original.metadata.totalSize)
         }.message!!.contains("AVB 签名"))
     }
+    private fun detachedFixture(): ByteArray = fixture().apply { fill(0, 4096, 4096 + 512) }
+
+    @Test fun detachedVbmetaFooterImportsAndRebuildsFooterOnly() {
+        val raw = detachedFixture()
+        val logs = mutableListOf<String>()
+        val inspection = AvbImageEnvelope.validateForAnalysis(raw, 128, logs::add, "STAGED_INPUT")
+        assertEquals(AvbProtectionState.DETACHED, inspection.protectionState)
+        assertNull(inspection.algorithm)
+        assertEquals(footer, inspection.layout!!.footer)
+        assertTrue(logs.any { it.contains("未内嵌 vbmeta") })
+        AvbImageEnvelope.validate(raw, 128)
+
+        val payload = raw.copyOf(6000).apply { fill(0, 128); this[100] = 7 }
+        ByteBuffer.wrap(payload).putInt(4, payload.size)
+        val result = AvbImageEnvelope.rebuild(raw, 128, payload)
+        val b = ByteBuffer.wrap(result)
+        assertEquals(raw.size, result.size)
+        assertArrayEquals(payload, result.copyOf(payload.size))
+        assertEquals(6000L, b.getLong(footer + 12))
+        assertEquals(8192L, b.getLong(footer + 20))
+        assertEquals(512L, b.getLong(footer + 28))
+        assertTrue((payload.size until footer).all { result[it] == 0.toByte() })
+        assertEquals(AvbProtectionState.DETACHED, AvbImageEnvelope.validate(result, payload.size).protectionState)
+    }
+
+    @Test fun detachedFooterWithStaleOriginalSizeWarnsAndRebuildFixesIt() {
+        // The footer predates a 16-byte larger DTBO, as in the reported Xiaomi dump.
+        val raw = detachedFixture().apply { ByteBuffer.wrap(this).putLong(footer + 12, 112) }
+        val logs = mutableListOf<String>()
+        AvbImageEnvelope.validateForAnalysis(raw, 128, logs::add)
+        assertTrue(logs.any { it.contains("[WARN]") && it.contains("original_image_size=112") })
+        val result = AvbImageEnvelope.rebuild(raw, 128, raw.copyOf(128).apply { this[100] = 9 })
+        assertEquals(128L, ByteBuffer.wrap(result).getLong(footer + 12))
+        val clean = mutableListOf<String>()
+        AvbImageEnvelope.validate(result, 128, clean::add)
+        assertFalse(clean.any { it.contains("[WARN]") })
+    }
+
+    @Test fun detachedFooterStillRejectsUnknownBytes() {
+        for (offset in listOf(256, 6000, footer + 128)) {
+            val corrupt = detachedFixture().apply { this[offset] = 1 }
+            assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.validate(corrupt, 128) }
+        }
+    }
+
+    /** Opt in with -PdetachedSampleImage=<path to the reported Xiaomi 15 dtbo_a.img>. */
+    @Test fun reportedXiaomiDetachedImageImportsAndRebuilds() {
+        val sample = System.getProperty("dtbo.detachedSampleImage", "") ?: ""
+        org.junit.Assume.assumeTrue("Local detached AVB sample was not configured", sample.isNotBlank())
+        val raw = File(sample).readBytes()
+        assertEquals("bd4d34a0f620a7440176be7a528ce1867f3a3733916926a8323f0418b042e4bf",
+            io.mo.dtbooverclocker.util.HashUtils.sha256(raw))
+        val original = DtboImageCodec.parse(raw)
+        val inspection = AvbImageEnvelope.validateForAnalysis(raw, original.metadata.totalSize)
+        assertEquals(AvbProtectionState.DETACHED, inspection.protectionState)
+        assertEquals(18874304, inspection.layout?.footer)
+        val out = File.createTempFile("detached_roundtrip", ".img")
+        try {
+            DtboImageCodec.rebuild(original, emptyMap(), out)
+            assertArrayEquals(raw, out.readBytes())
+            val replacement = original.entries.first().decodedBytes.copyOf().apply {
+                this[31] = (this[31].toInt() xor 1).toByte()
+            }
+            DtboImageCodec.rebuild(original, mapOf(0 to replacement), out)
+            val result = out.readBytes()
+            val rebuilt = DtboImageCodec.parse(result)
+            assertEquals(raw.size, result.size)
+            assertArrayEquals(replacement, rebuilt.entries.first().decodedBytes)
+            val b = ByteBuffer.wrap(result)
+            assertEquals(rebuilt.metadata.totalSize.toLong(), b.getLong(18874304 + 12))
+            AvbImageEnvelope.validate(result, rebuilt.metadata.totalSize)
+        } finally { out.delete() }
+    }
+
     @Test fun invalidMagicInPaddingIsNotPermissionToDiscardUnknownBytes() {
         for (offset in listOf(256, 5000, footer + 128)) {
             val raw = fixture().apply { "AVBf".toByteArray().copyInto(this, offset) }

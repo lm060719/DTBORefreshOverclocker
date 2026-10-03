@@ -11,7 +11,9 @@ enum class SourceMode {
 enum class AvbProtectionState {
     NONE,
     UNSIGNED,
-    SIGNED
+    SIGNED,
+    // AVB footer without embedded vbmeta; the hash is verified from the vbmeta partition.
+    DETACHED
 }
 
 enum class PatchStrategy(val displayName: String, val description: String) {
