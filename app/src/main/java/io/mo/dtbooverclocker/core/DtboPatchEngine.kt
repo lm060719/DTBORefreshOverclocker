@@ -200,17 +200,28 @@ class DtboPatchEngine(
             "候选节点对应的 DTB 索引无效"
         }
 
-        val plan = TimingDeviceTreePlanner.plan(
-            candidate = candidate,
-            targetHz = targetHz,
-            strategy = strategy,
-            mode = mode,
-            customParams = customParams
-        )
+        // 同一节点的 overlay 副本叠加后合并为一个运行时节点，必须在同一事务内一起修改，
+        // 否则未修改的副本会把原值覆盖回去。新增档位时各副本生成同名节点，叠加后同样合并为一个。
+        val copies = candidate.withOverlayCopies
+        var text = candidate.dtsFile.readText()
+        val plans = copies.map { copy ->
+            TimingDeviceTreePlanner.plan(
+                candidate = copy,
+                targetHz = targetHz,
+                strategy = strategy,
+                mode = mode,
+                customParams = customParams,
+                sourceText = text
+            ).also { text = it.replayedText }
+        }
+        val plan = plans[copies.indexOf(candidate)]
+        require(plans.map { it.targetNodePath?.substringAfter(DtsTimingPatcher.OVERLAY_SEGMENT) }.distinct().size == 1) {
+            "该节点的 overlay 副本内容不一致，无法生成同名档位，请先在设备树中核对 ${candidate.nodePath}"
+        }
 
         // 真正写入工作区的内容来自通用 DeviceTreeChange 回放结果，而不是旧文本修补器。
         val updatedWorkspace = commitWorkspaceTexts(
-            workspace, mapOf(candidate.entryIndex to plan.replayedText), undoSnapshotId = transactionId
+            workspace, mapOf(candidate.entryIndex to text), undoSnapshotId = transactionId
         )
         // Keep selection in the original panel and DTB, including after its selected timing is deleted.
         val panelIdentifier = TimingUtils.parsePanelIdentifier(candidate.nodePath)
@@ -264,9 +275,9 @@ class DtboPatchEngine(
             updatedWorkspace = updatedWorkspace,
             selectedCandidateId = nextSelectedId,
             stagedChange = staged,
-            operations = plan.operations,
-            changes = plan.changes,
-            warnings = plan.warnings
+            operations = plans.flatMap { it.operations },
+            changes = plan.changes + copies.filter { it !== candidate }.map { "同步 overlay 副本: ${it.nodePath}" },
+            warnings = plans.flatMap { it.warnings }.distinct()
         )
     }
 

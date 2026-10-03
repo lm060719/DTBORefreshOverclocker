@@ -1,5 +1,7 @@
 package io.mo.dtbooverclocker.core
 
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParser
+import io.mo.dtbooverclocker.core.devicetree.OverlayTargets
 import io.mo.dtbooverclocker.model.CustomTimingParams
 import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
@@ -83,8 +85,32 @@ object DtsTimingPatcher {
                 mdpTransferTimeUs = valueOf(nodeText, listOf("qcom,mdss-mdp-transfer-time-us")),
                 hasVendorDynamicMode = hasVendorDynamicMode(nodeText)
             )
-        }.distinctBy { it.id }
+        }.distinctBy { it.id }.let { collapseOverlayCopies(entryIndex, text, it) }
     }
+
+    /**
+     * 部分厂商 DTBO 会把同一份面板 dtsi 编进两个 fragment（如 OPlus 的 fragment@149 与 fragment@229 都覆盖 &mdss_mdp）。
+     * 叠加后它们是同一个节点，因此只保留文本中最后一份作为候选，其余挂在 overlayCopies 上供写入时一并修改。
+     */
+    private fun collapseOverlayCopies(entryIndex: Int, text: String, candidates: List<TimingCandidate>): List<TimingCandidate> {
+        if (candidates.none { OVERLAY_SEGMENT in it.nodePath }) return candidates
+        val document = DeviceTreeParser.parse(entryIndex, text)
+        val labels = OverlayTargets.fixupLabels(document)
+        fun key(candidate: TimingCandidate): String {
+            val fragment = candidate.nodePath.substringBefore(OVERLAY_SEGMENT, "")
+            if (fragment.isEmpty()) return candidate.id
+            val target = OverlayTargets.target(document, "$fragment/__overlay__", labels) ?: return candidate.id
+            return "$target|${candidate.nodePath.substringAfter(OVERLAY_SEGMENT)}"
+        }
+        return candidates.groupBy(::key).values
+            .map { copies ->
+                val ordered = copies.sortedBy { it.nodeStart }
+                ordered.last().copy(overlayCopies = ordered.dropLast(1))
+            }
+            .sortedBy { it.nodeStart }
+    }
+
+    internal const val OVERLAY_SEGMENT = "/__overlay__/"
 
     private fun findParentClock(
         fullText: String,

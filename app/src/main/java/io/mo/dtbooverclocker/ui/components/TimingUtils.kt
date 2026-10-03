@@ -286,7 +286,7 @@ object TimingUtils {
 
     /**
      * 找出同一面板在其他 DTB entry 中与 [source] 等价的档位（同分辨率、同刷新率），每个 entry 至多一个。
-     * 同一 entry 内有多个等价档位时优先取同名 timing 节点，仍无法唯一确定则跳过该 entry，避免改错档位。
+     * 同一 entry 内有多个等价档位时优先取完整路径相同、其次同名的 timing 节点，仍无法唯一确定则跳过该 entry，避免改错档位。
      */
     fun findMirrorCandidates(candidates: List<TimingCandidate>, source: TimingCandidate): List<TimingCandidate>
     {
@@ -304,7 +304,9 @@ object TimingUtils {
             .groupBy { it.entryIndex }
             .toSortedMap()
             .mapNotNull { (_, matches) ->
-                matches.singleOrNull() ?: matches.filter { parseTimingNodeName(it.nodePath) == nodeName }.singleOrNull()
+                matches.singleOrNull()
+                    ?: matches.singleOrNull { it.nodePath == source.nodePath }
+                    ?: matches.filter { parseTimingNodeName(it.nodePath) == nodeName }.singleOrNull()
             }
     }
 

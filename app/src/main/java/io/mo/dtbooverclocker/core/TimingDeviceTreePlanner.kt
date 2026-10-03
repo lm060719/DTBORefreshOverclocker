@@ -79,10 +79,10 @@ object TimingDeviceTreePlanner
         targetHz: Int,
         strategy: PatchStrategy,
         mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
-        customParams: CustomTimingParams? = null
+        customParams: CustomTimingParams? = null,
+        sourceText: String = candidate.dtsFile.readText()
     ): Plan
     {
-        val sourceText = candidate.dtsFile.readText()
         val sourceDocument = DeviceTreeParser.parse(candidate.entryIndex, sourceText)
         val sourceNode = requireNotNull(sourceDocument.findNode(candidate.nodePath)) {
             "DTS 节点路径已失效，请重新解析镜像：${candidate.nodePath}"

@@ -169,8 +169,17 @@ data class TimingCandidate(
     val vSync: Int? = null,
     val hasOpaquePanelTimings: Boolean = false,
     val mdpTransferTimeUs: Long? = null,
-    val hasVendorDynamicMode: Boolean = false
+    val hasVendorDynamicMode: Boolean = false,
+    /**
+     * 同一 DTB 内覆盖到同一目标、同一路径的其他 overlay 片段副本（厂商重复 include 同一 dtsi 所致）。
+     * 叠加后它们合并为同一个运行时节点，写入必须覆盖全部副本，否则改动可能被另一份原值覆盖。
+     */
+    val overlayCopies: List<TimingCandidate> = emptyList()
 ) {
+    /** 自身与全部 overlay 副本，按 DTS 文本顺序排列。 */
+    val withOverlayCopies: List<TimingCandidate>
+        get() = (overlayCopies + this).sortedBy { it.nodeStart }
+
     val hasFullGeometry: Boolean
         get() = listOf(
             hActive,

@@ -611,6 +611,22 @@ fun TimingCandidateSelector(
                                 }
                             }
 
+                            if (cand.overlayCopies.isNotEmpty()) {
+                                Text(
+                                    "同一目标的 overlay 副本（修改时一并写入）：",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                cand.overlayCopies.forEach { copy ->
+                                    Text(
+                                        copy.nodePath,
+                                        fontFamily = FontFamily.Monospace,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -729,6 +745,21 @@ private fun TimingCandidateCard(
                                 "PHY Blob",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(horizontal = Spacing.xs, vertical = 1.dp)
+                            )
+                        }
+                    }
+
+                    // 同一节点被多个 overlay 片段重复定义；修改会同步写入全部副本。
+                    if (candidate.overlayCopies.isNotEmpty()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            shape = MaterialTheme.shapes.extraSmall
+                        ) {
+                            Text(
+                                "×${candidate.overlayCopies.size + 1} 副本",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 modifier = Modifier.padding(horizontal = Spacing.xs, vertical = 1.dp)
                             )
                         }
