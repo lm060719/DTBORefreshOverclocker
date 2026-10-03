@@ -4,15 +4,14 @@ package io.mo.dtbooverclocker.core.devicetree
 object OverlayTargets
 {
     /** `__overlay__` path -> label, from `target = <0xffffffff>` relocations recorded in `__fixups__`.
-     * DTC emits string lists both as separate strings and as a single string with embedded NULs.
+     * DTC emits string lists as separate strings, as a single string with embedded NULs,
+     * or, for long lists, as a byte array `[ 2f 66 ... 00 ]`.
      */
     fun fixupLabels(document: DeviceTreeDocument): Map<String, String>
     {
         val labels = mutableMapOf<String, MutableSet<String>>()
         document.findNode("/__fixups__")?.properties?.forEach { property ->
-            Regex("\"([^\"]*)\"").findAll(property.rawValue.orEmpty()).flatMap { match ->
-                match.groupValues[1].replace(Regex("\\\\(?:x00|0{1,3})"), "\u0000").split('\u0000').asSequence()
-            }.forEach descriptorLoop@{ descriptor ->
+            descriptors(property.rawValue.orEmpty()).forEach descriptorLoop@{ descriptor ->
                 val match = Regex("^(/[^:]+):target:0$").matchEntire(descriptor) ?: return@descriptorLoop
                 val fragment = document.findNode(match.groupValues[1]) ?: return@descriptorLoop
                 if (fragment.properties.count { it.name == "target" } != 1) return@descriptorLoop
@@ -23,6 +22,20 @@ object OverlayTargets
             }
         }
         return labels.mapNotNull { (path, targets) -> targets.singleOrNull()?.let { path to it } }.toMap()
+    }
+
+    private fun descriptors(raw: String): Sequence<String>
+    {
+        val bytes = Regex("^\\s*\\[([0-9a-fA-F\\s]*)]\\s*$").matchEntire(raw)?.groupValues?.get(1)
+        if (bytes != null)
+        {
+            val text = bytes.trim().split(Regex("\\s+")).filter(String::isNotEmpty)
+                .map { it.toInt(16).toChar() }.joinToString("")
+            return text.split('\u0000').asSequence()
+        }
+        return Regex("\"([^\"]*)\"").findAll(raw).flatMap { match ->
+            match.groupValues[1].replace(Regex("\\\\(?:x00|0{1,3})"), "\u0000").split('\u0000').asSequence()
+        }
     }
 
     /** A stable identity for the target of [overlayPath], or null when it cannot be determined. */

@@ -16,7 +16,10 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.util.UUID
 
-/** OPlus DTBO 把同一份面板 dtsi 编进两个都覆盖 &mdss_mdp 的 fragment，叠加后是同一个节点。 */
+/**
+ * OPlus DTBO 把同一份面板 dtsi 编进两个都覆盖 &mdss_mdp 的 fragment，叠加后是同一个节点。
+ * 长的 __fixups__ 字符串列表会被 dtc 反编译成字节数组，夹具按真机输出保持该格式。
+ */
 class OverlayCopyTimingTest {
     @get:Rule val temp = TemporaryFolder()
 
@@ -146,7 +149,7 @@ class OverlayCopyTimingTest {
             ${panelBlock("0x03")}
                 };
                 __fixups__ {
-                    mdss_mdp = "/fragment@0:target:0", "/fragment@2:target:0";
+                    mdss_mdp = [ 2f 66 72 61 67 6d 65 6e 74 40 30 3a 74 61 72 67 65 74 3a 30 00 2f 66 72 61 67 6d 65 6e 74 40 32 3a 74 61 72 67 65 74 3a 30 00 ];
                     sde_dsi1 = "/fragment@1:target:0";
                 };
             };
