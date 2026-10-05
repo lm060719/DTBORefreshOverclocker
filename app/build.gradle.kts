@@ -109,6 +109,11 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
         systemProperty("dtbo.chargingSampleDts", it)
         inputs.file(it)
     }
+    // realme RMX3823 (issue #6): OPlus legacy charging + dtbo_idx-less entry detection.
+    providers.gradleProperty("oplusLegacySampleImage").orNull?.let {
+        systemProperty("dtbo.oplusLegacySampleImage", it)
+        inputs.file(it)
+    }
     providers.gradleProperty("chargingDeviceImage").orNull?.let {
         systemProperty("dtbo.chargingDeviceImage", it)
         inputs.file(it)

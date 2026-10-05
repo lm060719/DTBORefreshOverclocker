@@ -59,12 +59,31 @@
 
 Charging 面板的统计区分“可编辑参数”“可编辑节点”“唯一节点路径”和“DTB 实例”。同一个 overlay 在多个 DTB entry 中重复出现时，不再把实例数量误解为不同的充电模块。
 
+## OPlus 旧版充电框架（oplus_chg v1）
+
+realme / OPPO / OnePlus 较早的充电驱动（`drivers/power/oplus/oplus_charger.c`）把参数直接写在 `&battery_charger` 等节点上，节点没有自己的 compatible。节点同时带有 `qcom,iterm_ma`、`qcom,temp_normal_vfloat_mv`、`qcom,normal_vfloat_sw_limit` 时，按此框架识别。参考样本为 realme RMX3823（issue #6），镜像不进仓库。
+
+开放的每个属性都在驱动 `of_property_read_u32()` 中核对过名称，并确认以 mA / mV 使用：
+
+- 温区充电电流：`qcom,[pd_|qc_]temp_<freeze|cold|little_cold|cool|little_cool|normal|warm>_fastchg_current_ma[_high|_low]`，只开放驱动实际解析的组合。`_high` 在电池电压低于 4180 mV 时使用，`_low` 在高于时使用。
+- 温区电压：`temp_<zone>_vfloat_mv`（下发充电芯片的浮充电压）、`<zone>_vfloat_sw_limit`（软件满充判定）、`<zone>_vfloat_over_sw_limit`（超过后按 `vfloat_step_mv` 降低浮充电压），以及非标充电器、电池微短路对应项。
+- FFC：FFC1/FFC2 电流、退出电流、常温浮充/满充/过压降档电压。驱动不解析的 `ffc*_warm_vfloat_mv`、`ffc*_warm_vfloat_over_sw_limit` 保持只读。
+- 输入电流（DCP/PD/QC/SDP/CDP、亮屏、相机、通话、VOOC 各温区）、终止电流、重新充电压差、满电/过压阈值、充电器输入过压/恢复/欠压阈值。
+- `default_*`：驱动在退出 FFC 或恢复默认时，会把常温/微凉区的终止电流、充电电流和三档电压重置为这些值。只改 `temp_normal_*` 而不改对应的 `default_*`，修改可能在充电过程中被覆盖。
+
+同一温区要求 软件满充电压 ≤ 浮充电压 ≤ 过压降档电压 ≤ `qcom,vbatt_hv_thr`，并要求 欠压 ≤ 过压恢复 ≤ 输入过压阈值。电池容量、温度阈值、关机电压、usbtemp、GPIO/pinctrl 等不开放。voocphy（如 `sc,sc8517-master`）与 PPS 策略的单位不统一（例如 `qcom,voocphy_current_default` 以 100 mA 为单位），整体保持只读。
+
+同一镜像可能包含多套电池配置（RMX3823 的 entry 0/2/5 与 1/3/4 的浮充电压、终止电流不同），修改前应确认生效的 DTB。读不到 `androidboot.dtbo_idx` 时，App 会用 root 读取 `/sys/firmware/fdt`，比对各 entry overlay 中互不相同的属性（排除 overlay 根属性和经过重定位的 phandle 值）。完全一致的 entry 同时保留，再用 `qcom,msm-id` 的 SoC id 缩小范围；没有 entry 一致时不做猜测。
+
+真实镜像回归：`gradlew :app:testDebugUnitTest -PoplusLegacySampleImage=<dtbo.img>`。
+
 ## 边界
 
 这是设备树参数编辑，不是实时充电控制。未发现可编辑字段时，面板显示原始节点属性与说明。尚未确认的厂商私有参数、JEITA/字符串曲线表、其他格式温控表、协议协商开关、驱动寄存器与电池校准表保持不变。通用 U32 与关联参数检查不能证明某个芯片支持该值或步进，需结合目标设备规格和驱动确认；事务采用 `EXPORT_ONLY` 策略，仅允许导出验证。
 
 ## 绑定来源
 
+- [OPlus 旧版充电驱动 oplus_charger.c](https://github.com/pjgowtham/android_kernel_oneplus_sm8450/blob/HEAD/drivers/power/oplus/oplus_charger.c)
 - [小米 MCA 默认配置](https://github.com/MiCode/kernel_devicetree/blob/dada-v-oss/qcom/mca.dtsi)
 - [小米机型充电配置及温控表列定义](https://github.com/MiCode/kernel_devicetree/blob/dada-v-oss/qcom/dada-charger-common.dtsi)
 

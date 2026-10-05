@@ -2,6 +2,7 @@ package io.mo.dtbooverclocker.core
 
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.TimingUtils
+import java.io.File
 
 data class ActivePanelDetectionResult(
     val rawIdentifier: String,
@@ -52,6 +53,42 @@ class ActivePanelDetector(
             if (indices.isNotEmpty()) return AppliedDtboEntries(indices, source)
         }
         return null
+    }
+
+    /**
+     * Fallback when the bootloader does not report `dtbo_idx`: match the entries against the
+     * device tree the kernel booted with. [workDir] holds the root-copied blob temporarily.
+     */
+    suspend fun detectAppliedDtboEntriesFromLiveTree(entries: List<ByteArray>, workDir: File): AppliedDtboEntries? {
+        if (entries.size < 2) return null
+        workDir.mkdirs()
+        val copy = File(workDir, "live_fdt.dtb")
+        try {
+            val result = rootDetector.runRoot(listOf("dd", "if=/sys/firmware/fdt", "of=${copy.absolutePath}"), timeoutMs = 10_000)
+            if (!result.isSuccess || !copy.isFile || copy.length() < 40) {
+                logSink("[INFO] [PANEL-MATCH] 无法读取 /sys/firmware/fdt（exit=${result.exitCode}），跳过运行中设备树比对")
+                return null
+            }
+            rootDetector.runRoot(listOf("chmod", "644", copy.absolutePath), timeoutMs = 3000)
+            val live = FdtReader.readAllProperties(copy.readBytes())
+            val match = LiveDeviceTreeMatcher.match(entries.map(FdtReader::readAllProperties), live)
+            if (match == null) {
+                logSink("[INFO] [PANEL-MATCH] 各 DTB 条目的 overlay 内容无差异，无法通过运行中设备树区分")
+                return null
+            }
+            logSink("[INFO] [PANEL-MATCH] 运行中设备树比对（${match.discriminating} 个差异属性）：" +
+                match.scores.joinToString { "DTB[${it.index}] 一致 ${it.matches} / 不符 ${it.mismatches}" })
+            if (match.indices.isEmpty()) {
+                logSink("[WARN] [PANEL-MATCH] 没有 DTB 条目与运行中设备树一致，镜像可能不是本次启动所用")
+                return null
+            }
+            return AppliedDtboEntries(match.indices, "运行中设备树比对 (/sys/firmware/fdt)")
+        } catch (e: Exception) {
+            logSink("[WARN] [PANEL-MATCH] 运行中设备树比对失败：${e.message}")
+            return null
+        } finally {
+            copy.delete()
+        }
     }
 
     private suspend fun detectFromCmdline(): ActivePanelDetectionResult? {

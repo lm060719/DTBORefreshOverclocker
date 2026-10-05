@@ -19,7 +19,7 @@ Choose Material 3 or [Miuix](https://github.com/compose-miuix-ui/miuix) under **
 ## Workflow
 
 1. **Import**: pick a local `dtbo.img`, or extract the active slot's partition with Root.
-2. **Detect**: timing modes and charging nodes are scanned and grouped by panel. When extracted with Root, the app reads `androidboot.dtbo_idx` and the kernel command line to mark the panel and DTB this device actually uses.
+2. **Detect**: timing modes and charging nodes are scanned and grouped by panel. When extracted with Root, the app reads `androidboot.dtbo_idx` and the kernel command line to mark the panel and DTB this device actually uses; without `dtbo_idx`, it infers the DTB by comparing the properties that differ between entries against `/sys/firmware/fdt` (the tree this boot used).
 3. **Edit**: stage changes from the module pages or the device-tree page.
 4. **Package**: modified DTBs are recompiled, undeclared properties are checked for changes, metadata is verified, then the image is rebuilt.
 5. **Export / flash**: export for offline verification, or Root-flash (the original partition is backed up first).

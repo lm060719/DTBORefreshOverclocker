@@ -231,6 +231,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val workspace = patchEngine.analyze(image.file, SourceMode.ROOT_PARTITION, slot.blockDevice)
                 val detectedActive = activePanelDetector.detect()
                 val appliedDtbo = activePanelDetector.detectAppliedDtboEntries()
+                    ?: activePanelDetector.detectAppliedDtboEntriesFromLiveTree(
+                        workspace.binaryImage.entries.map { it.decodedBytes },
+                        File(getApplication<Application>().cacheDir, "live_fdt")
+                    )
                 applyWorkspace(workspace, SourceMode.ROOT_PARTITION, detectedActive, appliedDtbo)
                 refreshCacheSize()
             }.onFailure(::showError)
