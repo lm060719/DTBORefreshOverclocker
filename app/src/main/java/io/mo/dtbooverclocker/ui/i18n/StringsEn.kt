@@ -283,6 +283,9 @@ object StringsEn : AppStrings {
     override val stageAppendNewMode: String = "Append as New Mode for Panel (Stage)"
     override val stageApplyCurrentMode: String = "Apply to Current Timing (Stage)"
     override val syncAllDtbTitle: String = "Sync to all DTBs of this panel"
+    override val templateSourceTitle: String = "Panel command source"
+    override val templateSourceKeep: String = "Current timing"
+    override val templateSourceHint: String = "Picking another timing copies its panel commands and timing into the current one in place, then scales from that timing to the target rate. The current timing is replaced and the picked one stays untouched. Use this on devices where the image must not grow and appending a timing fails to boot."
     override val deleteCandidateConfirmTitle: String = "Confirm Deleting This Timing Mode?"
     override fun deleteCandidateConfirmBody(name: String, hz: Int): String =
         "Will remove $name ($hz Hz) node from workspace device tree.\nOnce removed, it will be added to the pending package list until unified packaging."

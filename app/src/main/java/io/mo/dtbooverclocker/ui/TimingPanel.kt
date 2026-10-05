@@ -71,6 +71,7 @@ internal fun TimingPanel(
     onStrategy: (PatchStrategy) -> Unit,
     onPatchMode: (PatchMode) -> Unit,
     onSyncAllDtbEntries: (Boolean) -> Unit,
+    onTemplate: (String?) -> Unit,
     onCustomPixelClock: (String) -> Unit,
     onCustomVfp: (String) -> Unit,
     onCustomVbp: (String) -> Unit,
@@ -162,6 +163,39 @@ internal fun TimingPanel(
                         onCheckedChange = onSyncAllDtbEntries,
                         enabled = !state.busy
                     )
+                }
+            }
+
+            // 编辑档位时可选同级档位作为面板命令模板，原地占用当前档位而不增加节点。
+            val templateSiblings = remember(workspace.candidates, selected) {
+                TimingUtils.findTemplateSiblings(workspace.candidates, selected)
+            }
+            val template = state.effectiveTemplate(selected)
+            if (state.patchMode == PatchMode.OVERWRITE_EXISTING && !selected.hasVendorDynamicMode && templateSiblings.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    SubsectionTitle(strings.templateSourceTitle)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+                    ) {
+                        FilterChip(
+                            selected = template == null,
+                            onClick = { onTemplate(null) },
+                            enabled = !state.busy,
+                            label = { Text(strings.templateSourceKeep) }
+                        )
+                        templateSiblings.distinctBy { TimingUtils.parseTimingNodeName(it.nodePath) }.forEach { sibling ->
+                            val name = TimingUtils.parseTimingNodeName(sibling.nodePath)
+                            FilterChip(
+                                selected = template != null && TimingUtils.parseTimingNodeName(template.nodePath) == name,
+                                onClick = { onTemplate(name) },
+                                enabled = !state.busy,
+                                label = { Text("$name · ${sibling.currentHz} Hz") }
+                            )
+                        }
+                    }
+                    HintText(strings.templateSourceHint)
                 }
             }
 
@@ -444,7 +478,8 @@ internal fun TimingPanel(
 
                 // 6. 实时超频推演卡片
                 OverclockPreviewCard(
-                    candidate = selected,
+                    // 有命令模板时以模板为推算基准，与实际写入一致。
+                    candidate = template ?: selected,
                     targetHz = state.targetHz,
                     strategy = state.strategy,
                     mode = state.patchMode,

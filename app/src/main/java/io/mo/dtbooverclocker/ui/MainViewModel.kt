@@ -260,6 +260,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(patchMode = mode, patchReport = null) }
     }
 
+    fun setTemplateNodeName(name: String?) {
+        _state.update { it.copy(templateNodeName = name, patchReport = null) }
+    }
+
     fun setSyncAllDtbEntries(enabled: Boolean) {
         _state.update { it.copy(syncAllDtbEntries = enabled, patchReport = null) }
     }
@@ -286,7 +290,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun applySuggestedCustomParams() {
         val current = _state.value
-        val candidate = current.workspace?.candidates?.firstOrNull { it.id == current.selectedCandidateId } ?: return
+        val selected = current.workspace?.candidates?.firstOrNull { it.id == current.selectedCandidateId } ?: return
+        // 有命令模板时时序以模板为基准推算，建议值也取自模板。
+        val candidate = current.effectiveTemplate(selected) ?: selected
         val sim = TimingUtils.calculateSimulation(candidate, current.targetHz, PatchStrategy.BALANCED_BLANKING_TIME)
         _state.update {
             it.copy(
@@ -338,6 +344,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 TimingUtils.findMirrorCandidates(workspace.candidates, candidate)
             } else emptyList()
 
+            // 命令模板按节点名同步：先确认每个目标都能找到同名模板，避免只暂存一部分 DTB。
+            val templateNodeName = current.effectiveTemplate(candidate)?.let { TimingUtils.parseTimingNodeName(it.nodePath) }
+            if (templateNodeName != null) {
+                runCatching {
+                    (listOf(candidate) + mirrors).forEach { target ->
+                        target.withOverlayCopies.forEach { TimingUtils.resolveTemplate(workspace.candidates, it, templateNodeName) }
+                    }
+                }.onFailure { return@launchWorkspaceOperation showError(it) }
+            }
+
             var latestWorkspace = workspace
             var selectedId: String? = current.selectedCandidateId
             val staged = mutableListOf<DeviceTreeTransaction>()
@@ -356,7 +372,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         strategy = current.strategy,
                         mode = current.patchMode,
                         customParams = customParams,
-                        transactionId = transactionId
+                        transactionId = transactionId,
+                        templateNodeName = templateNodeName
                     )
                 }.getOrElse {
                     failure = it
@@ -391,7 +408,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         transactions = newTransactions,
                         patchReport = null,
                         status = "已暂存修改：$summary (共 ${newTransactions.size} 个事务待打包)$skippedHint",
-                        patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode
+                        patchMode = if (current.patchMode == PatchMode.DELETE_EXISTING) PatchMode.OVERWRITE_EXISTING else it.patchMode,
+                        templateNodeName = null
                     )
                 }
                 refreshCapabilities(latestWorkspace, staged.flatMap { it.entryIndices }.toSet())
@@ -1266,6 +1284,8 @@ data class MainUiState(
     val strategy: PatchStrategy = PatchStrategy.BALANCED_BLANKING_TIME,
     val patchMode: PatchMode = PatchMode.OVERWRITE_EXISTING,
     val syncAllDtbEntries: Boolean = false,
+    // 编辑档位时复制面板命令的同级档位节点名，见 effectiveTemplate()。
+    val templateNodeName: String? = null,
     val patchReport: PatchReport? = null,
     val transactions: List<DeviceTreeTransaction> = emptyList(),
     val lastFlash: FlashResult? = null,

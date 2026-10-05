@@ -194,24 +194,31 @@ class DtboPatchEngine(
         strategy: PatchStrategy,
         mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
         customParams: CustomTimingParams? = null,
-        transactionId: String? = null
+        transactionId: String? = null,
+        templateNodeName: String? = null
     ): TimingApplyResult = withContext(Dispatchers.IO) {
         require(candidate.entryIndex in workspace.extractedEntries.indices) {
             "候选节点对应的 DTB 索引无效"
         }
+        require(templateNodeName == null || mode == PatchMode.OVERWRITE_EXISTING) { "命令模板仅适用于编辑修改档位" }
 
         // 同一节点的 overlay 副本叠加后合并为一个运行时节点，必须在同一事务内一起修改，
         // 否则未修改的副本会把原值覆盖回去。新增档位时各副本生成同名节点，叠加后同样合并为一个。
+        // 命令模板按节点名在每份副本自己的片段里解析，使各副本复制的都是同片段内的模板。
         val copies = candidate.withOverlayCopies
+        val templates = copies.map { copy ->
+            templateNodeName?.let { TimingUtils.resolveTemplate(workspace.candidates, copy, it) }
+        }
         var text = candidate.dtsFile.readText()
-        val plans = copies.map { copy ->
+        val plans = copies.mapIndexed { i, copy ->
             TimingDeviceTreePlanner.plan(
                 candidate = copy,
                 targetHz = targetHz,
                 strategy = strategy,
                 mode = mode,
                 customParams = customParams,
-                sourceText = text
+                sourceText = text,
+                template = templates[i]
             ).also { text = it.replayedText }
         }
         val plan = plans[copies.indexOf(candidate)]
@@ -250,8 +257,9 @@ class DtboPatchEngine(
         }
 
         val summary = when (mode) {
-            PatchMode.OVERWRITE_EXISTING ->
-                "编辑档位 $nodeName: ${candidate.currentHz} Hz → $targetHz Hz (${strategy.displayName})"
+            PatchMode.OVERWRITE_EXISTING -> templateNodeName?.let {
+                "编辑档位 $nodeName: ${candidate.currentHz} Hz → $targetHz Hz (命令取自 $it · ${strategy.displayName})"
+            } ?: "编辑档位 $nodeName: ${candidate.currentHz} Hz → $targetHz Hz (${strategy.displayName})"
             PatchMode.APPEND_NEW ->
                 "新增档位 $targetHz Hz (基于原 $nodeName ${candidate.currentHz} Hz 模板 · ${strategy.displayName})"
             PatchMode.DELETE_EXISTING ->
@@ -267,6 +275,7 @@ class DtboPatchEngine(
             targetHz = targetHz,
             strategy = strategy,
             customParams = customParams,
+            templateNodeName = templateNodeName,
             summary = summary
         )
 
@@ -548,6 +557,16 @@ class DtboPatchEngine(
                 ?: listOf(transaction.summary)
         }
         val warnings = transactions.flatMap { it.warnings }.distinct().toMutableList()
+        // vbmeta 记录的 dtbo image_size 不随本工具更新；镜像变大后部分 bootloader 只读入旧大小，
+        // DTBO 表被截断而直接进入 Fastboot（已在真我 GT Neo5 上复现）。
+        val growth = rebuiltImage.metadata.totalSize - workspace.metadata.totalSize
+        val avbState = workspace.sourceImage?.avbProtectionState ?: AvbProtectionState.NONE
+        if (growth > 0 && avbState != AvbProtectionState.NONE) {
+            val message = "DTBO 体积增大 $growth 字节，而镜像带 AVB：vbmeta 分区仍记录原大小，部分机型会直接进入 Fastboot。" +
+                "请刷入关闭校验的 vbmeta，或改用“编辑修改档位”（可选命令模板）保持体积不变。"
+            logSink("[WARN][AVB] $message")
+            warnings += message
+        }
         if (stagedChanges.any { it.strategy == PatchStrategy.FRAMERATE_ONLY }) {
             warnings += "包含仅 Framerate 策略的修改，存在时序不匹配风险。"
         }

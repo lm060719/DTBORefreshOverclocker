@@ -267,6 +267,9 @@ interface AppStrings {
     val stageAppendNewMode: String
     val stageApplyCurrentMode: String
     val syncAllDtbTitle: String
+    val templateSourceTitle: String
+    val templateSourceKeep: String
+    val templateSourceHint: String
     val deleteCandidateConfirmTitle: String
     fun deleteCandidateConfirmBody(name: String, hz: Int): String
 

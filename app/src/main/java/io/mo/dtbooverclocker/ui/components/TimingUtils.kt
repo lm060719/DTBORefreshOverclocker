@@ -311,6 +311,34 @@ object TimingUtils {
     }
 
     /**
+     * 可作为 [target] 面板命令模板的同级档位：同一 DTB、同一 display-timings 父节点下的其他普通档位。
+     * overlay 副本同样参与匹配，使每份副本都能在自己的片段里找到对应模板。
+     */
+    fun findTemplateSiblings(candidates: List<TimingCandidate>, target: TimingCandidate): List<TimingCandidate>
+    {
+        val parent = target.nodePath.substringBeforeLast('/')
+        return candidates
+            .flatMap { it.withOverlayCopies }
+            .filter {
+                it.entryIndex == target.entryIndex &&
+                    it.nodePath != target.nodePath &&
+                    !it.hasVendorDynamicMode &&
+                    it.nodePath.substringBeforeLast('/') == parent
+            }
+            .sortedBy { it.nodeStart }
+    }
+
+    /** 按节点名在 [target] 的同级档位中解析模板；同名节点必须唯一。 */
+    fun resolveTemplate(candidates: List<TimingCandidate>, target: TimingCandidate, templateNodeName: String): TimingCandidate
+    {
+        val matches = findTemplateSiblings(candidates, target).filter { parseTimingNodeName(it.nodePath) == templateNodeName }
+        return requireNotNull(matches.singleOrNull()) {
+            if (matches.isEmpty()) "${target.nodePath} 的同级档位中找不到命令模板 $templateNodeName"
+            else "${target.nodePath} 的同级档位中存在多个 $templateNodeName，无法确定命令模板"
+        }
+    }
+
+    /**
      * 实时预估超频参数
      */
     fun calculateSimulation(

@@ -1,5 +1,6 @@
 package io.mo.dtbooverclocker.ui
 
+import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.TimingCandidate
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 
@@ -27,7 +28,14 @@ internal fun MainUiState.overviewTimingCandidate(
 internal fun MainUiState.selectTimingCandidate(id: String): MainUiState {
     if (busy || selectedCandidateId == id) return this
     val candidate = workspace?.candidates?.firstOrNull { it.id == id } ?: return this
-    return copy(selectedCandidateId = id, targetHz = suggestedTimingTarget(candidate.currentHz))
+    return copy(selectedCandidateId = id, targetHz = suggestedTimingTarget(candidate.currentHz), templateNodeName = null)
+}
+
+/** 当前生效的命令模板：仅编辑档位模式下、且确实是 [candidate] 的同级档位时才生效。 */
+internal fun MainUiState.effectiveTemplate(candidate: TimingCandidate): TimingCandidate? {
+    val name = templateNodeName?.takeIf { patchMode == PatchMode.OVERWRITE_EXISTING } ?: return null
+    return TimingUtils.findTemplateSiblings(workspace?.candidates.orEmpty(), candidate)
+        .singleOrNull { TimingUtils.parseTimingNodeName(it.nodePath) == name }
 }
 
 internal fun suggestedTimingTarget(currentHz: Int): Int = when {

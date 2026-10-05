@@ -349,7 +349,7 @@ private fun ModulesTab(
                 item(key = "timing_panel") {
                     Box(Modifier.testTag("timing-editor")) {
                         key(timingNavigationRequest) {
-                            TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onSyncAllDtbEntries, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange, timing.onReportPanelIssue, timing.onStageDeletion)
+                            TimingPanel(state, timing.onSelect, timing.onTarget, timing.onStrategy, timing.onPatchMode, timing.onSyncAllDtbEntries, timing.onTemplate, timing.onCustomPixelClock, timing.onCustomVfp, timing.onCustomVbp, timing.onCustomHfp, timing.onCustomHbp, timing.onApplySuggestedCustom, timing.onStageChange, timing.onReportPanelIssue, timing.onStageDeletion)
                         }
                     }
                 }

@@ -31,6 +31,7 @@ class TimingActions(
     val onStrategy: (PatchStrategy) -> Unit,
     val onPatchMode: (PatchMode) -> Unit,
     val onSyncAllDtbEntries: (Boolean) -> Unit,
+    val onTemplate: (String?) -> Unit,
     val onCustomPixelClock: (String) -> Unit,
     val onCustomVfp: (String) -> Unit,
     val onCustomVbp: (String) -> Unit,

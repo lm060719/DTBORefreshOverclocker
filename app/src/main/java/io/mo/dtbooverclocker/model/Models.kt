@@ -80,6 +80,8 @@ data class StagedChange(
     val targetHz: Int,
     val strategy: PatchStrategy,
     val customParams: CustomTimingParams? = null,
+    /** 编辑档位时复制其面板命令与时序的同级档位节点名；null 表示沿用当前档位自身内容。 */
+    val templateNodeName: String? = null,
     val summary: String,
     val timestamp: Long = System.currentTimeMillis()
 )

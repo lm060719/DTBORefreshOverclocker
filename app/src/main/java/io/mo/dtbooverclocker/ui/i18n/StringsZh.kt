@@ -281,6 +281,9 @@ object StringsZh : AppStrings {
     override val stageAppendNewMode: String = "追加为此面板新档位 (暂存)"
     override val stageApplyCurrentMode: String = "应用修改到当前时序 (暂存)"
     override val syncAllDtbTitle: String = "同步修改该面板所有 DTB"
+    override val templateSourceTitle: String = "面板命令来源"
+    override val templateSourceKeep: String = "当前档位"
+    override val templateSourceHint: String = "选择其他档位时，会把它的面板命令和时序原地复制到当前档位，再按该档位推算目标刷新率；当前档位被占用，所选档位保持不变。适用于镜像体积不能增加、新增档位会卡开机的机型。"
     override val deleteCandidateConfirmTitle: String = "确认删除该时序档位？"
     override fun deleteCandidateConfirmBody(name: String, hz: Int): String =
         "将从工作区设备树中移除 $name ($hz Hz) 节点。\n删除后将记入待打包修改清单，全部调整完成后可统一打包生成 DTBO 镜像。"

@@ -65,6 +65,7 @@ object TimingDeviceTreePlanner
         "v-back-porch"
     )
     private val mdpTransferAliases = listOf("qcom,mdss-mdp-transfer-time-us")
+    private val phandleProperties = listOf("phandle", "linux,phandle")
 
     data class Plan(
         val operations: List<DeviceTreeChange>,
@@ -80,12 +81,21 @@ object TimingDeviceTreePlanner
         strategy: PatchStrategy,
         mode: PatchMode = PatchMode.OVERWRITE_EXISTING,
         customParams: CustomTimingParams? = null,
-        sourceText: String = candidate.dtsFile.readText()
+        sourceText: String = candidate.dtsFile.readText(),
+        template: TimingCandidate? = null
     ): Plan
     {
         val sourceDocument = DeviceTreeParser.parse(candidate.entryIndex, sourceText)
         val sourceNode = requireNotNull(sourceDocument.findNode(candidate.nodePath)) {
             "DTS 节点路径已失效，请重新解析镜像：${candidate.nodePath}"
+        }
+        val templateNode = template?.let {
+            require(mode == PatchMode.OVERWRITE_EXISTING) { "命令模板仅适用于编辑修改档位" }
+            require(it.entryIndex == candidate.entryIndex && it.nodePath != candidate.nodePath &&
+                parentPath(it.nodePath) == parentPath(candidate.nodePath)) {
+                "命令模板必须是同一 display-timings 下的其他档位：${it.nodePath}"
+            }
+            requireNotNull(sourceDocument.findNode(it.nodePath)) { "DTS 中找不到命令模板节点：${it.nodePath}" }
         }
 
         val calculation = if (mode == PatchMode.DELETE_EXISTING)
@@ -94,8 +104,9 @@ object TimingDeviceTreePlanner
         }
         else
         {
+            // 有命令模板时，节点内容取自模板，时序参数也必须以模板为基准推算。
             TimingParameterCalculator.calculate(
-                candidate = candidate,
+                candidate = template ?: candidate,
                 targetHz = targetHz,
                 strategy = strategy,
                 customParams = customParams
@@ -112,10 +123,18 @@ object TimingDeviceTreePlanner
             {
                 targetNodePath = candidate.nodePath
                 requireNotNull(calculation)
-                buildTimingPropertyChanges(
+                val copyOperations = templateNode?.let {
+                    buildTemplateCopyChanges(candidate.entryIndex, sourceNode, it, warnings)
+                }.orEmpty()
+                // 数值修改以复制模板后的节点为基准，保证 oldRawValue 与回放时的实际内容一致。
+                val baseNode = if (copyOperations.isEmpty()) sourceNode else requireNotNull(
+                    DeviceTreeParser.parse(candidate.entryIndex, replay(sourceText, copyOperations))
+                        .findNode(candidate.nodePath)
+                )
+                copyOperations + buildTimingPropertyChanges(
                     entryIndex = candidate.entryIndex,
                     targetNodePath = candidate.nodePath,
-                    sourceNode = sourceNode,
+                    sourceNode = baseNode,
                     calculation = calculation,
                     customParams = customParams,
                     warnings = warnings
@@ -183,7 +202,8 @@ object TimingDeviceTreePlanner
             mode = mode,
             targetNodePath = targetNodePath,
             calculation = calculation,
-            customParams = customParams
+            customParams = customParams,
+            templateNode = templateNode
         )
 
         val changes = buildList {
@@ -192,6 +212,9 @@ object TimingDeviceTreePlanner
                 PatchMode.OVERWRITE_EXISTING ->
                 {
                     add("编辑时序节点: ${candidate.nodePath.substringAfterLast('/')} (${candidate.currentHz} -> $targetHz Hz)")
+                    template?.let {
+                        add("面板命令模板: ${it.nodePath.substringAfterLast('/')} (${it.currentHz} Hz)，时序按模板推算")
+                    }
                 }
                 PatchMode.APPEND_NEW ->
                 {
@@ -330,6 +353,71 @@ object TimingDeviceTreePlanner
                 )?.let(::add)
             }
         }
+    }
+
+    /**
+     * 把模板节点的属性原地复制到目标节点（递归同名子节点），用于“保留模板档位、占用目标档位”的改法。
+     *
+     * 只替换双方都有的属性：新增属性会让 DTB 变大，而部分机型（如 AVB 记录了 dtbo 镜像大小的真我机型）
+     * 镜像变大后 bootloader 直接进入 Fastboot。模板独有与目标独有的属性都只给出警告。
+     */
+    private fun buildTemplateCopyChanges(
+        entryIndex: Int,
+        targetNode: DeviceTreeNode,
+        templateNode: DeviceTreeNode,
+        warnings: MutableList<String>
+    ): List<DeviceTreeChange>
+    {
+        val operations = mutableListOf<DeviceTreeChange>()
+        val templateOnly = mutableListOf<String>()
+        val targetOnly = mutableListOf<String>()
+
+        fun copy(target: DeviceTreeNode, source: DeviceTreeNode, relative: String)
+        {
+            val targetProperties = target.properties.associateBy { it.name }
+            source.properties.forEach { property ->
+                if (property.name in phandleProperties) return@forEach
+                val existing = targetProperties[property.name]
+                if (existing == null)
+                {
+                    templateOnly += relative + property.name
+                }
+                else if (normalizeRaw(existing.rawValue) != normalizeRaw(property.rawValue))
+                {
+                    operations += SetPropertyChange(
+                        entryIndex = entryIndex,
+                        nodePath = target.path,
+                        propertyName = existing.name,
+                        oldRawValue = existing.rawValue,
+                        newRawValue = property.rawValue
+                    )
+                }
+            }
+            val sourceNames = source.properties.map { it.name }.toSet()
+            target.properties
+                .filter { it.name !in sourceNames && it.name !in phandleProperties }
+                .forEach { targetOnly += relative + it.name }
+
+            val targetChildren = target.children.associateBy { it.name }
+            source.children.forEach { child ->
+                val match = targetChildren[child.name]
+                if (match == null) templateOnly += "$relative${child.name}/"
+                else copy(match, child, "$relative${child.name}/")
+            }
+            val sourceChildNames = source.children.map { it.name }.toSet()
+            target.children.filter { it.name !in sourceChildNames }.forEach { targetOnly += "$relative${it.name}/" }
+        }
+
+        copy(targetNode, templateNode, "")
+        if (templateOnly.isNotEmpty())
+        {
+            warnings += "模板中有 ${templateOnly.size} 项当前档位没有（${templateOnly.joinToString()}），为保持镜像体积未复制。"
+        }
+        if (targetOnly.isNotEmpty())
+        {
+            warnings += "当前档位独有 ${targetOnly.size} 项（${targetOnly.joinToString()}），保持原值。"
+        }
+        return operations
     }
 
     private fun appendOptionalPorchChange(
@@ -481,7 +569,8 @@ object TimingDeviceTreePlanner
         mode: PatchMode,
         targetNodePath: String?,
         calculation: TimingParameterCalculator.Result?,
-        customParams: CustomTimingParams?
+        customParams: CustomTimingParams?,
+        templateNode: DeviceTreeNode? = null
     )
     {
         val replayedDocument = DeviceTreeParser.parse(entryIndex, replayedText)
@@ -494,6 +583,12 @@ object TimingDeviceTreePlanner
                     "通用操作回放后找不到原时序节点"
                 }
                 verifyCalculatedProperties(targetNode, calculation, customParams)
+                templateNode?.let { template ->
+                    verifyTemplateCopied(targetNode, template)
+                    require(nodeSnapshot(template) == nodeSnapshot(requireNotNull(replayedDocument.findNode(template.path)))) {
+                        "命令模板节点发生了非预期变化"
+                    }
+                }
             }
 
             PatchMode.APPEND_NEW ->
@@ -591,6 +686,24 @@ object TimingDeviceTreePlanner
         result.mdpTransferTimeUs?.let { expected ->
             requireNumericValue(targetNode, mdpTransferAliases, expected, "MDP Transfer")
         }
+    }
+
+    /** 模板复制后，除推算出的时序数值外，双方共有的属性必须与模板逐项一致。 */
+    private fun verifyTemplateCopied(target: DeviceTreeNode, template: DeviceTreeNode)
+    {
+        val calculated = refreshAliases + pixelClockAliases + hFrontPorchAliases + hBackPorchAliases +
+            vFrontPorchAliases + vBackPorchAliases + mdpTransferAliases + phandleProperties
+        val targetProperties = target.properties.associateBy { it.name }
+        template.properties
+            .filter { it.name !in calculated }
+            .forEach { property ->
+                val actual = targetProperties[property.name] ?: return@forEach
+                require(normalizeRaw(actual.rawValue) == normalizeRaw(property.rawValue)) {
+                    "命令模板回放校验失败：${target.path}/${property.name} 与模板不一致"
+                }
+            }
+        val targetChildren = target.children.associateBy { it.name }
+        template.children.forEach { child -> targetChildren[child.name]?.let { verifyTemplateCopied(it, child) } }
     }
 
     private fun requireNumericValue(
