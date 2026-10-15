@@ -1072,7 +1072,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun applyWorkspace(
+    private suspend fun applyWorkspace(
         workspace: DtboWorkspace,
         sourceMode: SourceMode,
         detectedActive: ActivePanelDetectionResult? = null,
@@ -1101,9 +1101,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         var selectedCandidate: TimingCandidate? = null
 
         if (detectedActive != null) {
+            val displayPanel = withContext(Dispatchers.Default) {
+                ActivePanelDetector.resolveDisplayPanel(
+                    workspace.binaryImage.entries.map { it.decodedBytes },
+                    detectedActive.rawIdentifier,
+                    activeDtboEntries
+                )
+            }
+            if (displayPanel != null) {
+                appendLog("[INFO] [PANEL-MATCH] 显示节点 ${detectedActive.rawIdentifier} 的 qcom,dsi-panel 指向 $displayPanel")
+            }
             val bestCandidate = ActivePanelDetector.findBestMatchCandidate(
                 workspace.candidates,
-                detectedActive.rawIdentifier,
+                displayPanel ?: detectedActive.rawIdentifier,
                 activeDtboEntries
             ) { appendLog("[INFO] $it") }
             if (bestCandidate != null) {

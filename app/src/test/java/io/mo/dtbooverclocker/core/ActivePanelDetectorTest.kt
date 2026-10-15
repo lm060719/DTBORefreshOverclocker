@@ -103,6 +103,45 @@ class ActivePanelDetectorTest {
     }
 
     @Test
+    fun cmdlineDisplayLabelResolvesToItsPanelThroughDsiPanelPhandle() {
+        fun u32(value: Int) = byteArrayOf((value ushr 24).toByte(), (value ushr 16).toByte(), (value ushr 8).toByte(), value.toByte())
+        fun str(value: String) = "$value\u0000".toByteArray()
+        val display = "/fragment@54/__overlay__/qcom,dsi-display@21"
+        val variant = "/fragment@54/__overlay__/qcom,dsi-display@22"
+        val properties = mapOf(
+            "/fragment@48/__overlay__/qcom,mdss_dsi_ss_fhd_ea8076_cmd/phandle" to u32(0x36),
+            "/fragment@52/__overlay__/qcom,mdss_dsi_ss_fhd_ea8076_cmd_f3b/phandle" to u32(0x37),
+            "$display/label" to str("dsi_ss_ea8076_fhd_cmd_display"),
+            "$display/qcom,dsi-panel" to u32(0x36),
+            "$variant/label" to str("dsi_ss_ea8076_fhd_cmd_display_f3b"),
+            "$variant/qcom,dsi-panel" to u32(0x37),
+            "/__symbols__/dsi_ss_ea8076_fhd_cmd_display_f3b" to str(variant)
+        )
+
+        // Found through its label, and through __symbols__ for the variant.
+        assertEquals("qcom,mdss_dsi_ss_fhd_ea8076_cmd",
+            ActivePanelDetector.resolveDisplayPanel(properties, "dsi_ss_ea8076_fhd_cmd_display"))
+        assertEquals("qcom,mdss_dsi_ss_fhd_ea8076_cmd_f3b",
+            ActivePanelDetector.resolveDisplayPanel(properties, "dsi_ss_ea8076_fhd_cmd_display_f3b"))
+        // A cmdline value that already names the panel is left to the name matcher.
+        assertNull(ActivePanelDetector.resolveDisplayPanel(properties, "qcom,mdss_dsi_ss_fhd_ea8076_cmd"))
+    }
+
+    @Test
+    fun displayLabelFuzzyMatchesTheBasePanelRatherThanItsVariants() {
+        fun candidate(panel: String) = TimingCandidate(
+            id = panel, entryIndex = 0, dtsFile = File("dummy.dts"),
+            nodePath = "/fragment@0/__overlay__/qcom,mdss_dsi_$panel/qcom,mdss-dsi-display-timings/timing@0",
+            nodeStart = 0, nodeEndExclusive = 1, currentHz = 60
+        )
+        val candidates = listOf("ss_fhd_ea8074_cmd", "ss_fhd_ea8076_cmd_f3b", "ss_fhd_ea8076_cmd", "ss_fhd_ea8076_cmd_f3m")
+            .map(::candidate)
+
+        assertEquals("ss_fhd_ea8076_cmd",
+            ActivePanelDetector.findBestMatchCandidate(candidates, "dsi_ss_ea8076_fhd_cmd_display")?.id)
+    }
+
+    @Test
     fun parsesAppliedDtboIndicesFromBootconfigAndCmdline() {
         val bootconfig = """
             androidboot.hardware = "qcom"

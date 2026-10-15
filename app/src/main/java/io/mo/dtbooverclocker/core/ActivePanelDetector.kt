@@ -203,6 +203,37 @@ class ActivePanelDetector(
                 .lowercase()
         }
 
+        /**
+         * `msm_drm.dsi_display0` names the display node (`dsi_ss_ea8076_fhd_cmd_display`), not the panel
+         * (`qcom,mdss_dsi_ss_fhd_ea8076_cmd`), and the two need not share word order. The display node's
+         * `qcom,dsi-panel` phandle points at the panel node that carries the timings.
+         */
+        fun resolveDisplayPanel(properties: Map<String, ByteArray>, displayLabel: String): String? {
+            val displayPath = properties["/__symbols__/$displayLabel"]?.let(::cString)
+                ?: properties.entries.firstOrNull { it.key.endsWith("/label") && cString(it.value) == displayLabel }
+                    ?.key?.removeSuffix("/label")
+                ?: return null
+            val phandle = properties["$displayPath/qcom,dsi-panel"]?.takeIf { it.size >= 4 }?.let(::u32) ?: return null
+            val phandleKey = properties.entries.firstOrNull { (key, value) ->
+                (key.endsWith("/phandle") || key.endsWith("/linux,phandle")) && value.size == 4 && u32(value) == phandle
+            }?.key ?: return null
+            return phandleKey.substringBeforeLast('/').substringAfterLast('/').ifEmpty { null }
+        }
+
+        /** Searches the applied DTB entries first; display nodes are usually identical in every entry. */
+        fun resolveDisplayPanel(entries: List<ByteArray>, displayLabel: String, preferredEntries: Set<Int> = emptySet()): String? =
+            entries.indices.sortedBy { it !in preferredEntries }.asSequence()
+                .filter { String(entries[it], Charsets.ISO_8859_1).contains(displayLabel) }
+                .mapNotNull { runCatching { resolveDisplayPanel(FdtReader.readAllProperties(entries[it]), displayLabel) }.getOrNull() }
+                .firstOrNull()
+
+        private fun cString(bytes: ByteArray): String =
+            String(bytes, Charsets.US_ASCII).substringBefore('\u0000')
+
+        private fun u32(bytes: ByteArray): Int =
+            ((bytes[0].toInt() and 255) shl 24) or ((bytes[1].toInt() and 255) shl 16) or
+                ((bytes[2].toInt() and 255) shl 8) or (bytes[3].toInt() and 255)
+
         fun matchPanel(
             panelIdentifier: String,
             detectedIdentifier: String
@@ -212,7 +243,8 @@ class ActivePanelDetector(
             if (normPanel == normDetected) return true
             if (normPanel.contains(normDetected) || normDetected.contains(normPanel)) return true
 
-            val tokens = normDetected.split('_', '-', ',').filter { it.length >= 2 }
+            // Display-node labels add `display`, which no panel node name carries.
+            val tokens = normDetected.split('_', '-', ',').filter { it.length >= 2 && it != "display" }
             if (tokens.size >= 2 && tokens.all { normPanel.contains(it) }) return true
 
             return false
@@ -232,7 +264,9 @@ class ActivePanelDetector(
                 panelGrouped.keys.joinToString { "$it→${normalizeIdentifier(it)}" })
             // Substring matching alone would pick `..._cmd` for a detected `..._cmd_cphy` panel.
             val exact = panelGrouped.entries.firstOrNull { normalizeIdentifier(it.key) == normDetected }
-            val matched = exact ?: panelGrouped.entries.firstOrNull { matchPanel(it.key, normDetected) }
+            // Among fuzzy hits the shortest name is the base panel, not a `_f3b`-style variant of it.
+            val matched = exact ?: panelGrouped.entries.filter { matchPanel(it.key, normDetected) }
+                .minByOrNull { normalizeIdentifier(it.key).length }
             if (matched == null) {
                 trace("[PANEL-MATCH] 精确与模糊规则均未命中")
                 return null
