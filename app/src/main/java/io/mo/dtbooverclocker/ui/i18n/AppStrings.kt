@@ -292,6 +292,10 @@ interface AppStrings {
     fun goToThermalTable(dtb: Int, node: String): String
     fun toggleNodeList(selecting: Boolean, count: Int): String
     val nodeWithThermal: String
+    val nodeInActiveDtb: String
+    val showOtherDtbNodes: String
+    fun hideOtherDtbDesc(active: String, count: Int): String
+    val activeDtbUnknownNotice: String
     fun nodeStatusWarning(status: String): String
     val readOnlyNodeNotice: String
     val backToEditableNode: String

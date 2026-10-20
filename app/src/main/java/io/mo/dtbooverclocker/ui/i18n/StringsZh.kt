@@ -314,6 +314,12 @@ object StringsZh : AppStrings {
     override fun toggleNodeList(selecting: Boolean, count: Int): String =
         if (selecting) "收起节点列表" else "切换充电节点（$count）"
     override val nodeWithThermal: String = " · 含温控表"
+    override val nodeInActiveDtb: String = " · 本机生效"
+    override val showOtherDtbNodes: String = "显示其他 DTB 的节点"
+    override fun hideOtherDtbDesc(active: String, count: Int): String =
+        "已识别本机生效 $active，默认隐藏其他 DTB 中的 $count 个节点"
+    override val activeDtbUnknownNotice: String =
+        "未能识别本机生效的 DTB，下方列出镜像中每个 DTB 的副本。只有生效 DTB 中的修改会起作用，请先确认再编辑。"
     override fun nodeStatusWarning(status: String): String =
         "此节点 status 为 $status，修改参数不会自动启用节点。"
     override val readOnlyNodeNotice: String = "这是只读相关节点，没有经过验证的可编辑参数。"

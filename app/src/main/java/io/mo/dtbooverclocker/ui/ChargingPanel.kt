@@ -44,20 +44,34 @@ import io.mo.dtbooverclocker.ui.i18n.I18n
 internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<String, String>) -> Unit) {
     val strings = I18n.current
     val workspace = state.workspace ?: return
-    val nodes = state.capabilityReport?.chargingNodes.orEmpty()
-    val uniquePathCount = remember(nodes) { nodes.map { it.nodePath }.distinct().size }
-    val editableNodes = remember(nodes) { nodes.filter { it.editableCount > 0 } }
-    val editableNodeCount = editableNodes.size
-    val readOnlyNodeCount = nodes.size - editableNodeCount
-    val editableParameterCount = remember(nodes) { nodes.sumOf { it.editableCount } }
+    val allNodes = state.capabilityReport?.chargingNodes.orEmpty()
     val enabled = !state.busy && !state.capabilityScanInProgress
-    if (nodes.isEmpty()) {
+    if (allNodes.isEmpty()) {
         SectionCard(title = strings.chargingTitle, icon = Icons.Default.BatteryChargingFull) {
             HintText(if (state.capabilityScanInProgress) strings.scanningCharging
                 else strings.noChargingNodes)
         }
         return
     }
+    // Every DTB entry carries its own copy of the charger overlay; only the applied entry takes effect.
+    val activeEntries = remember(allNodes, state.activeDtboEntries) {
+        state.activeDtboEntries.takeIf { active -> allNodes.any { it.entryIndex in active } }.orEmpty()
+    }
+    val otherDtbNodeCount = if (activeEntries.isEmpty()) 0 else allNodes.count { it.entryIndex !in activeEntries }
+    val multipleEntries = remember(allNodes) { allNodes.map { it.entryIndex }.distinct().size > 1 }
+    var showOtherDtbNodes by rememberSaveable(workspace.rootDir.absolutePath) { mutableStateOf(false) }
+    val nodes = remember(allNodes, activeEntries, showOtherDtbNodes) {
+        if (activeEntries.isEmpty()) allNodes
+        else if (showOtherDtbNodes) allNodes.sortedBy { it.entryIndex !in activeEntries }
+        else allNodes.filter { it.entryIndex in activeEntries }
+    }
+    val uniquePathCount = remember(nodes) { nodes.map { it.nodePath }.distinct().size }
+    val editableNodes = remember(nodes) { nodes.filter { it.editableCount > 0 } }
+    val editableNodeCount = editableNodes.size
+    val readOnlyNodeCount = nodes.size - editableNodeCount
+    val editableParameterCount = remember(nodes) { nodes.sumOf { it.editableCount } }
+    fun dtbLabel(node: ChargingNode) =
+        "DTB ${node.entryIndex}" + if (node.entryIndex in activeEntries) strings.nodeInActiveDtb else ""
     var showReadOnlyNodes by rememberSaveable(workspace.rootDir.absolutePath) { mutableStateOf(false) }
     val visibleNodes = remember(nodes, showReadOnlyNodes) {
         if (showReadOnlyNodes) nodes else editableNodes
@@ -83,6 +97,32 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                     Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
                     style = MaterialTheme.typography.labelSmall
                 )
+            }
+            if (otherDtbNodeCount > 0) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(strings.showOtherDtbNodes, style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            strings.hideOtherDtbDesc(activeEntries.sorted().joinToString { "DTB[$it]" }, otherDtbNodeCount),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = showOtherDtbNodes,
+                        modifier = Modifier.semantics { contentDescription = strings.showOtherDtbNodes },
+                        onCheckedChange = {
+                            showOtherDtbNodes = it
+                            selecting = false
+                        }
+                    )
+                }
+            } else if (activeEntries.isEmpty() && multipleEntries) {
+                NoticeBanner(strings.activeDtbUnknownNotice, tone = Tone.Warning)
             }
             if (readOnlyNodeCount > 0) {
                 Row(
@@ -117,7 +157,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
             ) {
                 Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    Text("DTB ${node.entryIndex} · ${node.nodePath.substringAfterLast('/').ifBlank { "/" }}", style = MaterialTheme.typography.titleSmall)
+                    Text("${dtbLabel(node)} · ${node.nodePath.substringAfterLast('/').ifBlank { "/" }}", style = MaterialTheme.typography.titleSmall)
                     Text(node.nodePath, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                     node.compatible?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -154,7 +194,7 @@ internal fun ChargingPanel(state: MainUiState, onStage: (ChargingNode, Map<Strin
                         Row(Modifier.padding(Spacing.md), horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                             if (candidate.key == node.key) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                             Column(Modifier.weight(1f)) {
-                                Text("DTB ${candidate.entryIndex} · ${strings.editableParamsAndStatus(candidate.editableCount, "").replace(" · status: ", "")}" +
+                                Text("${dtbLabel(candidate)} · ${strings.editableParamsAndStatus(candidate.editableCount, "").replace(" · status: ", "")}" +
                                     if (hasThermalTable(candidate)) strings.nodeWithThermal else "", style = MaterialTheme.typography.labelLarge)
                                 Text(candidate.nodePath, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                             }

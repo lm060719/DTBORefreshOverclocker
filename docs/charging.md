@@ -75,6 +75,8 @@ realme / OPPO / OnePlus 较早的充电驱动（`drivers/power/oplus/oplus_charg
 
 同一镜像可能包含多套电池配置（RMX3823 的 entry 0/2/5 与 1/3/4 的浮充电压、终止电流不同），修改前应确认生效的 DTB。读不到 `androidboot.dtbo_idx` 时，App 会用 root 读取 `/sys/firmware/fdt`，比对各 entry overlay 中互不相同的属性（排除 overlay 根属性和经过重定位的 phandle 值）。完全一致的 entry 同时保留，再用 `qcom,msm-id` 的 SoC id 缩小范围；没有 entry 一致时不做猜测。
 
+识别到生效 DTB 后，充电面板默认只列出该 DTB 的节点并标注“本机生效”，其他 DTB 的副本可通过“显示其他 DTB 的节点”展开；识别失败时列出全部副本并提示先确认生效的 DTB。
+
 真实镜像回归：`gradlew :app:testDebugUnitTest -PoplusLegacySampleImage=<dtbo.img>`。
 
 ## 边界

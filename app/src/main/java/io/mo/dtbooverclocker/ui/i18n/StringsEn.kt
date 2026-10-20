@@ -316,6 +316,12 @@ object StringsEn : AppStrings {
     override fun toggleNodeList(selecting: Boolean, count: Int): String =
         if (selecting) "Collapse node list" else "Switch charging node ($count)"
     override val nodeWithThermal: String = " · With thermal table"
+    override val nodeInActiveDtb: String = " · Active"
+    override val showOtherDtbNodes: String = "Show Nodes from Other DTBs"
+    override fun hideOtherDtbDesc(active: String, count: Int): String =
+        "Active $active detected; hiding $count nodes from other DTBs by default"
+    override val activeDtbUnknownNotice: String =
+        "Could not detect which DTB this device applies, so every DTB's copy is listed below. Only edits to the applied DTB take effect; confirm it before editing."
     override fun nodeStatusWarning(status: String): String =
         "Node status is $status; modifying parameters will not automatically enable the node."
     override val readOnlyNodeNotice: String = "This is a read-only node with no verified editable parameters."
