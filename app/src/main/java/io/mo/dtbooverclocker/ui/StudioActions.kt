@@ -41,7 +41,8 @@ class TimingActions(
     val onStageChange: () -> Unit,
     val onStageCharging: (ChargingNode, Map<String, String>) -> Unit,
     val onReportPanelIssue: () -> Unit,
-    val onStageDeletion: (Set<String>) -> Unit
+    val onStageDeletion: (Set<String>) -> Unit,
+    val onDfpsReplace: (Int?) -> Unit = {}
 )
 
 /** 通用设备树编辑。 */

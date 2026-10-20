@@ -736,6 +736,21 @@ private fun TimingCandidateCard(
                         }
                     }
 
+                    // DFPS 面板的实际可用刷新率来自 dfps 列表，标出原厂最高值，避免把 framerate 当成上限。
+                    candidate.dfpsRefreshRates.maxOrNull()?.let { max ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            shape = MaterialTheme.shapes.extraSmall
+                        ) {
+                            Text(
+                                "DFPS ≤ $max Hz",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(horizontal = Spacing.xs, vertical = 1.dp)
+                            )
+                        }
+                    }
+
                     if (candidate.hasOpaquePanelTimings) {
                         Surface(
                             color = MaterialTheme.colorScheme.tertiaryContainer,

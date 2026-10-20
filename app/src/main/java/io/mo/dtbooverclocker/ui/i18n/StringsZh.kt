@@ -284,6 +284,22 @@ object StringsZh : AppStrings {
     override val templateSourceTitle: String = "面板命令来源"
     override val templateSourceKeep: String = "当前档位"
     override val templateSourceHint: String = "选择其他档位时，会把它的面板命令和时序原地复制到当前档位，再按该档位推算目标刷新率；当前档位被占用，所选档位保持不变。适用于镜像体积不能增加、新增档位会卡开机的机型。"
+    override val dfpsSectionTitle: String = "DFPS 刷新率档位"
+    override fun dfpsSectionHint(rates: String, max: Int): String =
+        "该面板启用了动态帧率（DFPS），系统的刷新率档位来自 DFPS 列表 [$rates]，原厂最高 $max Hz，改时序节点的 framerate 不会生效。" +
+            "这里直接修改 DFPS 列表；目标超过 $max Hz 时按比例提高 DSI 时钟，并加大其余档位的 VFP，使它们保持原刷新率。"
+    override val dfpsReplaceLabel: String = "替换列表中的档位（镜像体积不变）："
+    override val dfpsAppendHint: String = "新档位追加到 DFPS 列表末尾，原有档位全部保留。"
+    override val dfpsReading: String = "正在读取面板的 DFPS 配置…"
+    override fun dfpsPreviewList(old: String, new: String): String = "DFPS 列表：[$old] → [$new]"
+    override fun dfpsPreviewClock(old: String, new: String, percent: String): String = "DSI 时钟：$old → $new（+$percent%）"
+    override val dfpsPreviewClockKept: String = "DSI 时钟不变"
+    override fun dfpsPreviewVfp(targetHz: Int, referenceHz: Int, vfp: Int): String =
+        "$targetHz Hz 沿用 $referenceHz Hz 档位的 porch，VFP = $vfp"
+    override val dfpsStage: String = "暂存 DFPS 修改"
+    override fun nonActiveDtbEditWarning(selected: Int, active: String): String =
+        "当前编辑的是 DTB[$selected]，本机生效的是 $active。只有生效 DTB 中的修改会起作用，刷入后不会有效果。" +
+            "请在上方切换到标有「本机生效」的 DTB 实例，或打开「同步修改该面板所有 DTB」。"
     override val deleteCandidateConfirmTitle: String = "确认删除该时序档位？"
     override fun deleteCandidateConfirmBody(name: String, hz: Int): String =
         "将从工作区设备树中移除 $name ($hz Hz) 节点。\n删除后将记入待打包修改清单，全部调整完成后可统一打包生成 DTBO 镜像。"

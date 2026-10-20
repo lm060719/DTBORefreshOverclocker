@@ -220,6 +220,12 @@ object TimingUtils {
     fun isNonProductionPanel(identifier: String): Boolean =
         classifyPanel(identifier).let { it == PanelClassification.QCOM_REFERENCE || it == PanelClassification.SIMULATION }
 
+    /** activeEntries 为空表示未识别生效 DTB，此时不判定。 */
+    fun nonActiveDtbWarning(entries: Collection<Int>, activeEntries: Set<Int>): String? {
+        if (activeEntries.isEmpty() || entries.any { it in activeEntries }) return null
+        return "修改的 DTB${entries.distinct().sorted()} 均非本机生效的 DTB${activeEntries.sorted()}，刷入后不会生效"
+    }
+
     /** 兼容旧调用；语义现为“明确识别到的厂商面板”，不再把未知面板算作机型专属。 */
     fun isDeviceSpecific(identifier: String): Boolean = isVendorPanel(identifier)
 

@@ -29,6 +29,43 @@ class DtsTimingPatcherTest {
         assertEquals("/panel/display-timings/timing@0", DtsTimingPatcher.analyzeEntry(0, file).single().nodePath)
     }
 
+    // 一加 Pad 3（issue #8）：视频模式面板只有 120 Hz 的 timing@0，系统模式由 DFPS 列表展开，原厂已含 144 Hz。
+    @Test
+    fun videoPanelDfpsListIsAttachedToTimings() {
+        fun dts(panelProps: String) = File.createTempFile("panel", ".dts").apply {
+            writeText(
+                """/dts-v1/;
+                    |/ {
+                    |    fragment@104 {
+                    |        __overlay__ {
+                    |            qcom,mdss_dsi_panel_XN242_P_D_A0024_vid {
+                    |$panelProps
+                    |                qcom,mdss-dsi-display-timings {
+                    |                    timing@0 {
+                    |                        qcom,mdss-dsi-panel-framerate = <0x78>;
+                    |                    };
+                    |                };
+                    |            };
+                    |        };
+                    |    };
+                    |};
+                """.trimMargin()
+            )
+        }
+        val list = "                qcom,dsi-supported-dfps-list = <0x78 0x90 0x5a 0x3c 0x32 0x30 0x1e>;"
+        val enable = "                qcom,mdss-dsi-pan-enable-dynamic-fps;"
+
+        val video = DtsTimingPatcher.analyzeEntry(0, dts("$list\n$enable\n                qcom,mdss-dsi-panel-type = \"dsi_video_mode\";")).single()
+        assertEquals(listOf(120, 144, 90, 60, 50, 48, 30), video.dfpsRefreshRates)
+        assertEquals(120, video.currentHz)
+
+        val disabled = DtsTimingPatcher.analyzeEntry(0, dts(list)).single()
+        assertTrue(disabled.dfpsRefreshRates.isEmpty())
+
+        val command = DtsTimingPatcher.analyzeEntry(0, dts("$list\n$enable\n                qcom,mdss-dsi-panel-type = \"dsi_cmd_mode\";")).single()
+        assertTrue(command.dfpsRefreshRates.isEmpty())
+    }
+
     @Test
     fun balancedPatchChangesRefreshClockAndVerticalPorches() {
         val file = File.createTempFile("panel", ".dts")

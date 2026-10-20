@@ -48,6 +48,7 @@ object DtsTimingPatcher {
         val text = dtsFile.readText()
         val nodes = parseNodeRanges(text)
         val refreshMatches = findAllProperties(text, refreshAliases)
+        val dfpsByPanel = mutableMapOf<String, List<Int>>()
         return refreshMatches.mapNotNull { refreshProp ->
             val owner = nodes
                 .asSequence()
@@ -83,9 +84,45 @@ object DtsTimingPatcher {
                 hasOpaquePanelTimings = nodeText.contains("qcom,mdss-dsi-panel-timings") ||
                     nodeText.contains("qcom,mdss-dsi-panel-phy-timings"),
                 mdpTransferTimeUs = valueOf(nodeText, listOf("qcom,mdss-mdp-transfer-time-us")),
-                hasVendorDynamicMode = hasVendorDynamicMode(nodeText)
+                hasVendorDynamicMode = hasVendorDynamicMode(nodeText),
+                dfpsRefreshRates = panelDfpsRefreshRates(text, owner, nodes, dfpsByPanel)
             )
         }.distinctBy { it.id }.let { collapseOverlayCopies(entryIndex, text, it) }
+    }
+
+    /**
+     * QCOM 视频模式面板声明 `qcom,mdss-dsi-pan-enable-dynamic-fps` 时，dsi_display_get_modes 会把每个时序节点
+     * 按 `qcom,dsi-supported-dfps-list` 展开成多个模式，模式刷新率取列表值。读取面板节点自身属性（dtc 输出中
+     * 属性总在子节点之前），命令模式面板内核不走 DFPS，返回空。
+     */
+    private fun panelDfpsRefreshRates(
+        text: String,
+        timing: NodeRange,
+        nodes: List<NodeRange>,
+        cache: MutableMap<String, List<Int>>
+    ): List<Int> {
+        val timingsPath = timing.path.substringBeforeLast('/', "")
+        if (!timingsPath.substringAfterLast('/').endsWith("display-timings")) return emptyList()
+        val panelPath = timingsPath.substringBeforeLast('/', "")
+        if (panelPath.isEmpty()) return emptyList()
+        return cache.getOrPut(panelPath) {
+            val panel = nodes.firstOrNull { it.path == panelPath && timing.start in it.start until it.endExclusive }
+                ?: return@getOrPut emptyList()
+            val firstChild = nodes.filter { it.start > panel.start && it.endExclusive <= panel.endExclusive }
+                .minOfOrNull { it.start } ?: panel.endExclusive
+            val ownText = text.substring(panel.start, firstChild)
+            val enabled = Regex("""(?m)^\s*qcom,mdss-dsi-pan-enable-dynamic-fps\s*;""").containsMatchIn(ownText)
+            val cmdMode = Regex("""(?m)^\s*qcom,mdss-dsi-panel-type\s*=\s*"dsi_cmd_mode"""").containsMatchIn(ownText)
+            if (!enabled || cmdMode) return@getOrPut emptyList()
+            Regex("""(?m)^\s*qcom,dsi-supported-dfps-list\s*=\s*<([^>]*)>\s*;""").find(ownText)
+                ?.groupValues?.get(1)
+                ?.trim()?.split(Regex("\\s+"))
+                ?.mapNotNull { token ->
+                    if (token.startsWith("0x", ignoreCase = true)) token.drop(2).toIntOrNull(16) else token.toIntOrNull()
+                }
+                ?.filter { it in 1..1000 }
+                .orEmpty()
+        }
     }
 
     /**

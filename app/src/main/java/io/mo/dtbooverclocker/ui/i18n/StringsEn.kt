@@ -286,6 +286,22 @@ object StringsEn : AppStrings {
     override val templateSourceTitle: String = "Panel command source"
     override val templateSourceKeep: String = "Current timing"
     override val templateSourceHint: String = "Picking another timing copies its panel commands and timing into the current one in place, then scales from that timing to the target rate. The current timing is replaced and the picked one stays untouched. Use this on devices where the image must not grow and appending a timing fails to boot."
+    override val dfpsSectionTitle: String = "DFPS refresh rates"
+    override fun dfpsSectionHint(rates: String, max: Int): String =
+        "This panel uses dynamic FPS (DFPS): the system's refresh rates come from the DFPS list [$rates], with a stock maximum of $max Hz, so changing the timing's framerate has no effect. " +
+            "This edits the DFPS list directly. Above $max Hz, the DSI clock is raised proportionally and the other rates get a larger VFP so they keep their refresh rate."
+    override val dfpsReplaceLabel: String = "Replace a rate in the list (image size unchanged):"
+    override val dfpsAppendHint: String = "The new rate is appended to the DFPS list; all existing rates are kept."
+    override val dfpsReading: String = "Reading the panel's DFPS configuration…"
+    override fun dfpsPreviewList(old: String, new: String): String = "DFPS list: [$old] → [$new]"
+    override fun dfpsPreviewClock(old: String, new: String, percent: String): String = "DSI clock: $old → $new (+$percent%)"
+    override val dfpsPreviewClockKept: String = "DSI clock unchanged"
+    override fun dfpsPreviewVfp(targetHz: Int, referenceHz: Int, vfp: Int): String =
+        "$targetHz Hz reuses the porches of the $referenceHz Hz rate, VFP = $vfp"
+    override val dfpsStage: String = "Stage DFPS change"
+    override fun nonActiveDtbEditWarning(selected: Int, active: String): String =
+        "You are editing DTB[$selected], but this device applies $active. Only edits to the applied DTB take effect, so flashing this will change nothing. " +
+            "Switch to the DTB instance marked as applied above, or turn on \"Sync to all DTBs of this panel\"."
     override val deleteCandidateConfirmTitle: String = "Confirm Deleting This Timing Mode?"
     override fun deleteCandidateConfirmBody(name: String, hz: Int): String =
         "Will remove $name ($hz Hz) node from workspace device tree.\nOnce removed, it will be added to the pending package list until unified packaging."

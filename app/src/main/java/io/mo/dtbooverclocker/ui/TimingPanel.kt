@@ -52,6 +52,7 @@ import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.ui.components.HintText
 import io.mo.dtbooverclocker.ui.components.IconLabel
+import io.mo.dtbooverclocker.ui.components.NoticeBanner
 import io.mo.dtbooverclocker.ui.components.OverclockPreviewCard
 import io.mo.dtbooverclocker.ui.components.SectionCard
 import io.mo.dtbooverclocker.ui.components.StatusPill
@@ -62,6 +63,13 @@ import io.mo.dtbooverclocker.ui.components.TimingCandidateSelector
 import io.mo.dtbooverclocker.ui.components.TimingGeometryChart
 import io.mo.dtbooverclocker.ui.components.TimingUtils
 import io.mo.dtbooverclocker.ui.i18n.I18n
+import io.mo.dtbooverclocker.core.DfpsTimingPlanner
+import io.mo.dtbooverclocker.core.devicetree.DeviceTreeParser
+import io.mo.dtbooverclocker.model.TimingCandidate
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun TimingPanel(
@@ -80,19 +88,24 @@ internal fun TimingPanel(
     onApplySuggestedCustom: () -> Unit,
     onStageChange: () -> Unit,
     onReportPanelIssue: () -> Unit,
-    onStageDeletion: (Set<String>) -> Unit
+    onStageDeletion: (Set<String>) -> Unit,
+    onDfpsReplace: (Int?) -> Unit = {}
 ) {
     val workspace = state.workspace ?: return
     val strings = I18n.current
     val selected = workspace.candidates.firstOrNull { it.id == state.selectedCandidateId }
         ?: workspace.candidates.first()
 
-    val mirrorCount = remember(workspace.candidates, selected, state.patchMode) {
+    val mirrorEntries = remember(workspace.candidates, selected, state.patchMode) {
         val sources = if (state.patchMode == PatchMode.DELETE_EXISTING)
             TimingDeletionPlanner.panelCandidates(workspace.candidates, selected)
         else listOf(selected)
-        sources.flatMap { TimingUtils.findMirrorCandidates(workspace.candidates, it) }.map { it.entryIndex }.distinct().size
+        sources.flatMap { TimingUtils.findMirrorCandidates(workspace.candidates, it) }.map { it.entryIndex }.toSet()
     }
+    val mirrorCount = mirrorEntries.size
+    // 只有写入会落到生效 DTB 时修改才起作用；同步开启时镜像 DTB 也算在内。
+    val editedEntries = setOf(selected.entryIndex) + if (state.syncAllDtbEntries) mirrorEntries else emptySet()
+    val missesActiveDtb = TimingUtils.nonActiveDtbWarning(editedEntries, state.activeDtboEntries) != null
 
     SectionCard(
         title = strings.timingPanelTitle,
@@ -113,6 +126,16 @@ internal fun TimingPanel(
                 // 本机面板识别依赖 Root；无 Root 时不存在“推荐”，也就无从反馈推荐问题。
                 onReportRecommendIssue = onReportPanelIssue.takeIf { state.rootState.granted }
             )
+
+            if (missesActiveDtb) {
+                NoticeBanner(
+                    strings.nonActiveDtbEditWarning(
+                        selected.entryIndex,
+                        state.activeDtboEntries.sorted().joinToString { "DTB[$it]" }
+                    ),
+                    tone = Tone.Danger
+                )
+            }
 
             HorizontalDivider()
 
@@ -171,7 +194,8 @@ internal fun TimingPanel(
                 TimingUtils.findTemplateSiblings(workspace.candidates, selected)
             }
             val template = state.effectiveTemplate(selected)
-            if (state.patchMode == PatchMode.OVERWRITE_EXISTING && !selected.hasVendorDynamicMode && templateSiblings.isNotEmpty()) {
+            if (state.patchMode == PatchMode.OVERWRITE_EXISTING && !selected.hasVendorDynamicMode && !selected.usesDfps &&
+                templateSiblings.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     SubsectionTitle(strings.templateSourceTitle)
                     FlowRow(
@@ -219,6 +243,13 @@ internal fun TimingPanel(
                 Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
                     Text(strings.selectNormalModeToContinue)
                 }
+            } else if (selected.usesDfps) {
+                // DFPS 面板：刷新率档位在面板的 DFPS 列表里，改列表而不是时序节点的 framerate。
+                TargetRefreshRateEditor(state.targetHz, selected.dfpsRefreshRates.max(), onTarget)
+
+                HorizontalDivider()
+
+                DfpsSection(state, selected, onDfpsReplace, onStageChange)
             } else {
                 // 3. DSI 时序几何剖面图（水平与垂直显像、前肩、同步、后肩比例分布）
                 TimingGeometryChart(candidate = selected)
@@ -226,67 +257,7 @@ internal fun TimingPanel(
                 HorizontalDivider()
 
                 // 4. 目标刷新率调节与快捷预设芯片
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        SubsectionTitle(strings.targetRefreshRate, Modifier.weight(1f))
-                        Text(
-                            "${state.targetHz}",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            " Hz",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = Spacing.xs)
-                        )
-                    }
-
-                    val presets = remember(selected.currentHz) {
-                        val base = selected.currentHz
-                        val list = mutableListOf<Int>()
-                        if (base in 60..89) list += listOf(75, 90, 120)
-                        else if (base in 90..119) list += listOf(110, 120, 144)
-                        else if (base in 120..143) list += listOf(135, 144, 165)
-                        else if (base >= 144) list += listOf(base + 15, base + 24, 165, 180)
-                        else list += listOf(60, 90, 120)
-                        list.filter { it > base && it <= 360 }.distinct().take(4)
-                    }
-
-                    if (presets.isNotEmpty()) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
-                        ) {
-                            Text(
-                                strings.quickPresets,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            presets.forEach { presetHz ->
-                                AssistChip(
-                                    onClick = { onTarget(presetHz) },
-                                    label = { Text("$presetHz Hz") }
-                                )
-                            }
-                        }
-                    }
-
-                    val sliderMax = maxOf(165, selected.currentHz + 90).coerceAtMost(360)
-                    Slider(
-                        value = state.targetHz.toFloat().coerceIn(30f, sliderMax.toFloat()),
-                        onValueChange = { onTarget(it.toInt()) },
-                        valueRange = 30f..sliderMax.toFloat()
-                    )
-                    OutlinedTextField(
-                        value = state.targetHz.toString(),
-                        onValueChange = { value -> value.filter(Char::isDigit).toIntOrNull()?.let(onTarget) },
-                        label = { Text(strings.targetHzInputLabel) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+                TargetRefreshRateEditor(state.targetHz, selected.currentHz, onTarget)
 
                 HorizontalDivider()
 
@@ -494,6 +465,162 @@ internal fun TimingPanel(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TargetRefreshRateEditor(targetHz: Int, presetBase: Int, onTarget: (Int) -> Unit) {
+    val strings = I18n.current
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            SubsectionTitle(strings.targetRefreshRate, Modifier.weight(1f))
+            Text(
+                "$targetHz",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                " Hz",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = Spacing.xs)
+            )
+        }
+
+        val presets = remember(presetBase) {
+            val base = presetBase
+            val list = mutableListOf<Int>()
+            if (base in 60..89) list += listOf(75, 90, 120)
+            else if (base in 90..119) list += listOf(110, 120, 144)
+            else if (base in 120..143) list += listOf(135, 144, 165)
+            else if (base >= 144) list += listOf(base + 15, base + 24, 165, 180)
+            else list += listOf(60, 90, 120)
+            list.filter { it > base && it <= 360 }.distinct().take(4)
+        }
+
+        if (presets.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+            ) {
+                Text(
+                    strings.quickPresets,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                presets.forEach { presetHz ->
+                    AssistChip(
+                        onClick = { onTarget(presetHz) },
+                        label = { Text("$presetHz Hz") }
+                    )
+                }
+            }
+        }
+
+        val sliderMax = maxOf(165, presetBase + 90).coerceAtMost(360)
+        Slider(
+            value = targetHz.toFloat().coerceIn(30f, sliderMax.toFloat()),
+            onValueChange = { onTarget(it.toInt()) },
+            valueRange = 30f..sliderMax.toFloat()
+        )
+        OutlinedTextField(
+            value = targetHz.toString(),
+            onValueChange = { value -> value.filter(Char::isDigit).toIntOrNull()?.let(onTarget) },
+            label = { Text(strings.targetHzInputLabel) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/** DFPS 面板的档位修改：替换或追加 DFPS 列表项，按目标推算时钟与各档位 VFP 并预览。 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DfpsSection(
+    state: MainUiState,
+    candidate: TimingCandidate,
+    onDfpsReplace: (Int?) -> Unit,
+    onStageChange: () -> Unit
+) {
+    val strings = I18n.current
+    val replaceHz = state.effectiveDfpsReplaceHz(candidate)
+    // 读面板要解析整份 DTS，放到后台；候选随工作区刷新而变化时重新读取。
+    val panel by produceState<Result<DfpsTimingPlanner.Panel>?>(null, candidate) {
+        value = withContext(Dispatchers.Default) {
+            runCatching {
+                DfpsTimingPlanner.readPanel(DeviceTreeParser.parse(candidate.entryIndex, candidate.dtsFile.readText()), candidate)
+            }
+        }
+    }
+    val calculation = remember(panel, state.targetHz, replaceHz) {
+        panel?.mapCatching { DfpsTimingPlanner.calculate(it, state.targetHz, replaceHz) }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        SubsectionTitle(strings.dfpsSectionTitle)
+        HintText(strings.dfpsSectionHint(candidate.dfpsRefreshRates.joinToString(", "), candidate.dfpsRefreshRates.max()))
+
+        if (state.patchMode == PatchMode.OVERWRITE_EXISTING) {
+            Text(strings.dfpsReplaceLabel, style = MaterialTheme.typography.labelMedium)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+            ) {
+                candidate.dfpsRefreshRates.filter { it != candidate.currentHz }.forEach { hz ->
+                    FilterChip(
+                        selected = hz == replaceHz,
+                        onClick = { onDfpsReplace(hz) },
+                        enabled = !state.busy,
+                        label = { Text("$hz Hz") }
+                    )
+                }
+            }
+        } else {
+            HintText(strings.dfpsAppendHint)
+        }
+
+        val result = calculation
+        when {
+            result == null -> HintText(strings.dfpsReading)
+            result.isFailure -> NoticeBanner(result.exceptionOrNull()?.message.orEmpty(), tone = Tone.Danger)
+            else -> {
+                val calc = result.getOrThrow()
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                        val oldRates = candidate.dfpsRefreshRates
+                        Text(strings.dfpsPreviewList(oldRates.joinToString(", "), calc.newRates.joinToString(", ")),
+                            style = MaterialTheme.typography.bodySmall)
+                        val clockLine = calc.clockIncreasePercent?.takeIf { it > 0 }?.let { percent ->
+                            strings.dfpsPreviewClock(
+                                TimingUtils.formatClock(requireNotNull(calc.clockHz)),
+                                TimingUtils.formatClock(requireNotNull(calc.newClockHz)),
+                                String.format(Locale.US, "%.1f", percent)
+                            )
+                        } ?: strings.dfpsPreviewClockKept
+                        Text(clockLine, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text(strings.dfpsPreviewVfp(calc.targetHz, calc.referenceHz, calc.targetVFrontPorch),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                calc.warnings.forEach { NoticeBanner(it, tone = Tone.Warning) }
+            }
+        }
+
+        Button(
+            onClick = onStageChange,
+            enabled = !state.busy && calculation?.isSuccess == true,
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            IconLabel(
+                if (state.patchMode == PatchMode.APPEND_NEW) Icons.Default.Add else Icons.Default.Build,
+                strings.dfpsStage
+            )
         }
     }
 }

@@ -291,6 +291,61 @@ class DtboPatchEngine(
     }
 
 
+    /**
+     * DFPS 面板的刷新率扩充：改写面板的 DFPS 列表（追加或替换 [replaceHz]），必要时按比例提高时钟。
+     * 面板节点随时序节点一起被 overlay 重复定义时，所有副本在同一事务内同步修改。
+     */
+    suspend fun applyDfpsChange(
+        workspace: DtboWorkspace,
+        candidate: TimingCandidate,
+        targetHz: Int,
+        replaceHz: Int?,
+        transactionId: String? = null
+    ): TimingApplyResult = withContext(Dispatchers.IO) {
+        require(candidate.entryIndex in workspace.extractedEntries.indices) {
+            "候选节点对应的 DTB 索引无效"
+        }
+        var text = candidate.dtsFile.readText()
+        val plans = candidate.withOverlayCopies.map { copy ->
+            DfpsTimingPlanner.plan(copy, targetHz, replaceHz, text).also { text = it.replayedText }
+        }
+        val plan = plans[candidate.withOverlayCopies.indexOf(candidate)]
+
+        val updatedWorkspace = commitWorkspaceTexts(
+            workspace, mapOf(candidate.entryIndex to text), undoSnapshotId = transactionId
+        )
+        val nextSelectedId = updatedWorkspace.candidates.firstOrNull {
+            it.entryIndex == candidate.entryIndex && it.nodePath == candidate.nodePath
+        }?.id
+
+        val nodeName = TimingUtils.parseTimingNodeName(candidate.nodePath)
+        val summary = if (replaceHz != null) {
+            "DFPS 档位 $replaceHz Hz → $targetHz Hz ($nodeName)"
+        } else {
+            "DFPS 新增 $targetHz Hz ($nodeName)"
+        }
+        val staged = StagedChange(
+            mode = if (replaceHz != null) PatchMode.OVERWRITE_EXISTING else PatchMode.APPEND_NEW,
+            entryIndex = candidate.entryIndex,
+            nodePath = candidate.nodePath,
+            nodeName = nodeName,
+            originalHz = replaceHz ?: candidate.dfpsRefreshRates.maxOrNull() ?: candidate.currentHz,
+            targetHz = targetHz,
+            strategy = PatchStrategy.BALANCED_BLANKING_TIME,
+            summary = summary
+        )
+        plan.changes.forEach { logSink("[INFO][DFPS] DTB[${candidate.entryIndex}] $it") }
+        logSink("[OK] 已暂存时序修改：$summary")
+        TimingApplyResult(
+            updatedWorkspace = updatedWorkspace,
+            selectedCandidateId = nextSelectedId,
+            stagedChange = staged,
+            operations = plans.flatMap { it.operations },
+            changes = plan.changes,
+            warnings = plans.flatMap { it.warnings }.distinct()
+        )
+    }
+
     suspend fun applyChargingChange(
         workspace: DtboWorkspace,
         snapshot: io.mo.dtbooverclocker.model.ChargingNode,
@@ -652,7 +707,7 @@ class DtboPatchEngine(
             val expectedCandidates = workspace.candidates.filter { it.entryIndex == index }
             fun signature(c: TimingCandidate) = listOf(c.nodePath, c.currentHz, c.pixelClockHz,
                 c.hActive, c.vActive, c.hFrontPorch, c.hBackPorch, c.hSync,
-                c.vFrontPorch, c.vBackPorch, c.vSync, c.mdpTransferTimeUs, c.hasVendorDynamicMode)
+                c.vFrontPorch, c.vBackPorch, c.vSync, c.mdpTransferTimeUs, c.hasVendorDynamicMode, c.dfpsRefreshRates)
             require(expectedCandidates.isNotEmpty() &&
                 verifiedCandidates.map(::signature).toSet() == expectedCandidates.map(::signature).toSet()) {
                 "DTB[$index] 校验失败：档位路径或时序参数与暂存修改不一致"

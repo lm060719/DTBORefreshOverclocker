@@ -349,7 +349,8 @@ private fun DtboOverclockerApp(viewModel: MainViewModel = viewModel(), splashDon
                         onStageChange = viewModel::stageTimingChange,
                         onStageCharging = viewModel::stageChargingChange,
                         onReportPanelIssue = { openFeedback(FeedbackType.PANEL_RECOMMEND) },
-                        onStageDeletion = viewModel::stageTimingDeletion
+                        onStageDeletion = viewModel::stageTimingDeletion,
+                        onDfpsReplace = viewModel::setDfpsReplaceHz
                     ),
                     deviceTree = DeviceTreeActions(
                         onSetProperty = viewModel::setDeviceTreeProperty,

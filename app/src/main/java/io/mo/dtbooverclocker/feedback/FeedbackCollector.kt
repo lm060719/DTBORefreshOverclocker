@@ -61,7 +61,12 @@ object FeedbackCollector {
                 appendLine("Recommended panel: ${activePanelIdentifier ?: "none"}${activePanelSource?.let { " (source: $it)" }.orEmpty()}")
                 val panels = workspace.candidates
                     .groupBy { TimingUtils.parsePanelIdentifier(it.nodePath) }
-                    .map { (panel, list) -> "$panel ${list.map { it.currentHz }.distinct().sorted()}Hz DTB${list.map { it.entryIndex }.distinct().sorted()}" }
+                    .map { (panel, list) ->
+                        val dfps = list.flatMap { it.dfpsRefreshRates }.distinct().sorted()
+                        "$panel ${list.map { it.currentHz }.distinct().sorted()}Hz" +
+                            (if (dfps.isNotEmpty()) " DFPS$dfps" else "") +
+                            " DTB${list.map { it.entryIndex }.distinct().sorted()}"
+                    }
                 appendLine("Panels in image (${panels.size}):")
                 panels.forEach { appendLine("  - $it") }
             }

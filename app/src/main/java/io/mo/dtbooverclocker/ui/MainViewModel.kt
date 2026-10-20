@@ -268,6 +268,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(templateNodeName = name, patchReport = null) }
     }
 
+    fun setDfpsReplaceHz(hz: Int?) {
+        _state.update { it.copy(dfpsReplaceHz = hz, patchReport = null) }
+    }
+
     fun setSyncAllDtbEntries(enabled: Boolean) {
         _state.update { it.copy(syncAllDtbEntries = enabled, patchReport = null) }
     }
@@ -335,7 +339,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }.getOrElse { return@launchWorkspaceOperation showError(it) }
             } else null
 
-            val customParams = if (current.strategy == PatchStrategy.CUSTOM && current.patchMode != PatchMode.DELETE_EXISTING) {
+            // DFPS 面板的刷新率由面板的 DFPS 列表决定，编辑/新增改走 DFPS 列表扩充，不使用策略与命令模板。
+            val dfps = candidate.usesDfps && deletionPlan == null
+            val dfpsReplaceHz = if (dfps) current.effectiveDfpsReplaceHz(candidate) else null
+            if (dfps && current.patchMode == PatchMode.OVERWRITE_EXISTING && dfpsReplaceHz == null) {
+                return@launchWorkspaceOperation showError(IllegalStateException("该面板没有可替换的 DFPS 档位，请改用新增"))
+            }
+
+            val customParams = if (!dfps && current.strategy == PatchStrategy.CUSTOM && current.patchMode != PatchMode.DELETE_EXISTING) {
                 val p = current.customTimingParams
                 requireOrReport(p != null && (p.pixelClockHz != null || candidate.pixelClockHz != null)) {
                     "在自定义计算策略下，必须输入有效的像素时钟 (Pixel Clock)"
@@ -349,7 +360,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else emptyList()
 
             // 命令模板按节点名同步：先确认每个目标都能找到同名模板，避免只暂存一部分 DTB。
-            val templateNodeName = current.effectiveTemplate(candidate)?.let { TimingUtils.parseTimingNodeName(it.nodePath) }
+            val templateNodeName = current.effectiveTemplate(candidate)?.takeUnless { dfps }
+                ?.let { TimingUtils.parseTimingNodeName(it.nodePath) }
             if (templateNodeName != null) {
                 runCatching {
                     (listOf(candidate) + mirrors).forEach { target ->
@@ -369,7 +381,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val live = requireNotNull(latestWorkspace.candidates.firstOrNull {
                         it.entryIndex == target.entryIndex && it.nodePath == target.nodePath
                     }) { "待修改档位已失效：${target.nodePath}" }
-                    patchEngine.applyTimingChange(
+                    if (dfps) patchEngine.applyDfpsChange(
+                        workspace = latestWorkspace,
+                        candidate = live,
+                        targetHz = current.targetHz,
+                        replaceHz = dfpsReplaceHz,
+                        transactionId = transactionId
+                    ) else patchEngine.applyTimingChange(
                         workspace = latestWorkspace,
                         candidate = live,
                         targetHz = current.targetHz,
@@ -396,6 +414,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (staged.isNotEmpty()) {
                 if (deletionPlan != null) {
                     selectedId = TimingDeletionPlanner.remainingSelection(latestWorkspace.candidates, candidate)
+                }
+                TimingUtils.nonActiveDtbWarning(staged.flatMap { it.entryIndices }, current.activeDtboEntries)?.let { warning ->
+                    appendLog("[WARN] $warning")
+                    staged.replaceAll { it.copy(warnings = (it.warnings + warning).distinct()) }
                 }
                 val newTransactions = current.transactions + staged
                 val summary = if (deletionPlan != null) {
@@ -1300,6 +1322,8 @@ data class MainUiState(
     val syncAllDtbEntries: Boolean = false,
     // 编辑档位时复制面板命令的同级档位节点名，见 effectiveTemplate()。
     val templateNodeName: String? = null,
+    // DFPS 面板编辑档位时要替换的列表刷新率，见 effectiveDfpsReplaceHz()。
+    val dfpsReplaceHz: Int? = null,
     val patchReport: PatchReport? = null,
     val transactions: List<DeviceTreeTransaction> = emptyList(),
     val lastFlash: FlashResult? = null,

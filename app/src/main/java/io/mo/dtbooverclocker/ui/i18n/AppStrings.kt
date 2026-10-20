@@ -270,6 +270,17 @@ interface AppStrings {
     val templateSourceTitle: String
     val templateSourceKeep: String
     val templateSourceHint: String
+    val dfpsSectionTitle: String
+    fun dfpsSectionHint(rates: String, max: Int): String
+    val dfpsReplaceLabel: String
+    val dfpsAppendHint: String
+    val dfpsReading: String
+    fun dfpsPreviewList(old: String, new: String): String
+    fun dfpsPreviewClock(old: String, new: String, percent: String): String
+    val dfpsPreviewClockKept: String
+    fun dfpsPreviewVfp(targetHz: Int, referenceHz: Int, vfp: Int): String
+    val dfpsStage: String
+    fun nonActiveDtbEditWarning(selected: Int, active: String): String
     val deleteCandidateConfirmTitle: String
     fun deleteCandidateConfirmBody(name: String, hz: Int): String
 

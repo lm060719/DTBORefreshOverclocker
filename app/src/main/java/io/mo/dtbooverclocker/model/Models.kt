@@ -173,6 +173,11 @@ data class TimingCandidate(
     val mdpTransferTimeUs: Long? = null,
     val hasVendorDynamicMode: Boolean = false,
     /**
+     * 所属面板启用 QCOM 动态帧率（DFPS）时的 `qcom,dsi-supported-dfps-list`，按 DTS 原顺序；空表示未启用。
+     * 启用后内核按此列表为每个时序节点生成显示模式，模式刷新率取列表值而不是 framerate。
+     */
+    val dfpsRefreshRates: List<Int> = emptyList(),
+    /**
      * 同一 DTB 内覆盖到同一目标、同一路径的其他 overlay 片段副本（厂商重复 include 同一 dtsi 所致）。
      * 叠加后它们合并为同一个运行时节点，写入必须覆盖全部副本，否则改动可能被另一份原值覆盖。
      */
@@ -181,6 +186,10 @@ data class TimingCandidate(
     /** 自身与全部 overlay 副本，按 DTS 文本顺序排列。 */
     val withOverlayCopies: List<TimingCandidate>
         get() = (overlayCopies + this).sortedBy { it.nodeStart }
+
+    /** 面板走 DFPS 时，系统能用到的刷新率由列表决定，改 framerate 不会产生新的显示模式。 */
+    val usesDfps: Boolean
+        get() = dfpsRefreshRates.isNotEmpty()
 
     val hasFullGeometry: Boolean
         get() = listOf(
