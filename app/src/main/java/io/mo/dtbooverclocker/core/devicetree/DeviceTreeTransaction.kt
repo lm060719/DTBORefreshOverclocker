@@ -1,6 +1,7 @@
 package io.mo.dtbooverclocker.core.devicetree
 
 import io.mo.dtbooverclocker.model.ModuleStagedChange
+import io.mo.dtbooverclocker.model.PatchMode
 import io.mo.dtbooverclocker.model.PatchStrategy
 import io.mo.dtbooverclocker.model.StagedChange
 import java.util.UUID
@@ -121,4 +122,65 @@ fun List<DeviceTreeTransaction>.allOperations(): List<DeviceTreeChange>
 fun List<DeviceTreeTransaction>.modifiedEntryIndices(): Set<Int>
 {
     return flatMap { it.entryIndices }.toSet()
+}
+
+/**
+ * 模块 description 等单行场景用的精简摘要：不带节点名，同类修改合并，
+ * 例如 "删除 60 / 120 Hz，新增 144 Hz"。超过 [maxLength] 时舍弃靠后的分类，以 "等 N 项" 结尾。
+ */
+fun List<DeviceTreeTransaction>.compactSummary(maxLength: Int = 100): String
+{
+    // groupBy 按各分类首次出现的顺序输出
+    val parts = groupBy { it.compactCategory() }.map { (category, transactions) ->
+        when (category)
+        {
+            CompactCategory.CHARGING -> "充电参数 ${transactions.sumOf { it.operationCount }} 项"
+            CompactCategory.GENERIC -> "设备树编辑 ${transactions.sumOf { it.operationCount }} 处"
+            else ->
+            {
+                val rates = transactions.mapNotNull { it.timingChange?.compactRate() }.distinct()
+                "${category.label} ${rates.joinToString(" / ")} Hz".trim()
+            }
+        }
+    }
+    val full = parts.joinToString("，")
+    if (full.length <= maxLength) return full
+
+    val suffix = " 等 $size 项"
+    val kept = mutableListOf(parts.first())
+    for (part in parts.drop(1))
+    {
+        if ((kept + part).joinToString("，").length + suffix.length > maxLength) break
+        kept += part
+    }
+    return kept.joinToString("，") + suffix
+}
+
+private enum class CompactCategory(val label: String)
+{
+    DELETE("删除"),
+    APPEND("新增"),
+    EDIT(""),
+    DFPS_APPEND("DFPS 新增"),
+    CHARGING("充电参数"),
+    GENERIC("设备树编辑")
+}
+
+private fun DeviceTreeTransaction.compactCategory(): CompactCategory
+{
+    val timing = timingChange
+        ?: return if (kind == DeviceTreeTransactionKind.CHARGING) CompactCategory.CHARGING else CompactCategory.GENERIC
+    return when (timing.mode)
+    {
+        PatchMode.DELETE_EXISTING -> CompactCategory.DELETE
+        PatchMode.APPEND_NEW -> if (timing.dfps) CompactCategory.DFPS_APPEND else CompactCategory.APPEND
+        PatchMode.OVERWRITE_EXISTING -> CompactCategory.EDIT
+    }
+}
+
+private fun StagedChange.compactRate(): String = when (mode)
+{
+    PatchMode.DELETE_EXISTING -> "$originalHz"
+    PatchMode.APPEND_NEW -> "$targetHz"
+    PatchMode.OVERWRITE_EXISTING -> "$originalHz → $targetHz"
 }

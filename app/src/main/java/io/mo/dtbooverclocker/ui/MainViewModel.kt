@@ -17,6 +17,7 @@ import io.mo.dtbooverclocker.core.devicetree.DeviceTreeChange
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeEditor
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransaction
 import io.mo.dtbooverclocker.core.devicetree.DeviceTreeTransactionKind
+import io.mo.dtbooverclocker.core.devicetree.compactSummary
 import io.mo.dtbooverclocker.core.NativeToolExecutor
 import io.mo.dtbooverclocker.core.RootDetector
 import io.mo.dtbooverclocker.core.SafetyGuardManager
@@ -756,7 +757,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             setBusy(true, if (viaModule) "正在备份并以模块方式刷入…" else "正在执行备份、救援包生成与单槽位刷写…")
             runCatching {
                 if (viaModule) {
-                    safetyGuard.installPatchedModule(report, slot, moduleSummary(current))
+                    safetyGuard.installPatchedModule(report, slot, moduleDescription(current))
                 } else {
                     safetyGuard.flashPatchedImage(report, slot)
                 }
@@ -785,14 +786,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             setBusy(true, "正在生成 KernelSU / Magisk 模块…")
             runCatching {
-                safetyGuard.generateModuleZip(patched, moduleSummary(current))
+                safetyGuard.generateModuleZip(patched, moduleDescription(current))
             }.onSuccess(onReady).onFailure(::showError)
             setBusy(false)
         }
     }
 
-    private fun moduleSummary(state: MainUiState): String =
-        state.transactions.joinToString("; ") { it.summary }
+    private fun moduleDescription(state: MainUiState): String =
+        state.transactions.compactSummary()
 
     fun prepareRecoveryZip(onReady: (File) -> Unit) {
         launchWorkspaceOperation {

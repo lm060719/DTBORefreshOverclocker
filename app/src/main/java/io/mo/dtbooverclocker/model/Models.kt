@@ -82,6 +82,8 @@ data class StagedChange(
     val customParams: CustomTimingParams? = null,
     /** 编辑档位时复制其面板命令与时序的同级档位节点名；null 表示沿用当前档位自身内容。 */
     val templateNodeName: String? = null,
+    /** 改写的是 DFPS 面板的刷新率列表，而不是独立的时序档位。 */
+    val dfps: Boolean = false,
     val summary: String,
     val timestamp: Long = System.currentTimeMillis()
 )

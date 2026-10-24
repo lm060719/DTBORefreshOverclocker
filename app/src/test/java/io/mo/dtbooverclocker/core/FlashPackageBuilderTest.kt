@@ -254,7 +254,7 @@ class FlashPackageBuilderTest {
 
     @Test fun moduleZipLayout() {
         val img = image("p.img", 4096, 7)
-        val zip = FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m.zip"), img, "144 Hz\nline2", 42)
+        val zip = FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m.zip"), img, "v1.2.1 · 2026-10-24", "删除 60 / 120 Hz\nline2", 42)
         ZipFile(zip).use { z ->
             val names = z.entries().asSequence().map { it.name }.toSet()
             assertEquals(
@@ -265,7 +265,9 @@ class FlashPackageBuilderTest {
             val prop = z.getInputStream(z.getEntry("module.prop")).bufferedReader().readLines()
             assertTrue(prop.contains("id=${FlashPackageBuilder.MODULE_ID}"))
             assertTrue(prop.contains("versionCode=42"))
-            assertTrue("prop values must be single line", prop.contains("version=144 Hz line2"))
+            assertTrue(prop.contains("version=v1.2.1 · 2026-10-24"))
+            assertTrue(prop.contains("author=${FlashPackageBuilder.MODULE_AUTHOR}"))
+            assertTrue("prop values must be single line", prop.contains("description=删除 60 / 120 Hz line2"))
             names.filter { it.endsWith(".sh") || it.endsWith("update-binary") || it == "module.prop" }.forEach {
                 assertFalse("$it must use LF", z.getInputStream(z.getEntry(it)).bufferedReader().readText().contains('\r'))
             }
@@ -324,7 +326,7 @@ class FlashPackageBuilderTest {
         val other = File(device.byName, "dtbo_a").apply { writeBytes(ByteArray(64_000) { 7 }) }
         val patched = image("patched.img", 40_000, 11)
 
-        val (code, output) = device.install(FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m.zip"), patched, "x", 1))
+        val (code, output) = device.install(FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m.zip"), patched, "v1", "x", 1))
 
         assertEquals(output, 0, code)
         assertTrue(output, output.contains("Readback verified"))
@@ -345,9 +347,9 @@ class FlashPackageBuilderTest {
         val originalBytes = Random(12).nextBytes(64_000)
         val partition = File(device.byName, "dtbo_a").apply { writeBytes(originalBytes) }
 
-        assertEquals(0, device.install(FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m1.zip"), image("p1.img", 30_000, 13), "v1", 1)).first)
+        assertEquals(0, device.install(FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m1.zip"), image("p1.img", 30_000, 13), "v1", "x", 1)).first)
         val second = image("p2.img", 50_000, 14)
-        val (code, output) = device.install(FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m2.zip"), second, "v2", 2))
+        val (code, output) = device.install(FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m2.zip"), second, "v2", "x", 2))
 
         assertEquals(output, 0, code)
         assertTrue(output, output.contains("Keeping original backup"))
@@ -359,7 +361,7 @@ class FlashPackageBuilderTest {
         assumeTrue("sh unavailable", shAvailable())
         val device = ModuleDevice("_a")
         val partition = File(device.byName, "dtbo_a").apply { writeBytes(Random(15).nextBytes(64_000)) }
-        assertEquals(0, device.install(FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m.zip"), image("p.img", 30_000, 16), "x", 1)).first)
+        assertEquals(0, device.install(FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m.zip"), image("p.img", 30_000, 16), "v1", "x", 1)).first)
 
         val otaBytes = Random(17).nextBytes(64_000)
         partition.writeBytes(otaBytes)
@@ -373,7 +375,7 @@ class FlashPackageBuilderTest {
         assumeTrue("sh unavailable", shAvailable())
         val device = ModuleDevice("_b")
         val patched = image("p.img", 30_000, 18)
-        val zip = FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m.zip"), patched, "x", 1)
+        val zip = FlashPackageBuilder.writeModuleZip(tmp.root.resolve("m.zip"), patched, "v1", "x", 1)
 
         val (missingCode, missingOutput) = device.install(zip)
         assertEquals(missingOutput, 1, missingCode)

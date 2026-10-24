@@ -332,6 +332,7 @@ class DtboPatchEngine(
             originalHz = replaceHz ?: candidate.dfpsRefreshRates.maxOrNull() ?: candidate.currentHz,
             targetHz = targetHz,
             strategy = PatchStrategy.BALANCED_BLANKING_TIME,
+            dfps = true,
             summary = summary
         )
         plan.changes.forEach { logSink("[INFO][DFPS] DTB[${candidate.entryIndex}] $it") }

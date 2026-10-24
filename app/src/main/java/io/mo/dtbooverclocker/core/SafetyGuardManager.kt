@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import io.mo.dtbooverclocker.BuildConfig
 import io.mo.dtbooverclocker.model.BackupType
 import io.mo.dtbooverclocker.model.FlashResult
 import io.mo.dtbooverclocker.model.PatchReport
@@ -77,11 +78,11 @@ class SafetyGuardManager(
     suspend fun installPatchedModule(
         report: PatchReport,
         slot: SlotInfo,
-        summary: String
+        description: String
     ): FlashResult = guardedFlash(report, slot) {
         val manager = detectModuleManager()
             ?: error("未检测到 KernelSU / Magisk / APatch，无法以模块方式刷入")
-        val zip = generateModuleZip(report.outputImage, summary)
+        val zip = generateModuleZip(report.outputImage, description)
         logSink("[SAFE] 第 3/3 层：通过 ${manager.displayName} 安装模块，由模块写入 ${slot.blockDevice}")
         val result = rootDetector.runRoot(manager.installCommand(zip.absolutePath), timeoutMs = 180_000)
         (result.stdout + "\n" + result.stderr).lineSequence()
@@ -93,14 +94,16 @@ class SafetyGuardManager(
 
     suspend fun generateModuleZip(
         patchedImage: File,
-        summary: String,
+        description: String,
         outputName: String = "DTBO_Module.zip"
     ): File = withContext(Dispatchers.IO) {
+        val now = Date()
         val output = FlashPackageBuilder.writeModuleZip(
             output = File(context.filesDir, "module_bundles/$outputName"),
             patchedImage = patchedImage,
-            summary = summary,
-            versionCode = (System.currentTimeMillis() / 1000L).toInt()
+            version = "v${BuildConfig.VERSION_NAME} · ${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)}",
+            description = description,
+            versionCode = (now.time / 1000L).toInt()
         )
         logSink("[OK] 已生成 KernelSU / Magisk 模块：${output.absolutePath}")
         output

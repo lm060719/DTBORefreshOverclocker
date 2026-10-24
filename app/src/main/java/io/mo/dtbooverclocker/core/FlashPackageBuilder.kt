@@ -249,12 +249,12 @@ object FlashPackageBuilder {
     fun writeModuleZip(
         output: File,
         patchedImage: File,
-        summary: String,
+        version: String,
+        description: String,
         versionCode: Int
     ): File {
         require(patchedImage.isFile && patchedImage.length() >= 32) { "修补镜像无效" }
         val sha256 = HashUtils.sha256(patchedImage)
-        val oneLine = summary.replace(Regex("\\s+"), " ").trim().take(120)
 
         output.parentFile?.mkdirs()
         ZipOutputStream(FileOutputStream(output)).use { zip ->
@@ -265,10 +265,10 @@ object FlashPackageBuilder {
                 """
                 |id=$MODULE_ID
                 |name=DTBO Refresh Overclocker
-                |version=${oneLine.ifBlank { "patched DTBO" }}
+                |version=${version.propValue()}
                 |versionCode=$versionCode
-                |author=DTBO Refresh Overclocker
-                |description=安装时把修补后的 DTBO（SHA-256 ${sha256.take(12)}…）写入当前槽位，重启后生效。移除模块并重启会自动写回原 DTBO，再重启一次恢复生效。
+                |author=$MODULE_AUTHOR
+                |description=${description.propValue().ifBlank { "修补后的 DTBO" }}
                 |""".trimMargin()
             )
             zip.putTextEntry("customize.sh", moduleCustomizeScript(patchedImage.length(), sha256))
@@ -280,6 +280,7 @@ object FlashPackageBuilder {
     }
 
     const val MODULE_ID = "dtbo_refresh_overclocker"
+    const val MODULE_AUTHOR = "GITHUB@lm060719"
     const val MODULE_STATE = "dtbo_state"
     const val MODULE_INSTALLED_DIR = "/data/adb/modules/$MODULE_ID"
     const val MODULE_UNINSTALL_LOG = "/data/adb/dtbo_refresh_overclocker_uninstall.log"
@@ -406,6 +407,9 @@ object FlashPackageBuilder {
     private fun requirePartition(partition: String) {
         require(partitionPattern.matches(partition)) { "拒绝打包非 DTBO 分区：$partition" }
     }
+
+    /** module.prop 每个值只能占一行。 */
+    private fun String.propValue() = replace(Regex("\\s+"), " ").trim()
 
     private fun ZipOutputStream.putTextEntry(name: String, content: String) {
         putNextEntry(ZipEntry(name))
