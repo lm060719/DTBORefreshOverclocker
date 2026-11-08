@@ -49,3 +49,16 @@ captures/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Release output (APK / baseline profiles / metadata)
+app/release/
+
+# Stray empty files created by shell redirection mistakes
+/0
+/nodeMatch()
+/modifiedPaths.isRelated(node.path)
+**/ui/0
+
+# Claude Code local files
+.claude/
+CLAUDE.local.md
