@@ -7,6 +7,8 @@ import java.nio.ByteOrder
 import java.security.MessageDigest
 
 /** Preserves the partition dump layout, including identical AVB footer copies and trailing padding.
+ * An input whose AVB data is already stale (rewritten by a tool that ignores AVB) is still imported
+ * with warnings, since rebuild regenerates the footer size and hash; see [validateForAnalysis].
  * Hash descriptors are always updated. Signed vbmeta is rebuilt too: its authentication hash is
  * recomputed, but the vendor RSA signature cannot be, so the output only boots on an unlocked
  * bootloader. Unknown nonzero trailers around an AVB envelope fail closed instead of silently
@@ -34,7 +36,8 @@ object AvbImageEnvelope {
         val footerOffsets: List<Int>,
         val protectionState: AvbProtectionState,
         val algorithm: String?,
-        // Nonzero bytes after total_size in an image without any AVB structure.
+        // Nonzero leftovers of an older DTBO after total_size: the whole tail when there is no AVB
+        // structure, or the bytes below a stale footer's original size when analysis tolerates them.
         val staleTailBytes: Int = 0
     ) {
         // A zero-padded image without AVB does not establish a logical envelope boundary.
@@ -122,16 +125,23 @@ object AvbImageEnvelope {
      */
     fun validateForAnalysis(
         bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "ANALYZE"
-    ): Inspection = validateInternal(bytes, total, logSink, stage, allowSigned = true)
+    ): Inspection = validateInternal(bytes, total, logSink, stage, allowSigned = true, lenient = true)
 
+    /**
+     * [lenient] accepts an input whose AVB data no longer describes the DTBO, as left behind by
+     * tools that rewrite the partition without updating AVB: a stale footer size, a stale hash
+     * descriptor, and leftovers of the previous DTBO below the footer's original size. Rebuild
+     * regenerates all of these, and its output is always validated strictly.
+     */
     private fun validateInternal(
         bytes: ByteArray,
         total: Int,
         logSink: (String) -> Unit,
         stage: String,
-        allowSigned: Boolean
+        allowSigned: Boolean,
+        lenient: Boolean = false
     ): Inspection {
-        val inspection = inspect(bytes, total, logSink, stage)
+        val inspection = inspect(bytes, total, logSink, stage, allowStaleResidue = lenient)
         val layout = inspection.layout ?: return inspection
         try {
             require(layout.major == 1L && layout.minor == 0L) { "不支持的 AVB footer 版本 ${layout.major}.${layout.minor}" }
@@ -145,7 +155,11 @@ object AvbImageEnvelope {
                     "dtbo 哈希由 vbmeta 分区校验")
                 return inspection
             }
-            require(layout.originalSize == total) { "AVB footer 原始大小与 DTBO 不匹配" }
+            if (layout.originalSize != total) {
+                require(lenient) { "AVB footer 原始大小与 DTBO 不匹配" }
+                logSink("[WARN][AVB][$stage] footer original_image_size=${layout.originalSize} 与 DTBO total_size=$total 不一致，" +
+                    "分区可能曾被其他工具改写；打包时将按新 DTBO 更新 footer")
+            }
             val vbmeta = bytes.copyOfRange(layout.vbmeta, layout.vbmeta + layout.size)
             val b = buffer(vbmeta)
             require(b.getInt(4) == 1 && b.getInt(8) in 0..3) { "不支持的 AVB vbmeta required version" }
@@ -160,11 +174,15 @@ object AvbImageEnvelope {
                 )
             }
             hashFields(vbmeta, allowUnknownDescriptors = allowSigned).forEach { field ->
-                require(b.getLong(field.descriptor + 16) == total.toLong()) {
-                    "AVB 哈希覆盖范围与 DTBO total_size 不一致，暂不支持重建此布局"
-                }
-                require(digest(field, bytes, total).contentEquals(vbmeta.copyOfRange(field.digest, field.digest + field.size))) {
-                    "AVB 摘要校验失败"
+                val sizeMatches = b.getLong(field.descriptor + 16) == total.toLong()
+                val digestMatches = sizeMatches &&
+                    digest(field, bytes, total).contentEquals(vbmeta.copyOfRange(field.digest, field.digest + field.size))
+                if (!lenient) {
+                    require(sizeMatches) { "AVB 哈希覆盖范围与 DTBO total_size 不一致，暂不支持重建此布局" }
+                    require(digestMatches) { "AVB 摘要校验失败" }
+                } else if (!digestMatches) {
+                    logSink("[WARN][AVB][$stage] vbmeta 中的 dtbo 哈希与当前 DTBO 内容不一致，" +
+                        "镜像可能曾被其他工具修改且未更新 AVB；打包时将重新计算哈希")
                 }
             }
         } catch (e: IllegalArgumentException) {
@@ -176,7 +194,9 @@ object AvbImageEnvelope {
     }
     /** Recognizes structure independently of signing/descriptor support; never drops unknown trailers. */
     fun inspect(
-        bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "INSPECT"
+        bytes: ByteArray, total: Int, logSink: (String) -> Unit = {}, stage: String = "INSPECT",
+        // Tolerate leftovers of a previous, longer DTBO that a stale footer still accounts for.
+        allowStaleResidue: Boolean = false
     ): Inspection {
         val sha256 = HashUtils.sha256(bytes)
         val input = "input_size=${bytes.size}, dtbo_total_size=$total, input_sha256=$sha256"
@@ -229,15 +249,25 @@ object AvbImageEnvelope {
                         "(0x${first.toString(16)}..0x${last.toString(16)})；DTBO 加载只读取 total_size 以内，打包时将清零")
                 }
             } else {
-                require(valid > 0) { "找到 AVBf magic，但没有任何候选通过结构验证" }
+                require(valid > 0) {
+                    "找到 AVBf magic，但没有任何候选通过结构验证；footer 指向的 vbmeta 可能已被其他工具写入的镜像覆盖，" +
+                        "请改用官方原版 dtbo 镜像"
+                }
                 val layout = requireNotNull(selected)
                 // Repeated footer bytes are unambiguous only when every field and vbmeta location
                 // match. Keep every copy, using the outermost footer as the logical boundary.
                 require(layouts.all { it.copy(footer = layout.footer) == layout }) {
                     "找到多个有效 AVB footer，且内容或指向的 vbmeta 不一致，无法安全确定目标"
                 }
-                require((total until layout.vbmeta).all { bytes[it] == 0.toByte() }) {
+                // parseCandidate guarantees originalSize <= vbmeta, so this never reaches into vbmeta.
+                val residueEnd = if (allowStaleResidue) maxOf(total, layout.originalSize) else total
+                require((residueEnd until layout.vbmeta).all { bytes[it] == 0.toByte() }) {
                     "AVB 区域外存在未知数据，无法安全重建"
+                }
+                staleTailBytes = (total until residueEnd).count { bytes[it] != 0.toByte() }
+                if (staleTailBytes > 0) {
+                    logSink("[WARN][AVB][$stage] total_size 与 footer 记录的原始大小之间发现 $staleTailBytes 个非零残留字节 " +
+                        "(0x${total.toString(16)}..0x${residueEnd.toString(16)})，应为旧 DTBO 的残留；打包时将清零")
                 }
                 var paddingStart = layout.vbmeta + layout.size
                 layouts.forEach { copy ->

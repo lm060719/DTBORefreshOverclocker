@@ -101,6 +101,10 @@ tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     providers.gradleProperty("detachedSampleImage").orNull?.let {
         systemProperty("dtbo.detachedSampleImage", it)
     }
+    providers.gradleProperty("staleHashSampleImage").orNull?.let {
+        systemProperty("dtbo.staleHashSampleImage", it)
+        inputs.file(it)
+    }
     providers.gradleProperty("chargingSampleImage").orNull?.let {
         systemProperty("dtbo.chargingSampleImage", it)
         inputs.file(it)

@@ -141,7 +141,75 @@ class AvbImageEnvelopeTest {
         val signed = raw.copyOf().apply { ByteBuffer.wrap(this).putInt(4096 + 28, 1) }
         assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.rebuild(signed, 128, payload) }
         val stale = raw.copyOf().apply { this[100] = 1 }
-        assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.rebuild(stale, 128, payload) }
+        assertTrue(assertThrows(IllegalArgumentException::class.java) {
+            AvbImageEnvelope.validate(stale, 128)
+        }.message!!.contains("AVB 摘要校验失败"))
+    }
+
+    @Test fun staleHashFromAnotherToolImportsWithWarningAndRebuildRestoresIt() {
+        // In-place edit by a tool that does not update the hash descriptor.
+        val raw = fixture().apply { this[100] = 1 }
+        val logs = mutableListOf<String>()
+        val inspection = AvbImageEnvelope.validateForAnalysis(raw, 128, logs::add)
+        assertEquals(AvbProtectionState.UNSIGNED, inspection.protectionState)
+        assertTrue(logs.any { it.contains("[WARN]") && it.contains("哈希与当前 DTBO 内容不一致") })
+
+        val payload = raw.copyOf(128).apply { this[101] = 2 }
+        val result = AvbImageEnvelope.rebuild(raw, 128, payload)
+        assertArrayEquals(payload, result.copyOf(128))
+        AvbImageEnvelope.validate(result, 128)
+    }
+
+    @Test fun staleFooterSizeAndOldDtboResidueImportAndAreRegenerated() {
+        // A shorter DTBO was written over a 256-byte one; footer and descriptor still say 256.
+        val raw = fixture().apply {
+            val b = ByteBuffer.wrap(this)
+            b.putLong(footer + 12, 256)
+            b.putLong(4096 + 256 + 16, 256)
+            this[200] = 5
+        }
+        assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.validate(raw, 128) }
+        val logs = mutableListOf<String>()
+        val inspection = AvbImageEnvelope.validateForAnalysis(raw, 128, logs::add)
+        assertEquals(1, inspection.staleTailBytes)
+        assertTrue(logs.any { it.contains("[WARN]") && it.contains("original_image_size=256") })
+        assertTrue(logs.any { it.contains("[WARN]") && it.contains("残留字节") })
+
+        val payload = raw.copyOf(128).apply { this[100] = 9 }
+        val result = AvbImageEnvelope.rebuild(raw, 128, payload)
+        assertEquals(0, result[200].toInt())
+        assertEquals(128L, ByteBuffer.wrap(result).getLong(footer + 12))
+        assertEquals(0, AvbImageEnvelope.validate(result, 128).staleTailBytes)
+
+        // Bytes the stale footer does not account for are still unknown data.
+        val unknown = raw.copyOf().apply { this[300] = 1 }
+        assertTrue(assertThrows(IllegalArgumentException::class.java) {
+            AvbImageEnvelope.validateForAnalysis(unknown, 128)
+        }.message!!.contains("AVB 区域外存在未知数据"))
+    }
+
+    /** Opt in with -PstaleHashSampleImage=<path to a dtbo image edited in place by another tool>. */
+    @Test fun reportedInPlaceEditedImageImportsAndRebuildsWithValidHash() {
+        val sample = System.getProperty("dtbo.staleHashSampleImage", "") ?: ""
+        org.junit.Assume.assumeTrue("Local stale-hash sample was not configured", sample.isNotBlank())
+        val raw = File(sample).readBytes()
+        val original = DtboImageCodec.parse(raw)
+        val total = original.metadata.totalSize
+        assertThrows(IllegalArgumentException::class.java) { AvbImageEnvelope.validate(raw, total) }
+        val logs = mutableListOf<String>()
+        AvbImageEnvelope.validateForAnalysis(raw, total, logs::add)
+        assertTrue(logs.any { it.contains("[WARN]") && it.contains("哈希与当前 DTBO 内容不一致") })
+        val out = File.createTempFile("stale_hash_roundtrip", ".img")
+        try {
+            val replacement = original.entries.first().decodedBytes.copyOf().apply {
+                this[31] = (this[31].toInt() xor 1).toByte()
+            }
+            DtboImageCodec.rebuild(original, mapOf(0 to replacement), out)
+            val result = out.readBytes()
+            val rebuilt = DtboImageCodec.parse(result)
+            assertEquals(raw.size, result.size)
+            AvbImageEnvelope.validate(result, rebuilt.metadata.totalSize, allowSigned = true)
+        } finally { out.delete() }
     }
 
     @Test fun zeroFillsOldDtboLeftoversWhenNoAvbExists() {
